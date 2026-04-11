@@ -52,6 +52,12 @@ CREATE INDEX IF NOT EXISTS idx_notes_task ON notes(task_id);
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    """Apply DDL. Safe to call repeatedly."""
+    """Apply DDL. Safe to call repeatedly.
+
+    WAL journal mode lets the SwiftUI menubar app read concurrently while
+    the Python TUI/CLI writes.
+    """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(DDL)
     conn.commit()

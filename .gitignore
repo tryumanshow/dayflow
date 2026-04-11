@@ -30,3 +30,8 @@ dayflow.db-shm
 # internal docs (not for the public repo)
 docs/
 
+
+# Dayflow-macOS build artifacts
+Dayflow-macOS/.build/
+Dayflow-macOS/Dayflow.app/
+Dayflow-macOS/Package.resolved
