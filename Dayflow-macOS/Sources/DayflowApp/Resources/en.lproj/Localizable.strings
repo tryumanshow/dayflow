@@ -18,6 +18,7 @@
 "week.footer.done" = "done";
 "week.footer.open" = "open";
 "week.footer.days_tracked" = "days tracked";
+"week.footer.day_tracked" = "day tracked";
 
 /* Month view */
 "month.standout_header" = "Line of the month";
@@ -26,6 +27,7 @@
 "month.caption.busiest" = "busiest: %@";
 "month.plan_header" = "Month plan";
 "month.plan.empty" = "What does this month look like?";
+"month.plan.hint" = "auto-saves as you type";
 
 /* Quick Throw */
 "quick_throw.title" = "→ throw a task";

@@ -275,7 +275,8 @@ struct ContentView: View {
                 Spacer()
                 weekFooterStat(value: "\(totals.done)", label: L("week.footer.done"))
                 weekFooterStat(value: "\(totals.open)", label: L("week.footer.open"))
-                weekFooterStat(value: "\(totals.trackedDays)", label: L("week.footer.days_tracked"))
+                weekFooterStat(value: "\(totals.trackedDays)",
+                               label: L(totals.trackedDays == 1 ? "week.footer.day_tracked" : "week.footer.days_tracked"))
                 Spacer()
             }
             .padding(.vertical, DS.Space.md)
@@ -416,8 +417,16 @@ struct ContentView: View {
         }
         let weekdayHeaders = localizedWeekdayHeaders()
 
+        // Chunk the 42-day grid into 6 rows of 7. Manual HStack-per-row
+        // layout lets each cell stretch to fill its row's share of the
+        // available vertical space — LazyVGrid wouldn't distribute the
+        // leftover height on its own.
+        let rows: [[Date]] = stride(from: 0, to: days.count, by: 7).map {
+            Array(days[$0..<min($0 + 7, days.count)])
+        }
+
         return HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: DS.Space.lg) {
+            VStack(alignment: .leading, spacing: DS.Space.md) {
                 HStack(spacing: 4) {
                     ForEach(weekdayHeaders, id: \.self) { wd in
                         Text(wd)
@@ -430,15 +439,19 @@ struct ContentView: View {
                 .padding(.horizontal, DS.Space.xl)
                 .padding(.top, DS.Space.breathe)
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
-                    ForEach(days, id: \.self) { day in
-                        heatCell(for: day, stats: stats)
+                VStack(spacing: 4) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        HStack(spacing: 4) {
+                            ForEach(row, id: \.self) { day in
+                                heatCell(for: day, stats: stats)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
                 .padding(.horizontal, DS.Space.xl)
-                .padding(.bottom, DS.Space.lg)
-
-                Spacer(minLength: 0)
+                .padding(.bottom, DS.Space.xl)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -459,7 +472,7 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
                 appCredit
             }
-            .frame(width: 320)
+            .frame(width: 460)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
         }
@@ -523,11 +536,15 @@ struct ContentView: View {
     private var monthPlanRail: some View {
         @Bindable var store = store
         return VStack(alignment: .leading, spacing: DS.Space.sm) {
-            SectionLabel(text: L("month.plan_header"))
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel(text: L("month.plan_header"))
+                Spacer()
+                Text(L("month.plan.hint"))
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.tertiary)
+            }
             // Same editor component as the Day view — block-based,
-            // rich-text toolbar, md + JSON sidecar storage. The Month
-            // rail gives it a fixed, scrollable height so it doesn't
-            // push the standout line off-screen on short windows.
+            // rich-text toolbar, md + JSON sidecar storage.
             MarkdownWebEditor(
                 markdown: $store.monthPlanBody,
                 markdownJSON: $store.monthPlanJSON,
@@ -535,7 +552,7 @@ struct ContentView: View {
                     store.updateMonthPlan(md, bodyJSON: json)
                 }
             )
-            .frame(height: 260)
+            .frame(height: 440)
             .background(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .fill(Color.white.opacity(0.03))
@@ -562,21 +579,20 @@ struct ContentView: View {
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 Text("\(cal.component(.day, from: day))")
-                    .font(.system(size: 12, weight: isToday ? .bold : .medium).monospacedDigit())
+                    .font(.system(size: 14, weight: isToday ? .bold : .medium).monospacedDigit())
                     .foregroundColor(inMonth
                                      ? (isToday ? Color.dfAccent : Color.primary)
                                      : Color.secondary.opacity(0.4))
                 Spacer(minLength: 0)
             }
-            .padding(8)
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .fill(heatColor(inMonth: inMonth, total: total))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .stroke(isSelected ? Color.dfAccent.opacity(0.7) : Color.dfHairlineSoft,
                             lineWidth: isSelected ? 0.9 : 0.7)
             )
