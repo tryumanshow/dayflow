@@ -658,6 +658,10 @@ struct ContentView: View {
                         RoundedRectangle(cornerRadius: 6)
                             .fill(Color.white.opacity(0.04))
                     )
+                    .onChange(of: aptTimeInput) { _, new in
+                        let masked = Self.maskHHMM(new)
+                        if masked != new { aptTimeInput = masked }
+                    }
                     .onSubmit { submitMonthAppointment() }
                 TextField(L("appointments.title_placeholder"), text: $aptTitleInput)
                     .textFieldStyle(.plain)
@@ -755,6 +759,19 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(isEditing ? Color.dfAccent.opacity(0.12) : .clear)
         )
+    }
+
+    /// Input mask for the HH:MM time field. Strips non-digits, caps
+    /// at 4 digits, auto-inserts `:` after the second digit. Paste
+    /// of "1400" / "14:00" / "14.00" all normalize to "14:00".
+    /// Validation of hours/minutes > 23/59 is left to the parse
+    /// step inside `DayflowStore.combine`.
+    static func maskHHMM(_ raw: String) -> String {
+        let digits = raw.filter(\.isNumber).prefix(4)
+        if digits.count <= 2 { return String(digits) }
+        let h = digits.prefix(2)
+        let m = digits.dropFirst(2)
+        return "\(h):\(m)"
     }
 
     private func startAppointmentEdit(_ apt: Appointment) {
