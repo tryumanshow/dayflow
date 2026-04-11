@@ -123,19 +123,25 @@ final class DayflowStore {
 
         let (monthStart, monthEnd) = monthGridRange(selectedDate)
         bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
-        reloadAppointments(start: monthStart, end: monthEnd)
+        reloadAppointments()
 
         loadReview()
     }
 
-    private func reloadAppointments(start: Date, end: Date) {
+    private func reloadAppointments() {
+        let (start, end) = monthGridRange(selectedDate)
         let items = db.getAppointments(start: start, end: end)
         var byDay: [String: [Appointment]] = [:]
         for apt in items {
             let key = DayflowDB.ymd(apt.startAt)
             byDay[key, default: []].append(apt)
         }
-        appointmentsByDay = byDay
+        // Equality guard so a reload that produced the same result
+        // doesn't fire `@Observable` invalidations across every view
+        // bound to `appointmentsByDay`.
+        if byDay != appointmentsByDay {
+            appointmentsByDay = byDay
+        }
     }
 
     /// Single point of assignment for the three buffers that always move
@@ -243,44 +249,41 @@ final class DayflowStore {
         appointmentsByDay[DayflowDB.ymd(date)] ?? []
     }
 
-    /// All appointments whose startAt falls within the calendar month
-    /// that contains `selectedDate`. Sorted by startAt.
+    /// All appointments whose `startAt` falls within the calendar
+    /// month containing `selectedDate`, sorted by `startAt`.
     func currentMonthAppointments() -> [Appointment] {
         let cal = Calendar.current
         guard let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: selectedDate)),
               let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart) else { return [] }
-        return appointmentsByDay.keys.sorted().flatMap { key -> [Appointment] in
-            guard let d = DF.ymd.date(from: key),
-                  d >= monthStart, d < nextMonth else { return [] }
-            return appointmentsByDay[key] ?? []
-        }
+        return appointmentsByDay.values
+            .flatMap { $0 }
+            .filter { $0.startAt >= monthStart && $0.startAt < nextMonth }
+            .sorted { $0.startAt < $1.startAt }
     }
 
-    /// Parse `HH:mm` against the selected date and insert. Returns
-    /// false if the time string is unparseable.
+    /// Parse `HH:mm` against the target day and insert. Returns false
+    /// on empty title or unparseable time.
     @discardableResult
     func addAppointment(on day: Date, hhmm: String, title: String) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
-        guard let startAt = combine(day: day, hhmm: trimmedTime) else { return false }
+        guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
         db.insertAppointment(startAt: startAt, endAt: nil, title: trimmedTitle, note: nil)
-        let (monthStart, monthEnd) = monthGridRange(selectedDate)
-        reloadAppointments(start: monthStart, end: monthEnd)
+        reloadAppointments()
         return true
     }
 
     func deleteAppointment(_ apt: Appointment) {
         db.deleteAppointment(id: apt.id)
-        let (monthStart, monthEnd) = monthGridRange(selectedDate)
-        reloadAppointments(start: monthStart, end: monthEnd)
+        reloadAppointments()
     }
 
-    /// Combine a calendar day with an `HH:mm` string into a single
-    /// Date at that wall-clock instant, in the user's local calendar.
-    /// Accepts `H:m`, `HH:mm`, `HHmm` (no separator).
-    private func combine(day: Date, hhmm: String) -> Date? {
-        // Normalise "HHmm" → "HH:mm" to be forgiving of typing style.
+    /// Parse an `HH:mm` / `H:m` / `HHmm` string and attach it to
+    /// `day`'s calendar date. Returns nil on malformed input.
+    private static func combine(day: Date, hhmm: String) -> Date? {
+        // Forgiving of "HHmm" (no separator) — normalise into a
+        // `HH:mm` shape before splitting.
         var normalized = hhmm
         if normalized.count == 4, !normalized.contains(":") {
             let idx = normalized.index(normalized.startIndex, offsetBy: 2)
@@ -288,12 +291,9 @@ final class DayflowStore {
         }
         let parts = normalized.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2 else { return nil }
-        let hour = parts[0], minute = parts[1]
+        let (hour, minute) = (parts[0], parts[1])
         guard (0...23).contains(hour), (0...59).contains(minute) else { return nil }
-        var comps = Calendar.current.dateComponents([.year, .month, .day], from: day)
-        comps.hour = hour
-        comps.minute = minute
-        return Calendar.current.date(from: comps)
+        return Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: day)
     }
 
     // MARK: - week preview

@@ -4,12 +4,11 @@ import SwiftUI
 struct ContentView: View {
     @Environment(DayflowStore.self) private var store
 
-    // Month rail appointment add form. Persist across view switches
-    // so a half-typed entry isn't lost. Date defaults to today and
-    // is picked via a compact DatePicker in the Month rail form.
+    // Month rail appointment add form. Persists across view switches
+    // so a half-typed entry survives a Day/Week detour.
     @State private var aptTimeInput: String = ""
     @State private var aptTitleInput: String = ""
-    @State private var aptDateInput: Date = Calendar.current.startOfDay(for: Date())
+    @State private var aptDateInput: Date = Date()
     @FocusState private var aptTitleFocused: Bool
 
     var body: some View {
@@ -212,8 +211,7 @@ struct ContentView: View {
 
     /// Day rail is read-only for appointments — creation and deletion
     /// both live in the Month view so there's a single place to shape
-    /// the month's schedule. Day shows what's on today with a hint
-    /// pointing to where to edit.
+    /// the month's schedule.
     @ViewBuilder
     private var appointmentsRail: some View {
         let items = store.appointments(for: store.selectedDate)
@@ -608,11 +606,7 @@ struct ContentView: View {
         }
     }
 
-    /// Month view is the single source of truth for scheduling. This
-    /// rail is the only CRUD surface for appointments: existing rows
-    /// with a delete button, plus an always-visible inline add form
-    /// (date + HH:MM + title). Day and Week views just display what
-    /// lives here.
+    /// Month view is the single source of truth for scheduling.
     private var monthAppointmentsRail: some View {
         let items = store.currentMonthAppointments()
         return VStack(alignment: .leading, spacing: DS.Space.sm) {
@@ -669,7 +663,6 @@ struct ContentView: View {
                 }
             }
 
-            // Inline add form — date picker + HH:MM + title.
             HStack(spacing: 6) {
                 DatePicker("", selection: $aptDateInput, displayedComponents: [.date])
                     .datePickerStyle(.compact)
@@ -758,20 +751,46 @@ struct ContentView: View {
         let done = stats.doneByDay[key] ?? 0
         let open = stats.openByDay[key] ?? 0
         let total = done + open
+        let appointments = store.appointments(for: day)
 
         return Button {
             store.selectDate(day)
         } label: {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("\(cal.component(.day, from: day))")
                     .font(.system(size: 14, weight: isToday ? .bold : .medium).monospacedDigit())
                     .foregroundColor(inMonth
                                      ? (isToday ? Color.dfAccent : Color.primary)
                                      : Color.secondary.opacity(0.4))
+                // Show up to 3 appointment chips under the day number.
+                // On overflow, last row becomes a "+N" counter. Only
+                // for in-month cells — leading/trailing padding cells
+                // stay visually quiet.
+                if inMonth && !appointments.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        let visible = appointments.prefix(3)
+                        ForEach(Array(visible)) { apt in
+                            HStack(spacing: 4) {
+                                Text(DF.hourMinute.string(from: apt.startAt))
+                                    .font(.system(size: 9, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(Color.dfAccent)
+                                Text(apt.title)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.primary.opacity(0.85))
+                                    .lineLimit(1)
+                            }
+                        }
+                        if appointments.count > 3 {
+                            Text("+\(appointments.count - 3)")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 Spacer(minLength: 0)
             }
             .padding(10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .fill(heatColor(inMonth: inMonth, total: total))
