@@ -24,6 +24,7 @@
 "appointments.update" = "수정";
 "appointments.cancel" = "취소";
 "appointments.time_placeholder" = "HH:MM";
+"appointments.end_time_placeholder" = "종료";
 "appointments.title_placeholder" = "제목";
 "appointments.month_header" = "이 달의 일정";
 "appointments.month_hint" = "여기서 관리";

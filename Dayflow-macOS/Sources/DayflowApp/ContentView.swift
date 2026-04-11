@@ -8,6 +8,7 @@ struct ContentView: View {
     // edit form — `editingAppointmentId` being non-nil flips the
     // submit button label and routes to `updateAppointment`.
     @State private var aptTimeInput: String = ""
+    @State private var aptEndTimeInput: String = ""
     @State private var aptTitleInput: String = ""
     @State private var aptDateInput: Date = Date()
     @State private var editingAppointmentId: Int64? = nil
@@ -255,6 +256,12 @@ struct ContentView: View {
                                 .font(.system(size: 12, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
                                 .frame(width: 44, alignment: .leading)
+                            if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
+                                Text(pill)
+                                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 44, alignment: .leading)
+                            }
                             Text(apt.title)
                                 .font(DS.FontStyle.body)
                                 .foregroundStyle(.primary)
@@ -411,6 +418,11 @@ struct ContentView: View {
                             Text(DF.hourMinute.string(from: apt.startAt))
                                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
+                            if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
+                                Text(pill)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
                             Text(apt.title)
                                 .font(DS.FontStyle.caption)
                                 .foregroundStyle(.primary)
@@ -663,6 +675,24 @@ struct ContentView: View {
                         if masked != new { aptTimeInput = masked }
                     }
                     .onSubmit { submitMonthAppointment() }
+                Text("–")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                TextField(L("appointments.end_time_placeholder"), text: $aptEndTimeInput)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .frame(width: 52)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.04))
+                    )
+                    .onChange(of: aptEndTimeInput) { _, new in
+                        let masked = Self.maskHHMM(new)
+                        if masked != new { aptEndTimeInput = masked }
+                    }
+                    .onSubmit { submitMonthAppointment() }
                 TextField(L("appointments.title_placeholder"), text: $aptTitleInput)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
@@ -722,6 +752,14 @@ struct ContentView: View {
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
                         .foregroundStyle(Color.dfAccent)
                         .frame(width: 40, alignment: .leading)
+                    if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
+                        Text(pill)
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 44, alignment: .leading)
+                    } else {
+                        Color.clear.frame(width: 44)
+                    }
                     Text(apt.title)
                         .font(DS.FontStyle.body)
                         .foregroundStyle(.primary)
@@ -774,10 +812,26 @@ struct ContentView: View {
         return "\(h):\(m)"
     }
 
+    /// Compact duration label for `start → end`. Nil when `end` is
+    /// absent or not after start. Formats as `30m`, `1h`, `1h 30m`.
+    /// Rendered alongside start time in every appointment surface
+    /// so users see how long each item runs without an end-time
+    /// chip eating chip width.
+    static func durationPill(from start: Date, to end: Date?) -> String? {
+        guard let end, end > start else { return nil }
+        let minutes = Int(end.timeIntervalSince(start) / 60)
+        let h = minutes / 60
+        let m = minutes % 60
+        if h == 0 { return "\(m)m" }
+        if m == 0 { return "\(h)h" }
+        return "\(h)h \(m)m"
+    }
+
     private func startAppointmentEdit(_ apt: Appointment) {
         editingAppointmentId = apt.id
         aptDateInput = apt.startAt
         aptTimeInput = DF.hourMinute.string(from: apt.startAt)
+        aptEndTimeInput = apt.endAt.map { DF.hourMinute.string(from: $0) } ?? ""
         aptTitleInput = apt.title
         aptTitleFocused = true
     }
@@ -785,6 +839,7 @@ struct ContentView: View {
     private func cancelAppointmentEdit() {
         editingAppointmentId = nil
         aptTimeInput = ""
+        aptEndTimeInput = ""
         aptTitleInput = ""
         aptTitleFocused = false
     }
@@ -792,13 +847,14 @@ struct ContentView: View {
     private func submitMonthAppointment() {
         let ok: Bool
         if let id = editingAppointmentId {
-            ok = store.updateAppointment(id, on: aptDateInput, hhmm: aptTimeInput, title: aptTitleInput)
+            ok = store.updateAppointment(id, on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, title: aptTitleInput)
         } else {
-            ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, title: aptTitleInput)
+            ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, title: aptTitleInput)
         }
         if ok {
             editingAppointmentId = nil
             aptTimeInput = ""
+            aptEndTimeInput = ""
             aptTitleInput = ""
             aptTitleFocused = false
         }
@@ -862,6 +918,11 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         let visible = appointments.prefix(3)
                         ForEach(Array(visible)) { apt in
+                            // Heatmap cells are too tight (~160px) to
+                            // fit start + duration + title reliably,
+                            // so the pill is rendered only in the
+                            // wider surfaces (right rail, Day/Week).
+                            // Cell chip stays start-only.
                             HStack(spacing: 4) {
                                 Text(DF.hourMinute.string(from: apt.startAt))
                                     .font(.system(size: 9, weight: .semibold).monospacedDigit())
