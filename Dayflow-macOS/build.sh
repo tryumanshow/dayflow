@@ -58,4 +58,14 @@ PLIST
 codesign --force --deep --sign - "${APP_DIR}" >/dev/null 2>&1 || true
 
 echo "==> built ${APP_DIR}"
-echo "    open ${APP_DIR}"
+
+# install into /Applications so Launchpad picks it up
+INSTALL_DIR="/Applications/${APP_DIR}"
+if [[ -w /Applications || -w "${INSTALL_DIR}" ]]; then
+    rm -rf "${INSTALL_DIR}"
+    cp -R "${APP_DIR}" "${INSTALL_DIR}"
+    echo "==> installed to ${INSTALL_DIR}"
+else
+    echo "    (skipped /Applications install — not writable, run with sudo if needed)"
+fi
+echo "    open ${INSTALL_DIR}"
