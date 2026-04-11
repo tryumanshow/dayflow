@@ -547,8 +547,6 @@ struct ContentView: View {
                     .font(DS.FontStyle.caption)
                     .foregroundStyle(.tertiary)
             }
-            // Same editor component as the Day view — block-based,
-            // rich-text toolbar, md + JSON sidecar storage.
             MarkdownWebEditor(
                 markdown: $store.monthPlanBody,
                 markdownJSON: $store.monthPlanJSON,

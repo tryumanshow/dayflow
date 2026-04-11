@@ -133,16 +133,23 @@ final class DayflowStore {
         dayBodyLoadedFor = cacheKey
     }
 
+    /// Gregorian calendar reused by every layout helper that walks
+    /// weeks/months, so we don't re-initialise a `Calendar` on every
+    /// render tick. Monday-first on this branch.
+    private static let gregorian: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.firstWeekday = 2
+        return c
+    }()
+
     func startOfWeek(_ date: Date) -> Date {
-        var cal = Calendar(identifier: .gregorian)
-        cal.firstWeekday = 2
+        let cal = Self.gregorian
         let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         return cal.date(from: comps) ?? date
     }
 
     func monthGridRange(_ date: Date) -> (Date, Date) {
-        var cal = Calendar(identifier: .gregorian)
-        cal.firstWeekday = 2
+        let cal = Self.gregorian
         let comps = cal.dateComponents([.year, .month], from: date)
         let firstOfMonth = cal.date(from: comps) ?? date
         let gridStart = startOfWeek(firstOfMonth)
@@ -168,9 +175,8 @@ final class DayflowStore {
         bodies[key] = newValue
     }
 
-    /// Month-plan editor callback. Same debounce-through-editor shape as
-    /// `updateDayBody`.
     func updateMonthPlan(_ newValue: String, bodyJSON: String? = nil) {
+        guard newValue != monthPlanBody || bodyJSON != monthPlanJSON else { return }
         monthPlanBody = newValue
         monthPlanJSON = bodyJSON
         db.saveMonthPlan(date: selectedDate, body: newValue, bodyJSON: bodyJSON)
@@ -216,12 +222,9 @@ final class DayflowStore {
     // MARK: - week preview
 
     /// Grouped task preview for a single day column in Week view.
-    /// A "group" is a heading with its tasks in source order
-    /// (both open and done). Tasks before any heading land in a
-    /// synthetic group whose title is nil → rendered as a flat list.
-    ///
-    /// Caps: at most `maxGroups` groups, at most `maxTasksPerGroup`
-    /// tasks per group. Empty groups drop out.
+    /// A "group" is a heading with its tasks in source order (both
+    /// open and done). Tasks before any heading land in a synthetic
+    /// group with `heading == nil`, rendered as a flat list.
     struct WeekGroup: Identifiable {
         let id: Int
         let heading: String?
@@ -231,25 +234,25 @@ final class DayflowStore {
         let id: Int
         let text: String
         let checked: Bool
-        /// Source line index inside the day body — used by
-        /// `toggleWeekTask` to flip the checkbox in place.
         let sourceLineIndex: Int
-        /// 0 for top-level, 1 for one level of indent, etc. Week
-        /// preview uses this to render a padding offset so the Day
-        /// view's nesting is visible at a glance.
+        /// Indent level — 0 for top-level, 1+ for nesting. Week
+        /// preview renders a padding offset per level so Day-view
+        /// hierarchy is visible at a glance.
         let depth: Int
     }
 
-    func weekGroups(for date: Date, maxGroups: Int = 2, maxTasksPerGroup: Int = 5) -> [WeekGroup] {
+    private static let weekPreviewMaxGroups = 2
+    private static let weekPreviewMaxTasksPerGroup = 5
+
+    func weekGroups(for date: Date) -> [WeekGroup] {
         let body = dayBody(for: date)
         guard !body.isEmpty else { return [] }
 
-        // Walk the body line-by-line tracking the current heading + the
-        // bucket of tasks under it. Indent depth is computed from the
-        // RAW line (before `MarkdownLine.parse` trims whitespace) so
-        // subtasks show up under their parents in the preview. Source
-        // order is preserved, including done tasks — the user wants to
-        // see what's finished, not just what's outstanding.
+        // Indent depth is computed from the RAW line (before
+        // `MarkdownLine.parse` trims whitespace) so subtasks show up
+        // under their parents. Source order is preserved, including
+        // done tasks — the user wants to see what's finished, not
+        // just what's outstanding.
         var groups: [(heading: String?, tasks: [PreviewTask])] = [(nil, [])]
         let lines = body.components(separatedBy: "\n")
         var nextTaskID = 0
@@ -261,7 +264,7 @@ final class DayflowStore {
                 groups.append((text, []))
             case .task(let checked, let text):
                 var current = groups[groups.count - 1]
-                if current.tasks.count < maxTasksPerGroup {
+                if current.tasks.count < Self.weekPreviewMaxTasksPerGroup {
                     current.tasks.append(PreviewTask(
                         id: nextTaskID, text: text, checked: checked,
                         sourceLineIndex: idx, depth: depth))
@@ -273,26 +276,24 @@ final class DayflowStore {
             }
         }
 
-        // Drop empty groups, then cap the total to `maxGroups`.
         let filtered = groups.filter { !$0.tasks.isEmpty }
-        let capped = Array(filtered.prefix(maxGroups))
+        let capped = Array(filtered.prefix(Self.weekPreviewMaxGroups))
         return capped.enumerated().map { i, g in
             WeekGroup(id: i, heading: g.heading, tasks: g.tasks)
         }
     }
 
-    /// Indent depth for a raw markdown line. `blocksToMarkdownLossy`
-    /// emits 4-space indents per nesting level (CommonMark list
-    /// continuation), verified against actual DB output, so 4 spaces =
-    /// depth 1. Tabs count as 4 spaces.
+    /// `blocksToMarkdownLossy` emits this many spaces per nesting
+    /// level (verified against live DB output — CommonMark list
+    /// continuation). Used by `indentDepth` below.
+    private static let indentUnitSpaces = 4
+
+    /// Indent depth for a raw markdown line. Tabs are expanded to one
+    /// indent unit each.
     private static func indentDepth(of raw: String) -> Int {
-        var leading = 0
-        for ch in raw {
-            if ch == " " { leading += 1 }
-            else if ch == "\t" { leading += 4 }
-            else { break }
-        }
-        return leading / 4
+        let leading = raw.prefix(while: { $0 == " " || $0 == "\t" })
+            .reduce(0) { $0 + ($1 == "\t" ? indentUnitSpaces : 1) }
+        return leading / indentUnitSpaces
     }
 
     /// Toggle an open task found in the week preview by its source line

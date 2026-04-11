@@ -108,16 +108,10 @@ final class DayflowDB: @unchecked Sendable {
             sqlite3_exec(db, "PRAGMA user_version = 1", nil, nil, nil)
         }
         if current < 2 {
-            // v2: month_plans table. CREATE TABLE IF NOT EXISTS above
-            // handles new installs; legacy DBs need it here.
-            sqlite3_exec(db, """
-                CREATE TABLE IF NOT EXISTS month_plans (
-                    month_key  TEXT PRIMARY KEY,
-                    body_md    TEXT NOT NULL,
-                    body_json  TEXT,
-                    updated_at TEXT NOT NULL
-                )
-            """, nil, nil, nil)
+            // v2: month_plans. The table is already created by the
+            // `CREATE TABLE IF NOT EXISTS` above on every open, so
+            // legacy DBs pick it up without a dedicated ALTER. Just
+            // bump user_version.
             sqlite3_exec(db, "PRAGMA user_version = 2", nil, nil, nil)
         }
     }
@@ -159,48 +153,60 @@ final class DayflowDB: @unchecked Sendable {
         }
     }
 
-    // MARK: - day notes (markdown body + optional BlockNote JSON per day)
+    // MARK: - body-row helpers
 
-    /// Markdown-only read path — used by Week/Month aggregators, QuickThrow,
-    /// and the review generator, none of which care about rich styles.
-    func getDayNote(date: Date) -> String {
-        getDayNoteFull(date: date).body
-    }
-
-    /// Single-row read returning both representations. `body_json` carries
-    /// text/background color and underline that `body_md` can't express;
-    /// it's preferred on load when non-nil.
-    func getDayNoteFull(date: Date) -> (body: String, bodyJSON: String?) {
+    /// Generic "one key → (markdown, optional JSON)" read shared by
+    /// `day_notes` and `month_plans`. Both tables have the same
+    /// `(key TEXT PK, body_md TEXT NOT NULL, body_json TEXT, updated_at TEXT)`
+    /// shape so a single helper keeps them in lockstep.
+    private func getBodyRow(table: String, keyColumn: String, key: String) -> (body: String, bodyJSON: String?) {
         var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "SELECT body_md, body_json FROM day_notes WHERE note_date = ?", -1, &stmt, nil)
+        sqlite3_prepare_v2(db, "SELECT body_md, body_json FROM \(table) WHERE \(keyColumn) = ?", -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, Self.ymd(date))
+        bindText(stmt, 1, key)
         guard sqlite3_step(stmt) == SQLITE_ROW else { return ("", nil) }
         let md = textCol(stmt, 0)
         let json = textCol(stmt, 1)
         return (md, json.isEmpty ? nil : json)
     }
 
-    /// Passing `bodyJSON: nil` nulls the JSON slot so markdown-only
-    /// callers (QuickThrow, Week checkbox toggle) force the editor to
-    /// re-derive blocks from markdown — accepting that rich styles on the
-    /// affected day are dropped.
-    func saveDayNote(date: Date, body: String, bodyJSON: String? = nil) {
+    /// Generic UPSERT sibling to `getBodyRow`. `bodyJSON: nil` explicitly
+    /// nulls the JSON slot — markdown-only callers (QuickThrow, Week
+    /// checkbox toggle) rely on this to force the editor to re-derive
+    /// blocks from markdown, dropping rich styles on the affected row.
+    private func upsertBodyRow(table: String, keyColumn: String, key: String, body: String, bodyJSON: String?) {
         let now = nowISO()
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
-            INSERT INTO day_notes (note_date, body_md, body_json, updated_at) VALUES (?,?,?,?)
-            ON CONFLICT(note_date) DO UPDATE SET
+            INSERT INTO \(table) (\(keyColumn), body_md, body_json, updated_at) VALUES (?,?,?,?)
+            ON CONFLICT(\(keyColumn)) DO UPDATE SET
                 body_md=excluded.body_md,
                 body_json=excluded.body_json,
                 updated_at=excluded.updated_at
         """, -1, &stmt, nil)
-        bindText(stmt, 1, Self.ymd(date))
+        bindText(stmt, 1, key)
         bindText(stmt, 2, body)
         bindTextOrNull(stmt, 3, bodyJSON)
         bindText(stmt, 4, now)
         sqlite3_step(stmt)
         sqlite3_finalize(stmt)
+    }
+
+    // MARK: - day notes
+
+    /// Markdown-only read path — used by Week/Month aggregators,
+    /// QuickThrow, and the review generator, none of which care about
+    /// rich styles.
+    func getDayNote(date: Date) -> String {
+        getDayNoteFull(date: date).body
+    }
+
+    func getDayNoteFull(date: Date) -> (body: String, bodyJSON: String?) {
+        getBodyRow(table: "day_notes", keyColumn: "note_date", key: Self.ymd(date))
+    }
+
+    func saveDayNote(date: Date, body: String, bodyJSON: String? = nil) {
+        upsertBodyRow(table: "day_notes", keyColumn: "note_date", key: Self.ymd(date), body: body, bodyJSON: bodyJSON)
     }
 
     /// Bulk loader — pull every day note in [start, end] (inclusive) so the
@@ -235,35 +241,12 @@ final class DayflowDB: @unchecked Sendable {
 
     // MARK: - month plans (per-month TODO list)
 
-    /// Returns (md, json) for the month containing `date`. Empty tuple
-    /// when the user hasn't started a plan yet.
     func getMonthPlanFull(date: Date) -> (body: String, bodyJSON: String?) {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "SELECT body_md, body_json FROM month_plans WHERE month_key = ?", -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, Self.monthKey(date))
-        guard sqlite3_step(stmt) == SQLITE_ROW else { return ("", nil) }
-        let md = textCol(stmt, 0)
-        let json = textCol(stmt, 1)
-        return (md, json.isEmpty ? nil : json)
+        getBodyRow(table: "month_plans", keyColumn: "month_key", key: Self.monthKey(date))
     }
 
     func saveMonthPlan(date: Date, body: String, bodyJSON: String? = nil) {
-        let now = nowISO()
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, """
-            INSERT INTO month_plans (month_key, body_md, body_json, updated_at) VALUES (?,?,?,?)
-            ON CONFLICT(month_key) DO UPDATE SET
-                body_md=excluded.body_md,
-                body_json=excluded.body_json,
-                updated_at=excluded.updated_at
-        """, -1, &stmt, nil)
-        bindText(stmt, 1, Self.monthKey(date))
-        bindText(stmt, 2, body)
-        bindTextOrNull(stmt, 3, bodyJSON)
-        bindText(stmt, 4, now)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
+        upsertBodyRow(table: "month_plans", keyColumn: "month_key", key: Self.monthKey(date), body: body, bodyJSON: bodyJSON)
     }
 
     // MARK: - reviews (LLM daily review)

@@ -26,7 +26,6 @@
 "month.caption.streak_days" = "%d-day streak";
 "month.caption.busiest" = "busiest: %@";
 "month.plan_header" = "Month plan";
-"month.plan.empty" = "What does this month look like?";
 "month.plan.hint" = "auto-saves as you type";
 
 /* Quick Throw */
