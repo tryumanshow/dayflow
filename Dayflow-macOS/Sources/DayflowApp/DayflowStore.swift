@@ -43,6 +43,14 @@ final class DayflowStore {
     var reviewIsLoading: Bool = false
     var reviewError: String?
 
+    /// Per-month TODO list, independent of any day note. Lives in the
+    /// `month_plans` table keyed by `yyyy-MM`. Shown in the Month view
+    /// right rail and edited with the same BlockNote editor as the Day
+    /// view.
+    var monthPlanBody: String = ""
+    var monthPlanJSON: String? = nil
+    private var monthPlanLoadedFor: String = ""
+
     private let db = DayflowDB.shared
 
     init() {
@@ -100,6 +108,14 @@ final class DayflowStore {
             setDayBuffers(md: full.body, json: full.bodyJSON, cacheKey: dayKey)
         }
 
+        let monthKey = DayflowDB.monthKey(selectedDate)
+        if force || monthKey != monthPlanLoadedFor {
+            let plan = db.getMonthPlanFull(date: selectedDate)
+            monthPlanBody = plan.body
+            monthPlanJSON = plan.bodyJSON
+            monthPlanLoadedFor = monthKey
+        }
+
         let (monthStart, monthEnd) = monthGridRange(selectedDate)
         bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
 
@@ -152,6 +168,14 @@ final class DayflowStore {
         bodies[key] = newValue
     }
 
+    /// Month-plan editor callback. Same debounce-through-editor shape as
+    /// `updateDayBody`.
+    func updateMonthPlan(_ newValue: String, bodyJSON: String? = nil) {
+        monthPlanBody = newValue
+        monthPlanJSON = bodyJSON
+        db.saveMonthPlan(date: selectedDate, body: newValue, bodyJSON: bodyJSON)
+    }
+
     /// Fast path for external markdown-only edits (QuickThrow, Week
     /// checkbox toggles). Updates the in-memory cache without the
     /// month-range SQL round-trip that `refresh(force:)` would cost.
@@ -162,55 +186,6 @@ final class DayflowStore {
         }
         if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
             setDayBuffers(md: body, json: nil, cacheKey: key)
-        }
-    }
-
-    /// Toggle the Nth *preview-visible* task checkbox for a given day without
-    /// leaving the current view. `previewIndex` is the order of the task
-    /// within the week-column preview (which may be clipped to 8 lines and
-    /// skips any line the parser rejects).
-    ///
-    /// We walk the body with the same parser the preview uses and map
-    /// preview index → source line index, then rewrite that single line's
-    /// `[ ]`/`[x]` marker. The rest of the body is left byte-identical.
-    func toggleWeekTask(day: Date, previewIndex: Int) {
-        let key = DayflowDB.ymd(day)
-        let body = bodies[key] ?? db.getDayNote(date: day)
-        guard !body.isEmpty else { return }
-
-        // Split preserving line positions so we can splice one line back in.
-        var lines = body.components(separatedBy: "\n")
-        var previewCount = 0
-        var targetLineIdx: Int?
-
-        for (idx, rawLine) in lines.enumerated() {
-            if previewCount > 8 { break }
-            guard let parsed = MarkdownLine.parse(rawLine) else { continue }
-            if case .task = parsed {
-                if previewCount == previewIndex {
-                    targetLineIdx = idx
-                    break
-                }
-                previewCount += 1
-            } else {
-                previewCount += 1
-            }
-        }
-
-        guard let lineIdx = targetLineIdx else { return }
-        let toggled = toggleTaskMarker(in: lines[lineIdx])
-        guard toggled != lines[lineIdx] else { return }
-        lines[lineIdx] = toggled
-
-        let newBody = lines.joined(separator: "\n")
-        // Markdown-only path — stored JSON tree is cleared so the editor
-        // re-derives blocks on next load. Rich styles on the affected day
-        // are dropped; acceptable for a Week-preview convenience toggle.
-        db.saveDayNote(date: day, body: newBody, bodyJSON: nil)
-        bodies[key] = newBody
-
-        if Calendar.current.isDate(day, inSameDayAs: selectedDate) {
-            setDayBuffers(md: newBody, json: nil, cacheKey: key)
         }
     }
 
@@ -236,6 +211,88 @@ final class DayflowStore {
             return line
         }
         return String(chars)
+    }
+
+    // MARK: - week preview
+
+    /// Grouped open-task preview for a single day column in Week view.
+    /// A "group" is a heading with a bullet list of the open tasks that
+    /// belong to it (tasks below that heading until the next heading of
+    /// the same-or-higher level). Tasks before any heading land in a
+    /// synthetic group whose title is nil → rendered as a flat list.
+    ///
+    /// Caps: at most `maxGroups` groups, at most `maxTasksPerGroup`
+    /// open tasks per group. Done tasks are omitted entirely because
+    /// the column header already shows the done/total ratio. Empty
+    /// groups drop out.
+    struct WeekGroup: Identifiable {
+        let id: Int
+        let heading: String?
+        let tasks: [OpenTask]
+    }
+    struct OpenTask: Identifiable {
+        let id: Int
+        let text: String
+        /// Source line index inside the day body — used by
+        /// `toggleWeekTask` to flip the checkbox in place.
+        let sourceLineIndex: Int
+    }
+
+    func weekGroups(for date: Date, maxGroups: Int = 2, maxTasksPerGroup: Int = 3) -> [WeekGroup] {
+        let body = dayBody(for: date)
+        guard !body.isEmpty else { return [] }
+
+        // Walk the body line-by-line tracking the current heading + the
+        // bucket of open tasks under it.
+        var groups: [(heading: String?, tasks: [OpenTask])] = [(nil, [])]
+        let lines = body.components(separatedBy: "\n")
+        var nextTaskID = 0
+        for (idx, raw) in lines.enumerated() {
+            guard let parsed = MarkdownLine.parse(raw) else { continue }
+            switch parsed {
+            case .heading(_, let text):
+                groups.append((text, []))
+            case .task(let checked, let text):
+                guard !checked else { continue }
+                var current = groups[groups.count - 1]
+                if current.tasks.count < maxTasksPerGroup {
+                    current.tasks.append(OpenTask(id: nextTaskID, text: text, sourceLineIndex: idx))
+                    nextTaskID += 1
+                }
+                groups[groups.count - 1] = current
+            case .bullet, .plain:
+                continue
+            }
+        }
+
+        // Drop empty groups, then cap the total to `maxGroups`.
+        let filtered = groups.filter { !$0.tasks.isEmpty }
+        let capped = Array(filtered.prefix(maxGroups))
+        return capped.enumerated().map { i, g in
+            WeekGroup(id: i, heading: g.heading, tasks: g.tasks)
+        }
+    }
+
+    /// Toggle an open task found in the week preview by its source line
+    /// index. The line index comes from `weekGroups(...)` / `OpenTask`;
+    /// no parser re-walk, no preview index → source index mapping.
+    func toggleWeekTask(day: Date, sourceLineIndex: Int) {
+        let key = DayflowDB.ymd(day)
+        let body = bodies[key] ?? db.getDayNote(date: day)
+        guard !body.isEmpty else { return }
+        var lines = body.components(separatedBy: "\n")
+        guard lines.indices.contains(sourceLineIndex) else { return }
+        let toggled = toggleTaskMarker(in: lines[sourceLineIndex])
+        guard toggled != lines[sourceLineIndex] else { return }
+        lines[sourceLineIndex] = toggled
+
+        let newBody = lines.joined(separator: "\n")
+        db.saveDayNote(date: day, body: newBody, bodyJSON: nil)
+        bodies[key] = newBody
+
+        if Calendar.current.isDate(day, inSameDayAs: selectedDate) {
+            setDayBuffers(md: newBody, json: nil, cacheKey: key)
+        }
     }
 
     // MARK: - metric helpers

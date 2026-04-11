@@ -72,6 +72,14 @@ enum DF {
         return f
     }()
 
+    /// POSIX, fixed — used as the `month_plans` primary key.
+    static let monthKey: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM"
+        return f
+    }()
+
     static let dayNumber: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "d"

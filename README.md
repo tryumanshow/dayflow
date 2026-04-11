@@ -11,6 +11,7 @@
 - **Three views** — Day / Week / Month, all backed by one markdown body per day.
 - **Block-based WYSIWYG editor** — powered by BlockNote, with live rendering of headings, bullets, and checklists.
 - **Rich text styling** — bold, italic, underline, strikethrough, plus text and background color from a top toolbar. Full fidelity is stored alongside the markdown body so colors and underlines survive across reloads.
+- **Monthly plan** — a separate editor per month for the TODOs that belong to the month as a whole, not to any single day. Shown in the Month view right rail.
 - **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain, nothing is synced.
 - **Optional LLM daily review** — OpenAI or Anthropic, picked and configured entirely inside the app.
 - **Bilingual** — English or Korean, switchable in Settings, no relaunch-from-terminal needed.
@@ -26,15 +27,14 @@
 
 ### Week view
 - Seven columns, one per weekday.
-- Each column shows a compact preview of that day's headings and tasks.
+- Each column previews the **open tasks only**, grouped by their nearest heading (up to 2 headings, 3 tasks each). Done work is summarized in the column header's done/total ratio instead of taking preview slots.
 - Checkboxes are tappable in place — toggling a box does not navigate away from the week.
 
 ![Week view](Dayflow-macOS/docs/screenshots/en/week.png)
 
 ### Month view
 - Heatmap colored by how much you actually did each day.
-- Rolling stats in the right rail: completed count, longest streak, busiest weekday.
-- "Line of the month" surfaces the first real line from your highest-activity day.
+- Right rail: month metrics (completion rate, longest streak, busiest weekday), a **Month plan** editor for month-scoped TODOs, and "Line of the month" surfaced from your highest-activity day.
 
 ![Month view](Dayflow-macOS/docs/screenshots/en/month.png)
 

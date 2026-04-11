@@ -24,8 +24,8 @@
 "month.caption.n_of_m" = "%d of %d";
 "month.caption.streak_days" = "%d-day streak";
 "month.caption.busiest" = "busiest: %@";
-"month.selected_day.open" = "open";
-"month.selected_day.empty" = "Nothing written for this day yet";
+"month.plan_header" = "Month plan";
+"month.plan.empty" = "What does this month look like?";
 
 /* Quick Throw */
 "quick_throw.title" = "→ throw a task";

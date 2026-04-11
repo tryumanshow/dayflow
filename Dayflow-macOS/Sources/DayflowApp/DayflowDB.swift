@@ -77,6 +77,12 @@ final class DayflowDB: @unchecked Sendable {
             body_md      TEXT NOT NULL,
             generated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS month_plans (
+            month_key  TEXT PRIMARY KEY,
+            body_md    TEXT NOT NULL,
+            body_json  TEXT,
+            updated_at TEXT NOT NULL
+        );
         """
         sqlite3_exec(db, ddl, nil, nil, nil)
         migrate()
@@ -101,6 +107,19 @@ final class DayflowDB: @unchecked Sendable {
             sqlite3_exec(db, "ALTER TABLE day_notes ADD COLUMN body_json TEXT", nil, nil, nil)
             sqlite3_exec(db, "PRAGMA user_version = 1", nil, nil, nil)
         }
+        if current < 2 {
+            // v2: month_plans table. CREATE TABLE IF NOT EXISTS above
+            // handles new installs; legacy DBs need it here.
+            sqlite3_exec(db, """
+                CREATE TABLE IF NOT EXISTS month_plans (
+                    month_key  TEXT PRIMARY KEY,
+                    body_md    TEXT NOT NULL,
+                    body_json  TEXT,
+                    updated_at TEXT NOT NULL
+                )
+            """, nil, nil, nil)
+            sqlite3_exec(db, "PRAGMA user_version = 2", nil, nil, nil)
+        }
     }
 
     // MARK: - format helpers
@@ -111,6 +130,12 @@ final class DayflowDB: @unchecked Sendable {
 
     static func ymd(_ d: Date) -> String {
         DF.ymd.string(from: d)
+    }
+
+    /// `yyyy-MM` — month-plans primary key. Month-boundary is whatever
+    /// the user's current calendar thinks, same as the Month view grid.
+    static func monthKey(_ d: Date) -> String {
+        DF.monthKey.string(from: d)
     }
 
     private func textCol(_ stmt: OpaquePointer?, _ idx: Int32) -> String {
@@ -206,6 +231,39 @@ final class DayflowDB: @unchecked Sendable {
             if checked { done += 1 } else { open += 1 }
         }
         return (open, done)
+    }
+
+    // MARK: - month plans (per-month TODO list)
+
+    /// Returns (md, json) for the month containing `date`. Empty tuple
+    /// when the user hasn't started a plan yet.
+    func getMonthPlanFull(date: Date) -> (body: String, bodyJSON: String?) {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "SELECT body_md, body_json FROM month_plans WHERE month_key = ?", -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, Self.monthKey(date))
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return ("", nil) }
+        let md = textCol(stmt, 0)
+        let json = textCol(stmt, 1)
+        return (md, json.isEmpty ? nil : json)
+    }
+
+    func saveMonthPlan(date: Date, body: String, bodyJSON: String? = nil) {
+        let now = nowISO()
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, """
+            INSERT INTO month_plans (month_key, body_md, body_json, updated_at) VALUES (?,?,?,?)
+            ON CONFLICT(month_key) DO UPDATE SET
+                body_md=excluded.body_md,
+                body_json=excluded.body_json,
+                updated_at=excluded.updated_at
+        """, -1, &stmt, nil)
+        bindText(stmt, 1, Self.monthKey(date))
+        bindText(stmt, 2, body)
+        bindTextOrNull(stmt, 3, bodyJSON)
+        bindText(stmt, 4, now)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
     }
 
     // MARK: - reviews (LLM daily review)
