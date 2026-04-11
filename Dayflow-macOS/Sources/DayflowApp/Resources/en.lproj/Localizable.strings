@@ -1,0 +1,87 @@
+/* Dayflow — English localization */
+
+/* Nav bar */
+"nav.today" = "Today";
+
+/* Header labels */
+"header.day_format" = "yyyy MMM d (EEE)";
+
+/* Day view */
+"day.today_progress" = "Today's progress";
+"day.done_open_format" = "%d done · %d open";
+"day.empty" = "Nothing written yet";
+"day.ai_review" = "AI review";
+"day.review_placeholder" = "Ask the LLM for a review when your day wraps up.";
+"day.generate" = "Generate";
+
+/* Week view */
+"week.footer.done" = "done";
+"week.footer.open" = "open";
+"week.footer.days_tracked" = "days tracked";
+
+/* Month view */
+"month.standout_header" = "Line of the month";
+"month.caption.n_of_m" = "%d of %d";
+"month.caption.streak_days" = "%d-day streak";
+"month.caption.busiest" = "busiest: %@";
+"month.selected_day.open" = "open";
+"month.selected_day.empty" = "Nothing written for this day yet";
+
+/* Quick Throw */
+"quick_throw.title" = "→ throw a task";
+"quick_throw.placeholder" = "e.g. draft tomorrow's meeting notes";
+"quick_throw.on" = "on";
+"quick_throw.cancel" = "Cancel";
+"quick_throw.add" = "Add";
+
+/* Menu bar */
+"menubar.idle" = "Dayflow";
+"menubar.all_done" = "all done";
+"menubar.n_open" = "%d open";
+
+/* Settings — window */
+"settings.title" = "LLM Provider";
+"settings.subtitle" = "Pick the model provider used for the daily review. API keys are kept in macOS Keychain — no terminal, no .env file.";
+"settings.provider" = "Provider";
+"settings.api_key" = "API Key";
+"settings.api_key.hint_existing" = "A key is already saved. Enter a new value to replace it.";
+"settings.model" = "Model";
+"settings.system_prompt" = "System Prompt";
+"settings.system_prompt.hint" = "The instruction sent to the LLM on Generate. Clearing it or hitting \"Reset to default\" restores the built-in prompt.";
+"settings.char_count" = "%d chars";
+
+"settings.save" = "Save";
+"settings.saved" = "Saved";
+"settings.delete_key" = "Delete key";
+"settings.test_connection" = "Test connection";
+"settings.reset_default" = "Reset to default";
+"settings.get_api_key" = "Get an API key →";
+
+"settings.test.no_key" = "Can't test — there's no key yet.";
+"settings.test.ok_format" = "OK · response: %@";
+
+"settings.error.keychain_save" = "Keychain write failed: %@ (OSStatus %d). Check whether the keychain is locked or the code-sign ACL changed.";
+"settings.error.keychain_readback" = "The key looks saved but can't be read back immediately. Quit the app completely and reopen it.";
+
+/* Language */
+"language.system_default" = "System default";
+"language.english" = "English";
+"language.korean" = "한국어";
+"settings.language" = "Language";
+"settings.language.hint" = "Overrides the macOS system language for Dayflow. Requires an app restart.";
+"settings.language.restart_hint" = "Language changes take effect after you relaunch Dayflow.";
+
+/* LLM errors */
+"llm.error.missing_api_key" = "%@ API key is missing. Open Dayflow → Settings… to add one.";
+"llm.error.bad_response" = "LLM API %d at %@\n%@";
+"llm.error.decode_failed" = "Failed to decode LLM response";
+
+/* LLM prompts */
+"llm.default_system_prompt" = "You are an assistant that helps the user reflect on their day. Answer in clear, concise English. Output a single markdown document with exactly these three sections, in this order:\n1. **What went well** — tasks completed today (2–4 bullets)\n2. **What got stuck** — items started but not finished, or difficulties pulled from the notes (1–3 bullets)\n3. **Tomorrow's top 3** — numbered 1-2-3, grounded in the remaining TODOs and overall context\nNo greetings, no pleasantries, no meta-commentary. Body only.";
+"llm.user_prompt_format" = "Write a daily review from today's data:\n\n```json\n%@\n```";
+"llm.review.empty_day" = "Nothing written for today yet. That's fine — write one line to start.";
+"llm.review.empty_response" = "(empty response)";
+
+/* Review sections for connection test */
+"llm.test.system" = "You are a connectivity test. Respond with the single word: ok";
+"llm.test.user" = "ping";

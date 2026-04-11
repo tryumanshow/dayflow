@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# uv
+.uv-cache/
+
+# dayflow runtime — belt + suspenders. The DB now lives in
+# ~/Library/Application Support/Dayflow/ so the repo checkout never sees it,
+# but keep the old path ignored too in case an older install is still
+# kicking around, and defend against any future accidental drop.
+dayflow.db
+dayflow.db-journal
+dayflow.db-wal
+dayflow.db-shm
+dayflow/
+
+# env / secrets — the app reads keys from Keychain now, but block the
+# traditional leakage vectors just in case.
+.env
+.env.*
+*.pem
+*.key
+
+# Per-session dev tooling artifacts (gstack qa reports, learnings, etc).
+# These are local-only and shouldn't ship with the repo.
+.gstack/
+
+# OS
+.DS_Store
+
+# top-level internal docs (old Python-era plans, install notes) — not for
+# the public repo. Anchored so `Dayflow-macOS/docs/screenshots/*` which
+# hold the README images still get tracked.
+/docs/
+
+# all markdown files except README (en + ko) and CONTRIBUTING
+*.md
+!README.md
+!README.ko.md
+!*/README.md
+!CONTRIBUTING.md
+
+# Dayflow-macOS build artifacts
+Dayflow-macOS/.build/
+Dayflow-macOS/Dayflow.app/
+Dayflow-macOS/Package.resolved
+Dayflow-macOS/Dayflow.icns
+Dayflow-macOS/tools/Dayflow.iconset/
