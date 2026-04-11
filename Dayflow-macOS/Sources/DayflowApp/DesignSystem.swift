@@ -105,46 +105,25 @@ enum DF {
         return f
     }()
 
-    // Locale-aware formatters. They read `DayflowL10n.activeLocale`
-    // so the app's language override (Settings → Language) drives
-    // weekday / month / date display — `Locale.current` alone would
-    // stay pinned to the OS system locale and leave the nav bar date
-    // in English when the app runs in Korean.
+    // Locale-aware formatters. `DayflowL10n.activeLocale` is a
+    // `static let` resolved at launch from the `AppleLanguages`
+    // override, so these are safe to cache as `static let` — Week
+    // and Month views hit them per cell per render and building a
+    // fresh `DateFormatter` each read was hundreds of µs of hot
+    // path churn.
 
-    static var weekday: DateFormatter {
+    private static func makeFormatter(_ template: String) -> DateFormatter {
         let f = DateFormatter()
         f.locale = DayflowL10n.activeLocale
-        f.setLocalizedDateFormatFromTemplate("E")
+        f.setLocalizedDateFormatFromTemplate(template)
         return f
     }
 
-    static var monthTitle: DateFormatter {
-        let f = DateFormatter()
-        f.locale = DayflowL10n.activeLocale
-        f.setLocalizedDateFormatFromTemplate("yMMMM")
-        return f
-    }
-
-    static var fullDate: DateFormatter {
-        let f = DateFormatter()
-        f.locale = DayflowL10n.activeLocale
-        f.setLocalizedDateFormatFromTemplate("yMMMdEEE")
-        return f
-    }
-
-    static var shortDate: DateFormatter {
-        let f = DateFormatter()
-        f.locale = DayflowL10n.activeLocale
-        f.setLocalizedDateFormatFromTemplate("MMMdEEE")
-        return f
-    }
-
-    static var shortMonthDay: DateFormatter {
-        let f = DateFormatter()
-        f.locale = DayflowL10n.activeLocale
-        f.setLocalizedDateFormatFromTemplate("MMMd")
-        return f
-    }
+    static let weekday       = makeFormatter("E")
+    static let monthTitle    = makeFormatter("yMMMM")
+    static let fullDate      = makeFormatter("yMMMdEEE")
+    static let shortDate     = makeFormatter("MMMdEEE")
+    static let shortMonthDay = makeFormatter("MMMd")
 }
 
 // MARK: - Markdown line parsing ------------------------------------------------

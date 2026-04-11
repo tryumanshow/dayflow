@@ -49,6 +49,11 @@ final class DayflowStore {
     /// read from this cache instead of re-querying per render.
     var appointmentsByDay: [String: [Appointment]] = [:]
 
+    /// Month-grid range last loaded into `bodies` /
+    /// `appointmentsByDay`. Used to skip the SQL round-trip when
+    /// the user navigates within the same month.
+    private var monthRangeLoadedFor: String = ""
+
     private let db = DayflowDB.shared
 
     init() {
@@ -66,9 +71,13 @@ final class DayflowStore {
 
     // MARK: - navigation
 
+    // Navigation calls let `refresh()` decide what to reload via
+    // its per-section guards (day key, month-plan key, month-range
+    // key). We only force a full reload on the explicit refresh
+    // button in the nav bar.
     func goToToday() {
         selectedDate = Calendar.current.startOfDay(for: Date())
-        refresh(force: true)
+        refresh()
     }
 
     func step(by direction: Int) {
@@ -82,18 +91,18 @@ final class DayflowStore {
         }()
         if let next = cal.date(byAdding: unit, value: direction, to: selectedDate) {
             selectedDate = cal.startOfDay(for: next)
-            refresh(force: true)
+            refresh()
         }
     }
 
     func setMode(_ mode: CalendarViewMode) {
         viewMode = mode
-        refresh(force: true)
+        refresh()
     }
 
     func selectDate(_ date: Date) {
         selectedDate = Calendar.current.startOfDay(for: date)
-        refresh(force: true)
+        refresh()
     }
 
     // MARK: - refresh
@@ -114,9 +123,17 @@ final class DayflowStore {
             monthPlanLoadedFor = monthKey
         }
 
+        // Month-grid range is shared by `bodies` (day notes) and
+        // `appointmentsByDay` (appointments). Skip both reloads when
+        // the user navigates within the same month — the in-memory
+        // caches already cover every day on the grid.
         let (monthStart, monthEnd) = monthGridRange(selectedDate)
-        bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
-        reloadAppointments()
+        let rangeKey = "\(DayflowDB.ymd(monthStart))..\(DayflowDB.ymd(monthEnd))"
+        if force || rangeKey != monthRangeLoadedFor {
+            bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
+            reloadAppointments()
+            monthRangeLoadedFor = rangeKey
+        }
 
         loadReview()
     }

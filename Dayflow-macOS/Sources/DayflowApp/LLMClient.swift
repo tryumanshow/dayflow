@@ -187,8 +187,15 @@ struct LLMClient {
             case .missingAPIKey(let p):
                 return L("llm.error.missing_api_key", p.label)
             case .badResponse(let code, let body, let url):
-                let snippet = String(body.trimmingCharacters(in: .whitespacesAndNewlines).prefix(160))
-                return L("llm.error.bad_response", code, url.absoluteString, snippet)
+                // Don't splice the provider's response body into
+                // the user-visible error — 4xx responses from
+                // OpenAI / Anthropic sometimes echo fragments of
+                // the request, which in Dayflow's case contains
+                // the user's raw note. NSLog keeps the body in
+                // the local Console for debugging without leaking
+                // it into UI dialogs.
+                NSLog("dayflow: LLM API \(code) at \(url.absoluteString): \(body.prefix(512))")
+                return L("llm.error.bad_response", code, url.absoluteString)
             case .decodeFailed:
                 return L("llm.error.decode_failed")
             }

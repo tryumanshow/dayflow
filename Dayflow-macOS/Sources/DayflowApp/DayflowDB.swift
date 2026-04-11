@@ -109,9 +109,9 @@ final class DayflowDB: @unchecked Sendable {
         migrate()
     }
 
-    /// SQLite `user_version` based migration. Keeps per-open work to a
-    /// single PRAGMA read instead of an unconditional `ALTER TABLE` that
-    /// errors-and-recovers on every launch.
+    /// SQLite `user_version` based migration. Each step runs inside
+    /// a transaction so a crash between `DROP` / `CREATE` / `PRAGMA
+    /// user_version` can't leave the DB in a half-migrated state.
     private func migrate() {
         var current: Int32 = 0
         var stmt: OpaquePointer?
@@ -122,22 +122,20 @@ final class DayflowDB: @unchecked Sendable {
         sqlite3_finalize(stmt)
 
         if current < 1 {
-            // v1: add body_json to day_notes for DBs created before the
-            // rich-text sidecar existed. New installs already have the
-            // column via the CREATE TABLE above, so the ALTER no-ops.
-            sqlite3_exec(db, "ALTER TABLE day_notes ADD COLUMN body_json TEXT", nil, nil, nil)
-            sqlite3_exec(db, "PRAGMA user_version = 1", nil, nil, nil)
+            runMigrationStep(version: 1, sql: """
+                ALTER TABLE day_notes ADD COLUMN body_json TEXT;
+            """)
         }
         if current < 2 {
             // v2: month_plans. The table is already created by the
-            // `CREATE TABLE IF NOT EXISTS` above on every open, so
-            // legacy DBs pick it up without a dedicated ALTER. Just
-            // bump user_version.
-            sqlite3_exec(db, "PRAGMA user_version = 2", nil, nil, nil)
+            // `CREATE TABLE IF NOT EXISTS` in `ensureSchema` on every
+            // open, so this migration is a no-op besides the version
+            // bump. Kept as a discrete step so the sequence numbers
+            // stay monotone for existing DBs.
+            runMigrationStep(version: 2, sql: "")
         }
         if current < 3 {
-            // v3: appointments table.
-            sqlite3_exec(db, """
+            runMigrationStep(version: 3, sql: """
                 CREATE TABLE IF NOT EXISTS appointments (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     start_at    TEXT NOT NULL,
@@ -146,30 +144,47 @@ final class DayflowDB: @unchecked Sendable {
                     note        TEXT,
                     created_at  TEXT NOT NULL,
                     updated_at  TEXT NOT NULL
-                )
-            """, nil, nil, nil)
-            sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_appointments_start ON appointments(start_at)", nil, nil, nil)
-            sqlite3_exec(db, "PRAGMA user_version = 3", nil, nil, nil)
+                );
+                CREATE INDEX IF NOT EXISTS idx_appointments_start ON appointments(start_at);
+            """)
         }
         if current < 4 {
-            // v4: month_plans was resurrected from an ancient app
-            // version with a `year_month` key column. The v2 `CREATE
-            // TABLE IF NOT EXISTS` was a no-op on those DBs, leaving
-            // month-plan writes to silently fail at `month_key`. The
-            // feature shipped publicly for the first time in v0.1.3
-            // so no end-user data is at risk — drop the legacy shape
-            // and recreate.
-            sqlite3_exec(db, "DROP TABLE IF EXISTS month_plans", nil, nil, nil)
-            sqlite3_exec(db, """
+            // v4: legacy ancient-app-version `month_plans` had a
+            // `year_month` key. v2's `CREATE TABLE IF NOT EXISTS`
+            // was a no-op on those DBs, leaving month-plan writes
+            // silently broken. Drop + recreate. Feature shipped
+            // publicly for the first time in v0.1.3 so no end-user
+            // data is at risk.
+            runMigrationStep(version: 4, sql: """
+                DROP TABLE IF EXISTS month_plans;
                 CREATE TABLE month_plans (
                     month_key  TEXT PRIMARY KEY,
                     body_md    TEXT NOT NULL,
                     body_json  TEXT,
                     updated_at TEXT NOT NULL
-                )
-            """, nil, nil, nil)
-            sqlite3_exec(db, "PRAGMA user_version = 4", nil, nil, nil)
+                );
+            """)
         }
+    }
+
+    /// Run one migration step inside a `BEGIN ... COMMIT` block,
+    /// bumping `user_version` last so a mid-step crash rolls the
+    /// whole thing back and the next launch retries from scratch.
+    /// `sql` may be empty for version-bump-only steps.
+    private func runMigrationStep(version: Int32, sql: String) {
+        sqlite3_exec(db, "BEGIN", nil, nil, nil)
+        var err: UnsafeMutablePointer<CChar>?
+        if !sql.isEmpty {
+            if sqlite3_exec(db, sql, nil, nil, &err) != SQLITE_OK {
+                let msg = err.map { String(cString: $0) } ?? "(no message)"
+                sqlite3_free(err)
+                NSLog("dayflow: migration v\(version) failed: \(msg)")
+                sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+                return
+            }
+        }
+        sqlite3_exec(db, "PRAGMA user_version = \(version)", nil, nil, nil)
+        sqlite3_exec(db, "COMMIT", nil, nil, nil)
     }
 
     // MARK: - format helpers
