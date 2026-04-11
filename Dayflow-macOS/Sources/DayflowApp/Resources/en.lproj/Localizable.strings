@@ -14,6 +14,16 @@
 "day.review_placeholder" = "Ask the LLM for a review when your day wraps up.";
 "day.generate" = "Generate";
 
+/* Appointments */
+"appointments.header" = "Appointments";
+"appointments.empty" = "No appointments";
+"appointments.add" = "Add";
+"appointments.time_placeholder" = "HH:MM";
+"appointments.title_placeholder" = "Title";
+"appointments.month_header" = "This month";
+"appointments.month_hint" = "edit here";
+"appointments.manage_in_month" = "manage in Month";
+
 /* Week view */
 "week.footer.done" = "done";
 "week.footer.open" = "open";

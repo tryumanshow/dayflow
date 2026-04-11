@@ -51,6 +51,11 @@ final class DayflowStore {
     var monthPlanJSON: String? = nil
     private var monthPlanLoadedFor: String = ""
 
+    /// Appointments keyed by `yyyy-MM-dd`, covering the same
+    /// month-grid range as `bodies`. Week / Month / Day rails all
+    /// read from this cache instead of re-querying per render.
+    var appointmentsByDay: [String: [Appointment]] = [:]
+
     private let db = DayflowDB.shared
 
     init() {
@@ -118,8 +123,25 @@ final class DayflowStore {
 
         let (monthStart, monthEnd) = monthGridRange(selectedDate)
         bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
+        reloadAppointments()
 
         loadReview()
+    }
+
+    private func reloadAppointments() {
+        let (start, end) = monthGridRange(selectedDate)
+        let items = db.getAppointments(start: start, end: end)
+        var byDay: [String: [Appointment]] = [:]
+        for apt in items {
+            let key = DayflowDB.ymd(apt.startAt)
+            byDay[key, default: []].append(apt)
+        }
+        // Equality guard so a reload that produced the same result
+        // doesn't fire `@Observable` invalidations across every view
+        // bound to `appointmentsByDay`.
+        if byDay != appointmentsByDay {
+            appointmentsByDay = byDay
+        }
     }
 
     /// Single point of assignment for the three buffers that always move
@@ -133,12 +155,12 @@ final class DayflowStore {
         dayBodyLoadedFor = cacheKey
     }
 
-    /// Gregorian calendar reused by every layout helper that walks
-    /// weeks/months, so we don't re-initialise a `Calendar` on every
-    /// render tick. Monday-first on this branch.
+    /// Sunday-first Gregorian calendar reused by every layout helper
+    /// that walks weeks/months, so we don't re-initialise a `Calendar`
+    /// on every render tick.
     private static let gregorian: Calendar = {
         var c = Calendar(identifier: .gregorian)
-        c.firstWeekday = 2
+        c.firstWeekday = 1
         return c
     }()
 
@@ -155,8 +177,10 @@ final class DayflowStore {
         let gridStart = startOfWeek(firstOfMonth)
         if let nextMonth = cal.date(byAdding: .month, value: 1, to: firstOfMonth),
            let lastOfMonth = cal.date(byAdding: .day, value: -1, to: nextMonth) {
+            // Weekday is 1..7 with Sun=1 in a Sunday-first calendar;
+            // pad out to the following Saturday.
             let weekday = cal.component(.weekday, from: lastOfMonth)
-            let pad = (8 - weekday) % 7
+            let pad = (7 - weekday) % 7
             let gridEnd = cal.date(byAdding: .day, value: pad, to: lastOfMonth) ?? lastOfMonth
             return (gridStart, gridEnd)
         }
@@ -217,6 +241,59 @@ final class DayflowStore {
             return line
         }
         return String(chars)
+    }
+
+    // MARK: - appointments
+
+    func appointments(for date: Date) -> [Appointment] {
+        appointmentsByDay[DayflowDB.ymd(date)] ?? []
+    }
+
+    /// All appointments whose `startAt` falls within the calendar
+    /// month containing `selectedDate`, sorted by `startAt`.
+    func currentMonthAppointments() -> [Appointment] {
+        let cal = Calendar.current
+        guard let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: selectedDate)),
+              let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart) else { return [] }
+        return appointmentsByDay.values
+            .flatMap { $0 }
+            .filter { $0.startAt >= monthStart && $0.startAt < nextMonth }
+            .sorted { $0.startAt < $1.startAt }
+    }
+
+    /// Parse `HH:mm` against the target day and insert. Returns false
+    /// on empty title or unparseable time.
+    @discardableResult
+    func addAppointment(on day: Date, hhmm: String, title: String) -> Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return false }
+        guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
+        db.insertAppointment(startAt: startAt, endAt: nil, title: trimmedTitle, note: nil)
+        reloadAppointments()
+        return true
+    }
+
+    func deleteAppointment(_ apt: Appointment) {
+        db.deleteAppointment(id: apt.id)
+        reloadAppointments()
+    }
+
+    /// Parse an `HH:mm` / `H:m` / `HHmm` string and attach it to
+    /// `day`'s calendar date. Returns nil on malformed input.
+    private static func combine(day: Date, hhmm: String) -> Date? {
+        // Forgiving of "HHmm" (no separator) — normalise into a
+        // `HH:mm` shape before splitting.
+        var normalized = hhmm
+        if normalized.count == 4, !normalized.contains(":") {
+            let idx = normalized.index(normalized.startIndex, offsetBy: 2)
+            normalized = String(normalized[..<idx]) + ":" + String(normalized[idx...])
+        }
+        let parts = normalized.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        let (hour, minute) = (parts[0], parts[1])
+        guard (0...23).contains(hour), (0...59).contains(minute) else { return nil }
+        return Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: day)
     }
 
     // MARK: - week preview
