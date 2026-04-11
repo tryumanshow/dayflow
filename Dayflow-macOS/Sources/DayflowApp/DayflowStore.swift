@@ -151,21 +151,23 @@ final class DayflowStore {
 
     func startOfWeek(_ date: Date) -> Date {
         var cal = Calendar(identifier: .gregorian)
-        cal.firstWeekday = 2
+        cal.firstWeekday = 1  // Sunday-first
         let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         return cal.date(from: comps) ?? date
     }
 
     func monthGridRange(_ date: Date) -> (Date, Date) {
         var cal = Calendar(identifier: .gregorian)
-        cal.firstWeekday = 2
+        cal.firstWeekday = 1  // Sunday-first
         let comps = cal.dateComponents([.year, .month], from: date)
         let firstOfMonth = cal.date(from: comps) ?? date
         let gridStart = startOfWeek(firstOfMonth)
         if let nextMonth = cal.date(byAdding: .month, value: 1, to: firstOfMonth),
            let lastOfMonth = cal.date(byAdding: .day, value: -1, to: nextMonth) {
+            // Weekday is 1..7 with Sun=1 in a Sunday-first calendar;
+            // pad out to the following Saturday.
             let weekday = cal.component(.weekday, from: lastOfMonth)
-            let pad = (8 - weekday) % 7
+            let pad = (7 - weekday) % 7
             let gridEnd = cal.date(byAdding: .day, value: pad, to: lastOfMonth) ?? lastOfMonth
             return (gridStart, gridEnd)
         }
