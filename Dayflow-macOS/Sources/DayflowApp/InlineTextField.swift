@@ -48,12 +48,24 @@ struct InlineTextField: NSViewRepresentable {
     func updateNSView(_ nsView: KeyAwareInlineField, context: Context) {
         context.coordinator.parent = self
 
-        // Only mutate the visible value if the underlying source changed AND
-        // the field isn't currently the first responder. Touching stringValue
-        // mid-edit blows up Korean IME composition.
-        let isEditing = nsView.currentEditor() != nil
-        if !isEditing && nsView.stringValue != text {
-            nsView.stringValue = text
+        // Sync stringValue from the binding when it differs.
+        // - Not editing: always safe to set.
+        // - Editing: safe ONLY when there's no active IME marked text
+        //   (i.e. no in-flight Korean composition). This is the path that
+        //   lets in-place transformations like `## ` → heading actually
+        //   appear in the field, while still keeping IME composition intact
+        //   the moment the user is mid-jamo.
+        if nsView.stringValue != text {
+            let editor = nsView.currentEditor() as? NSTextView
+            let isEditing = editor != nil
+            let imeActive = (editor?.markedRange().length ?? 0) > 0
+            if !isEditing || !imeActive {
+                nsView.stringValue = text
+                if let editor = editor {
+                    let len = (text as NSString).length
+                    editor.selectedRange = NSRange(location: len, length: 0)
+                }
+            }
         }
         if nsView.font != font { nsView.font = font }
         if nsView.textColor != foregroundColor { nsView.textColor = foregroundColor }
