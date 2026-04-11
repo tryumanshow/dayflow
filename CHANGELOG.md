@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/tryumanshow/dayflow/compare/v0.1.3...v0.1.4) (2026-04-11)
+
+
+### Bug Fixes
+
+* **i18n:** nav/date formatters honor language override + refresh screenshots ([#9](https://github.com/tryumanshow/dayflow/issues/9)) ([a7cfbc2](https://github.com/tryumanshow/dayflow/commit/a7cfbc27edd04d85c76359fe07d5a8ad3365f4ac))
+
 ## [0.1.3](https://github.com/tryumanshow/dayflow/compare/v0.1.2...v0.1.3) (2026-04-11)
 
 
