@@ -1,28 +1,45 @@
 import AppKit
 import SwiftUI
 
-/// Plain-text markdown editor (NSTextView wrapper).
+/// Obsidian-style live preview markdown editor.
 ///
-/// Earlier we tried to live-rewrite `- [ ]` into `☐` on every keystroke, but
-/// that fought with NSTextView's typing flow and Korean IME marked-text
-/// handling — caret jumped, glyphs duplicated. Reverted to a simpler model:
-///
-/// - Buffer is canonical markdown end-to-end. No substitution while typing.
-/// - Syntax highlighting makes brackets visually pop (orange for open,
-///   green + strikethrough for done) so the editor still feels "rendered".
-/// - Clicking the bracket region of a `- [ ]` / `- [x]` line toggles it in
-///   place by mutating the single inner character.
+/// Implementation strategy:
+/// - The buffer is *always* canonical markdown (`- [ ]`, `- [x]`, `## …`).
+///   We never substitute the backing characters — that fights with the
+///   typing flow and Korean IME.
+/// - Visual rendering is achieved via a custom `NSLayoutManager` subclass
+///   that overrides `drawGlyphs(forGlyphRange:at:)`. For every line that
+///   begins with `- [ ]` or `- [x]`, we mark those 5 characters with
+///   `.foregroundColor = .clear` so they don't visibly draw, then paint
+///   a single `☐` or `☑` glyph on top of where the bracket prefix lived.
+/// - Click on the overlay glyph toggles the inner character of the
+///   bracket region. Caret never enters the hidden glyphs because the
+///   user always clicks on the visible text portion.
 struct MarkdownEditor: NSViewRepresentable {
     @Binding var text: String
     var onChange: (String) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
+        // Build the text stack manually so we can install our subclass.
+        let textStorage = NSTextStorage()
+        let layoutManager = CheckboxOverlayLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        let containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        let container = NSTextContainer(size: containerSize)
+        container.widthTracksTextView = true
+        layoutManager.addTextContainer(container)
+
+        let scroll = NSScrollView(frame: .zero)
         scroll.hasVerticalScroller = true
         scroll.borderType = .noBorder
         scroll.drawsBackground = false
 
-        let tv = scroll.documentView as! NSTextView
+        let tv = OverlayTextView(frame: .zero, textContainer: container)
+        tv.minSize = NSSize(width: 0, height: 0)
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        tv.isVerticallyResizable = true
+        tv.isHorizontallyResizable = false
+        tv.autoresizingMask = [.width]
         tv.delegate = context.coordinator
         tv.font = NSFont.systemFont(ofSize: 14, weight: .regular)
         tv.isRichText = false
@@ -39,6 +56,7 @@ struct MarkdownEditor: NSViewRepresentable {
         tv.usesFindBar = true
         tv.string = text
 
+        scroll.documentView = tv
         context.coordinator.textView = tv
 
         let click = NSClickGestureRecognizer(target: context.coordinator,
@@ -63,8 +81,7 @@ struct MarkdownEditor: NSViewRepresentable {
         }
     }
 
-    /// Display helper — used by the month-view preview rail (read-only mode).
-    /// Pretty-print canonical markdown without mutating it.
+    /// Pretty-print helper for read-only previews (the month rail).
     static func markdownToDisplay(_ md: String) -> String { md }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -84,9 +101,6 @@ struct MarkdownEditor: NSViewRepresentable {
             applyHighlighting()
         }
 
-        /// Tab → 2 literal spaces (markdown nesting).
-        /// Shift+Tab → outdent the current line.
-        /// Enter → continue `- [ ]` / `- ` / `* ` lists at the same indent.
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             switch commandSelector {
             case #selector(NSResponder.insertTab(_:)):
@@ -129,14 +143,11 @@ struct MarkdownEditor: NSViewRepresentable {
                 if ch == " " { indent.append(" ") } else { break }
             }
             let body = raw.dropFirst(indent.count)
-
-            // checkbox: "- [ ] xxx" / "- [x] xxx"
-            let checkboxPrefixes = ["- [ ] ", "- [x] ", "- [X] "]
-            for p in checkboxPrefixes {
+            let prefixes = ["- [ ] ", "- [x] ", "- [X] "]
+            for p in prefixes {
                 if body.hasPrefix(p) {
                     let rest = body.dropFirst(p.count).trimmingCharacters(in: .whitespaces)
                     if rest.isEmpty {
-                        // empty list item — break out
                         tv.shouldChangeText(in: lineRange, replacementString: "\n")
                         tv.replaceCharacters(in: lineRange, with: "\n")
                         tv.didChangeText()
@@ -163,7 +174,7 @@ struct MarkdownEditor: NSViewRepresentable {
             return false
         }
 
-        // MARK: - click toggle on `[ ]` / `[x]`
+        // MARK: - click toggle on the overlay glyph
 
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
             guard let tv = textView else { return }
@@ -177,23 +188,21 @@ struct MarkdownEditor: NSViewRepresentable {
             let ns = storage.string as NSString
             guard index < ns.length else { return }
 
-            // find current line and look for "- [ ]" or "- [x]"
             let lineRange = ns.lineRange(for: NSRange(location: index, length: 0))
             let line = ns.substring(with: lineRange)
             let indent = line.prefix(while: { $0 == " " }).count
             let body = line.dropFirst(indent)
             guard body.hasPrefix("- [") else { return }
-            let bracketStart = lineRange.location + indent + 3 // points at the inner char
-            guard bracketStart < ns.length else { return }
-            let innerRange = NSRange(location: bracketStart, length: 1)
+            let bracketRangeChar = NSRange(location: lineRange.location + indent, length: 5)
+            guard NSMaxRange(bracketRangeChar) <= ns.length else { return }
+            // bounding rect of the entire 5-char bracket sequence
+            let bracketGlyphRange = lm.glyphRange(forCharacterRange: bracketRangeChar, actualCharacterRange: nil)
+            let bracketRect = lm.boundingRect(forGlyphRange: bracketGlyphRange, in: container)
+            if !bracketRect.insetBy(dx: -6, dy: -3).contains(glyphPoint) { return }
+
+            let innerRange = NSRange(location: lineRange.location + indent + 3, length: 1)
             let inner = ns.substring(with: innerRange)
             guard inner == " " || inner == "x" || inner == "X" else { return }
-
-            // also confirm the click landed within the bracket region
-            let bracketRange = NSRange(location: lineRange.location + indent + 2, length: 3)
-            let bracketRect = lm.boundingRect(forGlyphRange: bracketRange, in: container)
-            if !bracketRect.insetBy(dx: -8, dy: -3).contains(glyphPoint) { return }
-
             let toggled = (inner == " ") ? "x" : " "
             tv.shouldChangeText(in: innerRange, replacementString: toggled)
             storage.replaceCharacters(in: innerRange, with: toggled)
@@ -204,11 +213,13 @@ struct MarkdownEditor: NSViewRepresentable {
             applyHighlighting()
         }
 
-        // MARK: - syntax highlighting
+        // MARK: - syntax highlighting (also marks the bracket prefix as `clear`
+        // so the overlay layout manager has empty space to paint into).
 
         func applyHighlighting() {
             guard let tv = textView, let storage = tv.textStorage else { return }
-            let full = NSRange(location: 0, length: (tv.string as NSString).length)
+            let ns = tv.string as NSString
+            let full = NSRange(location: 0, length: ns.length)
             let baseFont = NSFont.systemFont(ofSize: 14, weight: .regular)
             storage.beginEditing()
             storage.setAttributes([
@@ -216,7 +227,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 .foregroundColor: NSColor.labelColor,
             ], range: full)
 
-            let ns = tv.string as NSString
             ns.enumerateSubstrings(in: full, options: .byLines) { (substring, lineRange, _, _) in
                 guard let line = substring else { return }
                 let indent = line.prefix(while: { $0 == " " }).count
@@ -243,7 +253,7 @@ struct MarkdownEditor: NSViewRepresentable {
                     return
                 }
 
-                // checkbox done
+                // checkbox done — full line dim + strikethrough, hide bracket prefix
                 if body.hasPrefix("- [x]") || body.hasPrefix("- [X]") {
                     storage.addAttributes([
                         .strikethroughStyle: NSUnderlineStyle.single.rawValue,
@@ -251,23 +261,20 @@ struct MarkdownEditor: NSViewRepresentable {
                     ], range: lineRange)
                     let bracketRange = NSRange(location: lineRange.location + indent, length: 5)
                     storage.addAttributes([
-                        .foregroundColor: NSColor.systemGreen,
+                        .foregroundColor: NSColor.clear,
                         .strikethroughStyle: 0,
-                        .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .bold),
                     ], range: bracketRange)
                     return
                 }
-                // checkbox open
                 if body.hasPrefix("- [ ]") {
                     let bracketRange = NSRange(location: lineRange.location + indent, length: 5)
                     storage.addAttributes([
-                        .foregroundColor: NSColor.systemOrange,
-                        .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .bold),
+                        .foregroundColor: NSColor.clear,
                     ], range: bracketRange)
                     return
                 }
 
-                // bullets
+                // bullets — soft tertiary
                 if body.hasPrefix("- ") || body.hasPrefix("* ") || body.hasPrefix("+ ") {
                     let bulletRange = NSRange(location: lineRange.location + indent, length: 1)
                     storage.addAttributes([
@@ -276,6 +283,68 @@ struct MarkdownEditor: NSViewRepresentable {
                 }
             }
             storage.endEditing()
+            // force a redraw so the overlay glyph repaints immediately
+            tv.needsDisplay = true
+        }
+    }
+}
+
+// MARK: - NSTextView subclass — keeps origin pointer for the layout manager ----
+
+final class OverlayTextView: NSTextView {
+    // We rely on the standard caret/IME flow. No overrides needed beyond
+    // the type itself, but the subclass exists in case we need to add
+    // gesture-related tweaks later.
+}
+
+// MARK: - Layout manager that overlays ☐ / ☑ on `- [ ]` / `- [x]` -----------
+
+final class CheckboxOverlayLayoutManager: NSLayoutManager {
+
+    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        guard let storage = self.textStorage,
+              let container = self.textContainers.first else { return }
+
+        let ns = storage.string as NSString
+        let charRange = self.characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+
+        ns.enumerateSubstrings(in: charRange, options: .byLines) { (substring, lineRange, _, _) in
+            guard let line = substring else { return }
+            let indent = line.prefix(while: { $0 == " " }).count
+            let body = line.dropFirst(indent)
+
+            let glyph: String
+            let color: NSColor
+            if body.hasPrefix("- [ ]") {
+                glyph = "\u{2610}" // ☐
+                color = NSColor.systemOrange
+            } else if body.hasPrefix("- [x]") || body.hasPrefix("- [X]") {
+                glyph = "\u{2611}" // ☑
+                color = NSColor.systemGreen
+            } else {
+                return
+            }
+
+            // 5-character bracket prefix range in the backing store
+            let bracketCharRange = NSRange(location: lineRange.location + indent, length: 5)
+            guard NSMaxRange(bracketCharRange) <= ns.length else { return }
+            let bracketGlyphRange = self.glyphRange(forCharacterRange: bracketCharRange, actualCharacterRange: nil)
+            let bracketRect = self.boundingRect(forGlyphRange: bracketGlyphRange, in: container)
+
+            // draw the overlay glyph anchored to the bracket's leading edge,
+            // vertically baseline-aligned
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 16, weight: .semibold),
+                .foregroundColor: color,
+            ]
+            let attrStr = NSAttributedString(string: glyph, attributes: attrs)
+            let glyphSize = attrStr.size()
+            let drawPoint = NSPoint(
+                x: origin.x + bracketRect.minX,
+                y: origin.y + bracketRect.minY + (bracketRect.height - glyphSize.height) / 2
+            )
+            attrStr.draw(at: drawPoint)
         }
     }
 }
