@@ -34,6 +34,7 @@ struct Task: Identifiable, Hashable {
     var inboxAt: String
     var dueDate: String?
     var updatedAt: String
+    var parentId: Int?
 }
 
 struct StateChange: Identifiable, Hashable {

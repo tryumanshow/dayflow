@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     status      TEXT    NOT NULL DEFAULT 'TODO',
     inbox_at    TEXT    NOT NULL,
     due_date    TEXT,
-    updated_at  TEXT    NOT NULL
+    updated_at  TEXT    NOT NULL,
+    parent_id   INTEGER REFERENCES tasks(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS state_history (
@@ -72,4 +73,18 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(DDL)
+
+    # Migrations for existing databases (idempotent — ALTER fails silently if column exists).
+    _add_column_if_missing(conn, "tasks", "parent_id", "INTEGER REFERENCES tasks(id) ON DELETE CASCADE")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)")
+
     conn.commit()
+
+
+def _add_column_if_missing(
+    conn: sqlite3.Connection, table: str, column: str, decl: str
+) -> None:
+    cur = conn.execute(f"PRAGMA table_info({table})")
+    cols = [row[1] for row in cur.fetchall()]
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")

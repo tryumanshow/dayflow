@@ -13,6 +13,12 @@ enum CalendarViewMode: String, CaseIterable, Identifiable {
     }
 }
 
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
 @MainActor
 @Observable
 final class DayflowStore {
@@ -150,13 +156,137 @@ final class DayflowStore {
 
     // MARK: - task ops
 
-    func addTask(title: String, dueDate: Date) {
-        guard let task = db.addTask(title: title, dueDate: dueDate) else { return }
+    func addTask(title: String, dueDate: Date, parentId: Int? = nil) {
+        guard let task = db.addTask(title: title, dueDate: dueDate, parentId: parentId) else { return }
         refresh()
         if Calendar.current.isDate(dueDate, inSameDayAs: selectedDate) {
             selectedTaskId = task.id
             reloadDetail()
         }
+    }
+
+    func addSubtask(parent: Task, title: String) {
+        let due: Date
+        if let dueStr = parent.dueDate, let parsed = Self.parseYMD(dueStr) {
+            due = parsed
+        } else {
+            due = selectedDate
+        }
+        addTask(title: title, dueDate: due, parentId: parent.id)
+    }
+
+    private static func parseYMD(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.date(from: s)
+    }
+
+    /// Today's tasks ordered with sub-tasks immediately following their parent.
+    var orderedDayTasks: [(task: Task, depth: Int)] {
+        let tasks = dayTasks
+        let parents = tasks.filter { $0.parentId == nil }
+        var out: [(Task, Int)] = []
+        for p in parents {
+            out.append((p, 0))
+            let children = tasks.filter { $0.parentId == p.id }
+            for c in children {
+                out.append((c, 1))
+            }
+        }
+        // orphans (parent not in this day) — show at root
+        let orphans = tasks.filter { t in
+            t.parentId != nil && !tasks.contains(where: { $0.id == t.parentId })
+        }
+        for o in orphans { out.append((o, 0)) }
+        return out
+    }
+
+    // MARK: - month stats
+
+    struct MonthStats {
+        var totalTasks: Int
+        var doneTasks: Int
+        var openTasks: Int
+        var completionRate: Double      // 0...1
+        var focusedSeconds: Int
+        var busiestWeekday: String?     // "월", "화", ...
+        var longestStreak: Int          // consecutive days with at least 1 done
+    }
+
+    func currentMonthStats() -> MonthStats {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month], from: selectedDate)
+        guard let monthStart = cal.date(from: comps),
+              let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart),
+              let monthEnd = cal.date(byAdding: .day, value: -1, to: nextMonth) else {
+            return MonthStats(totalTasks: 0, doneTasks: 0, openTasks: 0, completionRate: 0, focusedSeconds: 0, busiestWeekday: nil, longestStreak: 0)
+        }
+        let tasks = db.listForRange(start: monthStart, end: monthEnd)
+        let done = tasks.filter { $0.status == .done }
+        let openCount = tasks.filter { $0.status == .todo || $0.status == .doing }.count
+
+        // focused seconds (sum of time_log durations for these tasks)
+        var focused = 0
+        for t in tasks {
+            for entry in db.listTimeEntries(taskId: t.id) {
+                focused += entry.durationSec ?? 0
+            }
+        }
+
+        // busiest weekday by done count
+        var weekdayCounts: [Int: Int] = [:]
+        let weekdays = ["일", "월", "화", "수", "목", "금", "토"]
+        for t in done {
+            let date = (t.dueDate.flatMap { Self.parseYMD($0) }) ?? Self.parseYMD(String(t.inboxAt.prefix(10)))
+            if let d = date {
+                let wd = cal.component(.weekday, from: d) // 1=Sun
+                weekdayCounts[wd, default: 0] += 1
+            }
+        }
+        let busiestKey = weekdayCounts.max { $0.value < $1.value }?.key
+        let busiest = busiestKey.flatMap { weekdays[safe: $0 - 1] }
+
+        // longest streak — consecutive days within month that have at least one done
+        var doneDays = Set<String>()
+        for t in done {
+            let dayStr = t.dueDate ?? String(t.inboxAt.prefix(10))
+            doneDays.insert(dayStr)
+        }
+        var streak = 0
+        var maxStreak = 0
+        var cursor = monthStart
+        while cursor <= monthEnd {
+            if doneDays.contains(DayflowDB.ymd(cursor)) {
+                streak += 1
+                maxStreak = max(maxStreak, streak)
+            } else {
+                streak = 0
+            }
+            cursor = cal.date(byAdding: .day, value: 1, to: cursor) ?? cursor
+        }
+
+        return MonthStats(
+            totalTasks: tasks.count,
+            doneTasks: done.count,
+            openTasks: openCount,
+            completionRate: tasks.isEmpty ? 0 : Double(done.count) / Double(tasks.count),
+            focusedSeconds: focused,
+            busiestWeekday: busiest,
+            longestStreak: maxStreak
+        )
+    }
+
+    /// Per-day completion ratio for the calendar grid (0...1) and total count.
+    func dayMetrics(_ date: Date) -> (total: Int, done: Int, ratio: Double) {
+        let target = DayflowDB.ymd(date)
+        let tasks = monthTasks.filter { t in
+            if let due = t.dueDate { return due == target }
+            return String(t.inboxAt.prefix(10)) == target
+        }
+        let done = tasks.filter { $0.status == .done }.count
+        let total = tasks.count
+        return (total, done, total == 0 ? 0 : Double(done) / Double(total))
     }
 
     func cycleStatus(_ taskId: Int) {

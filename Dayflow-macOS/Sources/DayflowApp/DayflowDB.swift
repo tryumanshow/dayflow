@@ -43,7 +43,8 @@ final class DayflowDB {
             status      TEXT    NOT NULL DEFAULT 'TODO',
             inbox_at    TEXT    NOT NULL,
             due_date    TEXT,
-            updated_at  TEXT    NOT NULL
+            updated_at  TEXT    NOT NULL,
+            parent_id   INTEGER REFERENCES tasks(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS state_history (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,6 +83,25 @@ final class DayflowDB {
         CREATE INDEX IF NOT EXISTS idx_tasks_inbox_at ON tasks(inbox_at);
         """
         sqlite3_exec(db, ddl, nil, nil, nil)
+
+        // migration: add parent_id if an older DB lacks it
+        var hasParentId = false
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "PRAGMA table_info(tasks)", -1, &stmt, nil)
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let cstr = sqlite3_column_text(stmt, 1),
+               String(cString: cstr) == "parent_id" {
+                hasParentId = true
+                break
+            }
+        }
+        sqlite3_finalize(stmt)
+        if !hasParentId {
+            sqlite3_exec(db,
+                "ALTER TABLE tasks ADD COLUMN parent_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE",
+                nil, nil, nil)
+        }
+        sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)", nil, nil, nil)
     }
 
     // MARK: - format helpers
@@ -119,6 +139,11 @@ final class DayflowDB {
         return textCol(stmt, idx)
     }
 
+    private func intColOpt(_ stmt: OpaquePointer?, _ idx: Int32) -> Int? {
+        if sqlite3_column_type(stmt, idx) == SQLITE_NULL { return nil }
+        return Int(sqlite3_column_int64(stmt, idx))
+    }
+
     private static let TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private func bindText(_ stmt: OpaquePointer?, _ idx: Int32, _ value: String) {
@@ -133,13 +158,13 @@ final class DayflowDB {
     func listForDate(_ d: Date) -> [Task] {
         let dateStr = Self.ymd(d)
         let sql = """
-        SELECT id, title, status, inbox_at, due_date, updated_at
+        SELECT id, title, status, inbox_at, due_date, updated_at, parent_id
         FROM tasks
         WHERE due_date = ?
            OR (due_date IS NULL AND substr(inbox_at, 1, 10) = ?)
         ORDER BY
-          CASE status WHEN 'DOING' THEN 0 WHEN 'TODO' THEN 1
-                      WHEN 'DONE' THEN 2 ELSE 3 END,
+          CASE WHEN parent_id IS NULL THEN id ELSE parent_id END,
+          parent_id IS NULL DESC,
           id ASC;
         """
         return runTaskQuery(sql) { stmt in
@@ -153,13 +178,13 @@ final class DayflowDB {
         let s = Self.ymd(start)
         let e = Self.ymd(end)
         let sql = """
-        SELECT id, title, status, inbox_at, due_date, updated_at
+        SELECT id, title, status, inbox_at, due_date, updated_at, parent_id
         FROM tasks
         WHERE (due_date IS NOT NULL AND due_date BETWEEN ? AND ?)
            OR (due_date IS NULL AND substr(inbox_at, 1, 10) BETWEEN ? AND ?)
         ORDER BY
-          CASE status WHEN 'DOING' THEN 0 WHEN 'TODO' THEN 1
-                      WHEN 'DONE' THEN 2 ELSE 3 END,
+          CASE WHEN parent_id IS NULL THEN id ELSE parent_id END,
+          parent_id IS NULL DESC,
           id ASC;
         """
         return runTaskQuery(sql) { stmt in
@@ -183,13 +208,14 @@ final class DayflowDB {
             let inboxAt = textCol(stmt, 3)
             let due = textColOpt(stmt, 4)
             let updated = textCol(stmt, 5)
-            out.append(Task(id: id, title: title, status: status, inboxAt: inboxAt, dueDate: due, updatedAt: updated))
+            let parentId = intColOpt(stmt, 6)
+            out.append(Task(id: id, title: title, status: status, inboxAt: inboxAt, dueDate: due, updatedAt: updated, parentId: parentId))
         }
         return out
     }
 
     @discardableResult
-    func addTask(title: String, dueDate: Date? = nil) -> Task? {
+    func addTask(title: String, dueDate: Date? = nil, parentId: Int? = nil) -> Task? {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let now = nowISO()
@@ -200,8 +226,8 @@ final class DayflowDB {
 
         var stmt: OpaquePointer?
         let insertSQL = """
-        INSERT INTO tasks (title, status, inbox_at, due_date, updated_at)
-        VALUES (?, 'TODO', ?, ?, ?);
+        INSERT INTO tasks (title, status, inbox_at, due_date, updated_at, parent_id)
+        VALUES (?, 'TODO', ?, ?, ?, ?);
         """
         guard sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil) == SQLITE_OK else { return nil }
         bindText(stmt, 1, trimmed)
@@ -212,6 +238,11 @@ final class DayflowDB {
             sqlite3_bind_null(stmt, 3)
         }
         bindText(stmt, 4, now)
+        if let pid = parentId {
+            sqlite3_bind_int64(stmt, 5, sqlite3_int64(pid))
+        } else {
+            sqlite3_bind_null(stmt, 5)
+        }
         guard sqlite3_step(stmt) == SQLITE_DONE else {
             sqlite3_finalize(stmt)
             return nil
@@ -228,7 +259,22 @@ final class DayflowDB {
         sqlite3_step(hist)
         sqlite3_finalize(hist)
 
-        return Task(id: taskId, title: trimmed, status: .todo, inboxAt: now, dueDate: dueStr, updatedAt: now)
+        return Task(id: taskId, title: trimmed, status: .todo, inboxAt: now, dueDate: dueStr, updatedAt: now, parentId: parentId)
+    }
+
+    func setParent(_ taskId: Int, parentId: Int?) {
+        let now = nowISO()
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "UPDATE tasks SET parent_id=?, updated_at=? WHERE id=?", -1, &stmt, nil)
+        if let pid = parentId {
+            sqlite3_bind_int64(stmt, 1, sqlite3_int64(pid))
+        } else {
+            sqlite3_bind_null(stmt, 1)
+        }
+        bindText(stmt, 2, now)
+        sqlite3_bind_int64(stmt, 3, sqlite3_int64(taskId))
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
     }
 
     func deleteTask(_ taskId: Int) {
@@ -376,6 +422,26 @@ final class DayflowDB {
             let to = textCol(stmt, 2)
             let at = textCol(stmt, 3)
             out.append(StateChange(id: id, taskId: taskId, fromStatus: from, toStatus: to, changedAt: at))
+        }
+        return out
+    }
+
+    // MARK: - time log
+
+    func listTimeEntries(taskId: Int) -> [TimeEntry] {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db,
+            "SELECT id, started_at, ended_at, duration_sec FROM time_log WHERE task_id=? ORDER BY id ASC",
+            -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, sqlite3_int64(taskId))
+        var out: [TimeEntry] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let id = Int(sqlite3_column_int64(stmt, 0))
+            let started = textCol(stmt, 1)
+            let ended = textColOpt(stmt, 2)
+            let dur = intColOpt(stmt, 3)
+            out.append(TimeEntry(id: id, taskId: taskId, startedAt: started, endedAt: ended, durationSec: dur))
         }
         return out
     }
