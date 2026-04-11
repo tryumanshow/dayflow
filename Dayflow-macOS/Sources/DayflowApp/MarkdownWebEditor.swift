@@ -316,10 +316,81 @@ struct MarkdownWebEditor: NSViewRepresentable {
     /* drag-handle side menu + slash-suggestion menu stay hidden to keep
        the layout minimal — the Dayflow toolbar above covers the common
        styling actions. */
-    .bn-side-menu, .bn-suggestion-menu { display: none !important; }
+    /* drag-handle side menu stays hidden; slash command menu below
+       is a fully custom vanilla implementation since
+       @blocknote/core on its own doesn't ship a UI for it. */
+    .bn-side-menu { display: none !important; }
     /* placeholder */
     .bn-block-content[data-is-empty-and-focused="true"]::before {
         color: rgba(255,255,255,0.25) !important;
+    }
+    /* Custom slash command menu. Floats above the editor near the
+       caret, gets its own filterable input row, dark-themed. */
+    #dayflow-slash-menu {
+        position: fixed;
+        z-index: 1000;
+        min-width: 260px;
+        max-width: 320px;
+        max-height: 360px;
+        overflow: hidden;
+        background: rgba(28, 28, 32, 0.98);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+        padding: 4px;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.9);
+        display: flex;
+        flex-direction: column;
+    }
+    #dayflow-slash-menu .sm-input {
+        all: unset;
+        padding: 6px 10px;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 13px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    #dayflow-slash-menu .sm-input::placeholder {
+        color: rgba(255, 255, 255, 0.35);
+    }
+    #dayflow-slash-menu .sm-list {
+        overflow-y: auto;
+        padding: 4px 0;
+    }
+    #dayflow-slash-menu .sm-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    #dayflow-slash-menu .sm-item.selected {
+        background: rgba(247, 158, 51, 0.18);
+        color: #f79e33;
+    }
+    #dayflow-slash-menu .sm-item .sm-icon {
+        width: 20px;
+        text-align: center;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.55);
+    }
+    #dayflow-slash-menu .sm-item.selected .sm-icon {
+        color: #f79e33;
+    }
+    #dayflow-slash-menu .sm-item .sm-label {
+        font-weight: 600;
+    }
+    #dayflow-slash-menu .sm-item .sm-sub {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-left: auto;
+    }
+    #dayflow-slash-menu .sm-empty {
+        padding: 10px;
+        color: rgba(255, 255, 255, 0.4);
+        text-align: center;
+        font-size: 12px;
     }
     </style>
     </head>
@@ -569,6 +640,184 @@ struct MarkdownWebEditor: NSViewRepresentable {
             }
         }
     }
+
+    // ------------------------------------------------------------
+    // Slash command menu — custom vanilla JS implementation.
+    //
+    // @blocknote/core alone doesn't render a slash menu (that lives
+    // in @blocknote/react). We intercept the `/` keydown, show a
+    // floating popover anchored to the caret, filter commands as
+    // the user types, and commit the selected command via
+    // `editor.updateBlock` on the current block.
+    // ------------------------------------------------------------
+
+    const SLASH_COMMANDS = [
+        { key: 'h1',   icon: 'H1', label: 'Heading 1',   apply: () => applyBlockType({ type: 'heading', props: { level: 1 } }) },
+        { key: 'h2',   icon: 'H2', label: 'Heading 2',   apply: () => applyBlockType({ type: 'heading', props: { level: 2 } }) },
+        { key: 'h3',   icon: 'H3', label: 'Heading 3',   apply: () => applyBlockType({ type: 'heading', props: { level: 3 } }) },
+        { key: 'todo', icon: '☐',  label: 'To-do list',  apply: () => applyBlockType({ type: 'checkListItem', props: { checked: false } }) },
+        { key: 'ul',   icon: '•',  label: 'Bullet list', apply: () => applyBlockType({ type: 'bulletListItem' }) },
+        { key: 'ol',   icon: '1.', label: 'Numbered list', apply: () => applyBlockType({ type: 'numberedListItem' }) },
+        { key: 'p',    icon: '¶',  label: 'Paragraph',   apply: () => applyBlockType({ type: 'paragraph' }) },
+    ];
+
+    let slashMenuEl = null;
+    let slashQuery = '';
+    let slashSelectedIndex = 0;
+
+    function applyBlockType(partial) {
+        try {
+            const cursor = editor.getTextCursorPosition();
+            if (!cursor || !cursor.block) return;
+            editor.updateBlock(cursor.block, partial);
+            scheduleEmit();
+        } catch (e) {
+            console.log('applyBlockType error: ' + e.message);
+        }
+    }
+
+    function isCurrentBlockEmpty() {
+        try {
+            const cursor = editor.getTextCursorPosition();
+            if (!cursor || !cursor.block) return false;
+            const content = cursor.block.content;
+            if (!Array.isArray(content)) return true;
+            const joined = content.map(c => (c && typeof c.text === 'string') ? c.text : '').join('');
+            return joined.length === 0;
+        } catch (e) { return false; }
+    }
+
+    function filteredCommands() {
+        const q = slashQuery.trim().toLowerCase();
+        if (!q) return SLASH_COMMANDS;
+        return SLASH_COMMANDS.filter(c => c.label.toLowerCase().includes(q) || c.key.includes(q));
+    }
+
+    function openSlashMenu() {
+        if (slashMenuEl) return;
+        slashMenuEl = document.createElement('div');
+        slashMenuEl.id = 'dayflow-slash-menu';
+        slashMenuEl.innerHTML = '<div class="sm-list"></div>';
+        document.body.appendChild(slashMenuEl);
+        slashQuery = '';
+        slashSelectedIndex = 0;
+        positionSlashMenu();
+        renderSlashMenu();
+    }
+
+    function closeSlashMenu() {
+        if (!slashMenuEl) return;
+        slashMenuEl.remove();
+        slashMenuEl = null;
+        slashQuery = '';
+        slashSelectedIndex = 0;
+    }
+
+    function positionSlashMenu() {
+        if (!slashMenuEl) return;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        let rect = sel.getRangeAt(0).getBoundingClientRect();
+        // Collapsed selection sometimes has a zero rect — fall back
+        // to the focused block's rect.
+        if (rect.width === 0 && rect.height === 0) {
+            const focusedBlock = document.querySelector('.bn-block-content[data-is-empty-and-focused="true"]')
+                                 || document.querySelector('.ProseMirror-focused');
+            if (focusedBlock) rect = focusedBlock.getBoundingClientRect();
+        }
+        const top = Math.min(window.innerHeight - 380, rect.bottom + 6);
+        const left = Math.min(window.innerWidth - 340, Math.max(8, rect.left));
+        slashMenuEl.style.top = top + 'px';
+        slashMenuEl.style.left = left + 'px';
+    }
+
+    function renderSlashMenu() {
+        if (!slashMenuEl) return;
+        const list = slashMenuEl.querySelector('.sm-list');
+        const items = filteredCommands();
+        if (items.length === 0) {
+            list.innerHTML = '<div class="sm-empty">No commands</div>';
+            slashSelectedIndex = 0;
+            return;
+        }
+        if (slashSelectedIndex >= items.length) slashSelectedIndex = items.length - 1;
+        if (slashSelectedIndex < 0) slashSelectedIndex = 0;
+        list.innerHTML = '';
+        items.forEach((cmd, i) => {
+            const el = document.createElement('div');
+            el.className = 'sm-item' + (i === slashSelectedIndex ? ' selected' : '');
+            el.innerHTML =
+                '<span class="sm-icon">' + cmd.icon + '</span>' +
+                '<span class="sm-label">' + cmd.label + '</span>' +
+                '<span class="sm-sub">/' + cmd.key + '</span>';
+            el.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                commitSlashCommand(cmd);
+            });
+            list.appendChild(el);
+        });
+    }
+
+    function commitSlashCommand(cmd) {
+        if (!cmd) return;
+        closeSlashMenu();
+        cmd.apply();
+    }
+
+    // Global keydown handler. Opens on `/`, hijacks arrow/enter/esc
+    // while open, lets everything else fall through so the user can
+    // type to filter.
+    document.addEventListener('keydown', (e) => {
+        if (!slashMenuEl) {
+            if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                if (!isCurrentBlockEmpty()) return;
+                e.preventDefault();
+                openSlashMenu();
+            }
+            return;
+        }
+        // Menu is open.
+        const items = filteredCommands();
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeSlashMenu();
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            slashSelectedIndex = Math.min(items.length - 1, slashSelectedIndex + 1);
+            renderSlashMenu();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            slashSelectedIndex = Math.max(0, slashSelectedIndex - 1);
+            renderSlashMenu();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            commitSlashCommand(items[slashSelectedIndex]);
+        } else if (e.key === 'Backspace') {
+            if (slashQuery.length === 0) {
+                // Empty query + backspace closes the menu.
+                e.preventDefault();
+                closeSlashMenu();
+            } else {
+                e.preventDefault();
+                slashQuery = slashQuery.slice(0, -1);
+                slashSelectedIndex = 0;
+                renderSlashMenu();
+            }
+        } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            // Filter character. Don't let it reach ProseMirror.
+            e.preventDefault();
+            slashQuery += e.key;
+            slashSelectedIndex = 0;
+            renderSlashMenu();
+        }
+    }, true);  // capture phase — beats ProseMirror to the event.
+
+    // Click anywhere outside the menu closes it.
+    document.addEventListener('mousedown', (e) => {
+        if (!slashMenuEl) return;
+        if (slashMenuEl.contains(e.target)) return;
+        closeSlashMenu();
+    }, true);
 
     (async () => {
         try {
