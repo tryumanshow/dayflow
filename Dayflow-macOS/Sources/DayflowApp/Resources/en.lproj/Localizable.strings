@@ -21,6 +21,8 @@
 "appointments.time_placeholder" = "HH:MM";
 "appointments.title_placeholder" = "Title";
 "appointments.month_header" = "This month";
+"appointments.month_hint" = "edit here";
+"appointments.manage_in_month" = "manage in Month";
 
 /* Week view */
 "week.footer.done" = "done";

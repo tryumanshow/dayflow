@@ -21,6 +21,8 @@
 "appointments.time_placeholder" = "HH:MM";
 "appointments.title_placeholder" = "제목";
 "appointments.month_header" = "이 달의 일정";
+"appointments.month_hint" = "여기서 관리";
+"appointments.manage_in_month" = "월간 뷰에서 관리";
 
 /* Week view */
 "week.footer.done" = "done";
