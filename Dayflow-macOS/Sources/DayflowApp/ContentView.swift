@@ -360,10 +360,11 @@ struct ContentView: View {
         .animation(DS.Motion.quick, value: isSelected)
     }
 
-    /// One group in a week column: optional heading + its open tasks.
-    /// Each task has a tappable checkbox that flips in place without
-    /// leaving the Week view. Sub-tasks get a padding-left offset per
-    /// indent level so the Day view's nesting carries over.
+    /// One group in a week column: optional heading + its tasks
+    /// (both open and done, in source order). Each task has a tappable
+    /// checkbox that flips in place without leaving the Week view.
+    /// Sub-tasks get a padding-left offset per indent level so the Day
+    /// view's nesting carries over.
     private func weekGroupView(_ group: DayflowStore.WeekGroup, day: Date) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             if let heading = group.heading {
@@ -378,12 +379,13 @@ struct ContentView: View {
                     store.toggleWeekTask(day: day, sourceLineIndex: task.sourceLineIndex)
                 } label: {
                     HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "square")
+                        Image(systemName: task.checked ? "checkmark.square.fill" : "square")
                             .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(task.checked ? Color.dfAccent : .secondary)
                         Text(task.text)
                             .font(DS.FontStyle.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(task.checked ? .tertiary : .secondary)
+                            .strikethrough(task.checked)
                             .lineLimit(1)
                     }
                     .padding(.leading, CGFloat(min(task.depth, 3)) * 10)

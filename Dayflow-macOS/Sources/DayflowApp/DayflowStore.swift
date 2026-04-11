@@ -215,24 +215,22 @@ final class DayflowStore {
 
     // MARK: - week preview
 
-    /// Grouped open-task preview for a single day column in Week view.
-    /// A "group" is a heading with a bullet list of the open tasks that
-    /// belong to it (tasks below that heading until the next heading of
-    /// the same-or-higher level). Tasks before any heading land in a
+    /// Grouped task preview for a single day column in Week view.
+    /// A "group" is a heading with its tasks in source order
+    /// (both open and done). Tasks before any heading land in a
     /// synthetic group whose title is nil → rendered as a flat list.
     ///
     /// Caps: at most `maxGroups` groups, at most `maxTasksPerGroup`
-    /// open tasks per group. Done tasks are omitted entirely because
-    /// the column header already shows the done/total ratio. Empty
-    /// groups drop out.
+    /// tasks per group. Empty groups drop out.
     struct WeekGroup: Identifiable {
         let id: Int
         let heading: String?
-        let tasks: [OpenTask]
+        let tasks: [PreviewTask]
     }
-    struct OpenTask: Identifiable {
+    struct PreviewTask: Identifiable {
         let id: Int
         let text: String
+        let checked: Bool
         /// Source line index inside the day body — used by
         /// `toggleWeekTask` to flip the checkbox in place.
         let sourceLineIndex: Int
@@ -247,10 +245,12 @@ final class DayflowStore {
         guard !body.isEmpty else { return [] }
 
         // Walk the body line-by-line tracking the current heading + the
-        // bucket of open tasks under it. Indent depth is computed from
-        // the RAW line (before `MarkdownLine.parse` trims whitespace)
-        // so subtasks show up under their parents in the preview.
-        var groups: [(heading: String?, tasks: [OpenTask])] = [(nil, [])]
+        // bucket of tasks under it. Indent depth is computed from the
+        // RAW line (before `MarkdownLine.parse` trims whitespace) so
+        // subtasks show up under their parents in the preview. Source
+        // order is preserved, including done tasks — the user wants to
+        // see what's finished, not just what's outstanding.
+        var groups: [(heading: String?, tasks: [PreviewTask])] = [(nil, [])]
         let lines = body.components(separatedBy: "\n")
         var nextTaskID = 0
         for (idx, raw) in lines.enumerated() {
@@ -260,11 +260,11 @@ final class DayflowStore {
             case .heading(_, let text):
                 groups.append((text, []))
             case .task(let checked, let text):
-                guard !checked else { continue }
                 var current = groups[groups.count - 1]
                 if current.tasks.count < maxTasksPerGroup {
-                    current.tasks.append(OpenTask(
-                        id: nextTaskID, text: text, sourceLineIndex: idx, depth: depth))
+                    current.tasks.append(PreviewTask(
+                        id: nextTaskID, text: text, checked: checked,
+                        sourceLineIndex: idx, depth: depth))
                     nextTaskID += 1
                 }
                 groups[groups.count - 1] = current
