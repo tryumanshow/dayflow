@@ -13,7 +13,8 @@ struct SettingsView: View {
     @State private var model: String = ""
     @State private var systemPrompt: String = LLMConfigStore.systemPrompt
     @State private var language: AppLanguage = LanguagePreference.current
-    @AppStorage("dayflow.editor.fontSize") private var editorFontSize: Double = 15
+    @AppStorage("dayflow.editor.fontSize")            private var dayEditorFontSize: Double = 15
+    @AppStorage("dayflow.editor.fontSize.monthPlan")  private var monthPlanEditorFontSize: Double = 13
     @State private var saved: Bool = false
     @State private var hasExisting: Bool = false
     @State private var errorMessage: String?
@@ -102,13 +103,27 @@ struct SettingsView: View {
             }
 
             field(
-                label: L("settings.editor_font_size"),
+                label: L("settings.editor_font_size.day"),
                 hint: L("settings.editor_font_size.hint")
             ) {
                 HStack(spacing: 10) {
-                    Slider(value: $editorFontSize, in: 11...20, step: 1)
+                    Slider(value: $dayEditorFontSize, in: 11...20, step: 1)
                         .frame(maxWidth: 260)
-                    Text("\(Int(editorFontSize)) px")
+                    Text("\(Int(dayEditorFontSize)) px")
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 48, alignment: .leading)
+                }
+            }
+
+            field(
+                label: L("settings.editor_font_size.month_plan"),
+                hint: nil
+            ) {
+                HStack(spacing: 10) {
+                    Slider(value: $monthPlanEditorFontSize, in: 11...20, step: 1)
+                        .frame(maxWidth: 260)
+                    Text("\(Int(monthPlanEditorFontSize)) px")
                         .font(.system(size: 12, weight: .medium).monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(width: 48, alignment: .leading)

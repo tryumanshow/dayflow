@@ -13,10 +13,12 @@ struct ContentView: View {
     @State private var editingAppointmentId: Int64? = nil
     @FocusState private var aptTitleFocused: Bool
 
-    // Global editor body font size, controlled by Settings. Both
-    // the Day and Month plan editors read this so the slider
-    // live-updates everything.
-    @AppStorage("dayflow.editor.fontSize") private var editorFontSize: Double = 15
+    // Editor body font sizes. Day view and Month plan editor are
+    // separate — the Month plan is a narrow 440px side panel that
+    // reads better at a smaller default, and users may want the
+    // Day view to stay large. Both live-update via AppStorage.
+    @AppStorage("dayflow.editor.fontSize")            private var dayEditorFontSize: Double = 15
+    @AppStorage("dayflow.editor.fontSize.monthPlan")  private var monthPlanEditorFontSize: Double = 13
 
     var body: some View {
         VStack(spacing: 0) {
@@ -142,7 +144,7 @@ struct ContentView: View {
             MarkdownWebEditor(
                 markdown: $store.dayBody,
                 markdownJSON: $store.dayBodyJSON,
-                fontSize: editorFontSize,
+                fontSize: dayEditorFontSize,
                 onChange: { newMD, newJSON in
                     store.updateDayBody(newMD, bodyJSON: newJSON)
                 }
@@ -798,7 +800,7 @@ struct ContentView: View {
             MarkdownWebEditor(
                 markdown: $store.monthPlanBody,
                 markdownJSON: $store.monthPlanJSON,
-                fontSize: editorFontSize,
+                fontSize: monthPlanEditorFontSize,
                 onChange: { md, json in
                     store.updateMonthPlan(md, bodyJSON: json)
                 }

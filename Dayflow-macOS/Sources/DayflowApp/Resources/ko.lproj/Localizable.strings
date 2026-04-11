@@ -87,7 +87,9 @@
 "settings.language.hint" = "Dayflow 앱 언어를 시스템 설정과 다르게 지정해. 변경 시 앱 재실행 필요.";
 "settings.language.restart_hint" = "언어 변경은 Dayflow 재실행 이후에 적용돼.";
 "settings.editor_font_size" = "에디터 글자 크기";
-"settings.editor_font_size.hint" = "Day 와 이달 계획 에디터의 본문 글자 크기. 바로 반영됨 — 재실행 필요 없음.";
+"settings.editor_font_size.hint" = "본문 글자 크기. 바로 반영됨 — 재실행 필요 없음.";
+"settings.editor_font_size.day" = "Day 에디터 글자 크기";
+"settings.editor_font_size.month_plan" = "이달 계획 에디터 글자 크기";
 
 /* LLM errors */
 "llm.error.missing_api_key" = "%@ API 키가 없어. 메뉴 → Dayflow → Settings… 에서 등록해.";
