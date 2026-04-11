@@ -259,11 +259,6 @@ struct MarkdownWebEditor: NSViewRepresentable {
         outline: 2px solid #f79e33;
         outline-offset: 1px;
     }
-    #dayflow-toolbar .swatch.clear {
-        background: transparent;
-        color: rgba(255, 255, 255, 0.55);
-        font-size: 11px;
-    }
 
     /* BlockNote dark theme overrides */
     .bn-container, .bn-editor, .ProseMirror {
@@ -495,14 +490,6 @@ struct MarkdownWebEditor: NSViewRepresentable {
         for (const prop of ['textColor', 'backgroundColor']) {
             const row = bar.querySelector('[data-row="' + prop + '"]');
             if (!row) continue;
-            const label = prop === 'textColor' ? 'Default text color' : 'Default background';
-            const clear = document.createElement('button');
-            clear.className = 'swatch clear';
-            clear.dataset.prop = prop;
-            clear.dataset.color = 'default';
-            clear.title = label;
-            clear.textContent = '×';
-            row.appendChild(clear);
             for (const [name, hex] of COLORS) {
                 const b = document.createElement('button');
                 b.className = 'swatch';
@@ -535,9 +522,13 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 } else if (btn.dataset.prop) {
                     const prop = btn.dataset.prop;
                     const color = btn.dataset.color;
-                    if (color === 'default') {
-                        const active = editor.getActiveStyles() || {};
-                        if (active[prop]) editor.removeStyles({ [prop]: active[prop] });
+                    // Toggle: clicking the already-active color clears it.
+                    // Dropping the explicit "clear" chip removes a piece
+                    // of visual chrome that used to break the row of
+                    // colored circles.
+                    const active = editor.getActiveStyles() || {};
+                    if (active[prop] === color) {
+                        editor.removeStyles({ [prop]: color });
                     } else {
                         editor.addStyles({ [prop]: color });
                     }

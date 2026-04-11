@@ -14,6 +14,16 @@
 "day.review_placeholder" = "하루 마무리할 때 회고를 받아보자.";
 "day.generate" = "Generate";
 
+/* Appointments */
+"appointments.header" = "약속";
+"appointments.empty" = "약속 없음";
+"appointments.add" = "추가";
+"appointments.time_placeholder" = "HH:MM";
+"appointments.title_placeholder" = "제목";
+"appointments.month_header" = "이 달의 일정";
+"appointments.month_hint" = "여기서 관리";
+"appointments.manage_in_month" = "월간 뷰에서 관리";
+
 /* Week view */
 "week.footer.done" = "done";
 "week.footer.open" = "open";

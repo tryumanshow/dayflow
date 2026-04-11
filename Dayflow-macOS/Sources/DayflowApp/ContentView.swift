@@ -4,6 +4,13 @@ import SwiftUI
 struct ContentView: View {
     @Environment(DayflowStore.self) private var store
 
+    // Month rail appointment add form. Persists across view switches
+    // so a half-typed entry survives a Day/Week detour.
+    @State private var aptTimeInput: String = ""
+    @State private var aptTitleInput: String = ""
+    @State private var aptDateInput: Date = Date()
+    @FocusState private var aptTitleFocused: Bool
+
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
@@ -139,6 +146,7 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.Space.breathe) {
                         daySummaryRail
+                        appointmentsRail
                         reviewRail
                     }
                     .padding(.horizontal, DS.Space.xl)
@@ -197,6 +205,50 @@ struct ContentView: View {
                 Text(L("day.empty"))
                     .font(DS.FontStyle.caption)
                     .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    /// Day rail is read-only for appointments — creation and deletion
+    /// both live in the Month view so there's a single place to shape
+    /// the month's schedule.
+    @ViewBuilder
+    private var appointmentsRail: some View {
+        let items = store.appointments(for: store.selectedDate)
+        VStack(alignment: .leading, spacing: DS.Space.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel(text: L("appointments.header"))
+                Spacer()
+                Button {
+                    store.setMode(.month)
+                } label: {
+                    Text(L("appointments.manage_in_month"))
+                        .font(DS.FontStyle.caption)
+                        .foregroundStyle(Color.dfAccent)
+                }
+                .buttonStyle(.plain)
+            }
+            if items.isEmpty {
+                Text(L("appointments.empty"))
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 2)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(items) { apt in
+                        HStack(spacing: 8) {
+                            Text(DF.hourMinute.string(from: apt.startAt))
+                                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(Color.dfAccent)
+                                .frame(width: 44, alignment: .leading)
+                            Text(apt.title)
+                                .font(DS.FontStyle.body)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
             }
         }
     }
@@ -337,6 +389,23 @@ struct ContentView: View {
                 store.setMode(.day)
             }
 
+            let dayAppointments = store.appointments(for: day)
+            if !dayAppointments.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(dayAppointments) { apt in
+                        HStack(spacing: 5) {
+                            Text(DF.hourMinute.string(from: apt.startAt))
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(Color.dfAccent)
+                            Text(apt.title)
+                                .font(DS.FontStyle.caption)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+
             if !groups.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(groups) { group in
@@ -465,6 +534,7 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.Space.breathe) {
                         monthMetricsRail(stats)
+                        monthAppointmentsRail
                         monthPlanRail
                         monthStandoutRail(stats)
                     }
@@ -512,13 +582,12 @@ struct ContentView: View {
         return parts.joined(separator: " · ")
     }
 
-    /// Weekday header row for the month grid. Uses the current calendar's
-    /// locale-aware short symbols but reorders to start on Monday to match
-    /// the grid layout.
+    /// Weekday header row for the month grid. Sunday-first order,
+    /// matching the rest of the app's calendar (see `startOfWeek` /
+    /// `monthGridRange` which both use `firstWeekday = 1`).
     private func localizedWeekdayHeaders() -> [String] {
         let cal = Calendar(identifier: .gregorian)
-        let symbols = cal.shortWeekdaySymbols
-        return Array(symbols[1...6]) + [symbols[0]]
+        return cal.shortWeekdaySymbols
     }
 
     @ViewBuilder
@@ -534,6 +603,113 @@ struct ContentView: View {
                     .font(DS.FontStyle.caption)
                     .foregroundStyle(.tertiary)
             }
+        }
+    }
+
+    /// Month view is the single source of truth for scheduling.
+    private var monthAppointmentsRail: some View {
+        let items = store.currentMonthAppointments()
+        return VStack(alignment: .leading, spacing: DS.Space.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel(text: L("appointments.month_header"))
+                Spacer()
+                Text(L("appointments.month_hint"))
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            if items.isEmpty {
+                Text(L("appointments.empty"))
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 2)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(items) { apt in
+                        HStack(spacing: 10) {
+                            Button {
+                                store.selectDate(apt.startAt)
+                                store.setMode(.day)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Text(DF.shortMonthDay.string(from: apt.startAt))
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 60, alignment: .leading)
+                                    Text(DF.hourMinute.string(from: apt.startAt))
+                                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                                        .foregroundStyle(Color.dfAccent)
+                                        .frame(width: 40, alignment: .leading)
+                                    Text(apt.title)
+                                        .font(DS.FontStyle.body)
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                store.deleteAppointment(apt)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 16, height: 16)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                DatePicker("", selection: $aptDateInput, displayedComponents: [.date])
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                TextField(L("appointments.time_placeholder"), text: $aptTimeInput)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .frame(width: 52)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.04))
+                    )
+                    .onSubmit { submitMonthAppointment() }
+                TextField(L("appointments.title_placeholder"), text: $aptTitleInput)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.04))
+                    )
+                    .focused($aptTitleFocused)
+                    .onSubmit { submitMonthAppointment() }
+                Button {
+                    submitMonthAppointment()
+                } label: {
+                    Text(L("appointments.add"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.dfAccent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.dfAccent.opacity(0.14)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func submitMonthAppointment() {
+        let ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, title: aptTitleInput)
+        if ok {
+            aptTimeInput = ""
+            aptTitleInput = ""
+            aptTitleFocused = false
         }
     }
 
@@ -575,20 +751,46 @@ struct ContentView: View {
         let done = stats.doneByDay[key] ?? 0
         let open = stats.openByDay[key] ?? 0
         let total = done + open
+        let appointments = store.appointments(for: day)
 
         return Button {
             store.selectDate(day)
         } label: {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("\(cal.component(.day, from: day))")
                     .font(.system(size: 14, weight: isToday ? .bold : .medium).monospacedDigit())
                     .foregroundColor(inMonth
                                      ? (isToday ? Color.dfAccent : Color.primary)
                                      : Color.secondary.opacity(0.4))
+                // Show up to 3 appointment chips under the day number.
+                // On overflow, last row becomes a "+N" counter. Only
+                // for in-month cells — leading/trailing padding cells
+                // stay visually quiet.
+                if inMonth && !appointments.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        let visible = appointments.prefix(3)
+                        ForEach(Array(visible)) { apt in
+                            HStack(spacing: 4) {
+                                Text(DF.hourMinute.string(from: apt.startAt))
+                                    .font(.system(size: 9, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(Color.dfAccent)
+                                Text(apt.title)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.primary.opacity(0.85))
+                                    .lineLimit(1)
+                            }
+                        }
+                        if appointments.count > 3 {
+                            Text("+\(appointments.count - 3)")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 Spacer(minLength: 0)
             }
             .padding(10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .fill(heatColor(inMonth: inMonth, total: total))

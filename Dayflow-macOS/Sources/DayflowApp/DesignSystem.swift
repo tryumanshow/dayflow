@@ -80,6 +80,25 @@ enum DF {
         return f
     }()
 
+    /// POSIX, fixed — used as the `appointments.start_at` storage
+    /// format. Wall-clock local time, minute precision.
+    static let appointmentStamp: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        return f
+    }()
+
+    /// POSIX, fixed — just the HH:mm slice of an appointment start
+    /// time. Used both for display in the preview columns and for
+    /// parsing user input in the Day rail add form.
+    static let hourMinute: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
     static let dayNumber: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "d"
