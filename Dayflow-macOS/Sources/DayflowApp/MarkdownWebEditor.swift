@@ -113,19 +113,12 @@ struct MarkdownWebEditor: NSViewRepresentable {
             case "ready":
                 ready = true
                 flushIfReady()
-                webView?.evaluateJavaScript("window.dayflowSelfTest && window.dayflowSelfTest()") { result, error in
-                    let line = "[\(Date())] selftest result=\(result ?? "nil") error=\(error?.localizedDescription ?? "none")\n"
-                    if let data = line.data(using: .utf8) {
-                        let url = URL(fileURLWithPath: "/tmp/dayflow-debug.log")
-                        if let handle = try? FileHandle(forWritingTo: url) {
-                            handle.seekToEndOfFile()
-                            handle.write(data)
-                            try? handle.close()
-                        } else {
-                            try? data.write(to: url)
-                        }
-                    }
-                }
+                // NOTE: dayflowSelfTest() exists in JS but is intentionally
+                // NOT auto-invoked. Calling it overwrites the editor content
+                // with the test sequences and clobbers the user's data.
+                // To run it manually: open Safari Web Inspector
+                // (Develop → Dayflow → editor) and call window.dayflowSelfTest()
+                // in the console after backing up your day.
             case "change":
                 if let value = body["value"] as? String {
                     lastEmittedMarkdown = value
@@ -355,7 +348,16 @@ struct MarkdownWebEditor: NSViewRepresentable {
         function runSequence(seq) {
             reset();
             for (const ch of seq) typeChar(ch);
-            return editor.storage.markdown.getMarkdown();
+            const md = editor.storage.markdown.getMarkdown();
+            const json = editor.getJSON();
+            const firstType = (json.content && json.content[0] && json.content[0].type) || 'empty';
+            // dive one level for nested first item
+            let secondType = null;
+            const c0 = json.content && json.content[0];
+            if (c0 && c0.content && c0.content[0]) {
+                secondType = c0.content[0].type;
+            }
+            return { md, top: firstType, inner: secondType };
         }
 
         const results = {
