@@ -114,8 +114,6 @@ struct MarkdownWebEditor: NSViewRepresentable {
     <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
-    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/theme/toastui-editor-dark.min.css">
     <style>
     html, body {
         margin: 0;
@@ -126,109 +124,98 @@ struct MarkdownWebEditor: NSViewRepresentable {
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui;
         -webkit-font-smoothing: antialiased;
     }
-    #editor { height: 100vh; }
+    #editor {
+        height: 100vh;
+        overflow-y: auto;
+    }
+    .ProseMirror {
+        outline: none;
+        padding: 28px 36px;
+        min-height: calc(100vh - 56px);
+        font-size: 15px;
+        line-height: 1.75;
+        color: rgba(255,255,255,0.92);
+        caret-color: #f79e33;
+    }
+    .ProseMirror p { margin: 0.35em 0; }
+    .ProseMirror h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin: 0.7em 0 0.3em; color: #fff; }
+    .ProseMirror h2 { font-size: 22px; font-weight: 600; margin: 0.6em 0 0.3em; color: #fff; }
+    .ProseMirror h3 { font-size: 18px; font-weight: 600; margin: 0.5em 0 0.2em; color: rgba(255,255,255,0.9); }
+    .ProseMirror h4 { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.85); }
+    .ProseMirror ul, .ProseMirror ol { padding-left: 1.5em; margin: 0.3em 0; }
+    .ProseMirror li { margin: 0.2em 0; }
+    .ProseMirror ul li::marker { color: rgba(255,255,255,0.4); }
 
-    /* Toast UI dark theme overrides — strip chrome, match dayflow palette. */
-    .toastui-editor-defaultUI {
-        background: transparent !important;
-        border: none !important;
+    /* Task list — TipTap renders <ul data-type="taskList"> with <li data-checked> */
+    .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+    .ProseMirror ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 8px; }
+    .ProseMirror ul[data-type="taskList"] li > label {
+        margin-top: 5px;
+        flex-shrink: 0;
     }
-    .toastui-editor-toolbar { display: none !important; }
-    .toastui-editor-mode-switch { display: none !important; }
-    .toastui-editor-md-tab-container { display: none !important; }
-    .toastui-editor-main { background: transparent !important; }
-    .toastui-editor-main-container { background: transparent !important; }
-    .toastui-editor-ww-container { background: transparent !important; }
-    .toastui-editor-md-container { background: transparent !important; }
-    .toastui-editor .ProseMirror {
-        background: transparent !important;
-        color: rgba(255,255,255,0.92) !important;
-        padding: 28px 32px !important;
-        font-size: 15px !important;
-        line-height: 1.75 !important;
-        outline: none !important;
-        min-height: 100vh !important;
-    }
-    /* Headings */
-    .toastui-editor .ProseMirror h1 { font-size: 28px !important; font-weight: 700 !important; margin: 0.7em 0 0.3em !important; letter-spacing: -0.5px; color: #fff !important; border: none !important; }
-    .toastui-editor .ProseMirror h2 { font-size: 22px !important; font-weight: 600 !important; margin: 0.6em 0 0.3em !important; color: #fff !important; border: none !important; }
-    .toastui-editor .ProseMirror h3 { font-size: 18px !important; font-weight: 600 !important; margin: 0.5em 0 0.2em !important; color: rgba(255,255,255,0.9) !important; border: none !important; }
-    .toastui-editor .ProseMirror h4, .toastui-editor .ProseMirror h5, .toastui-editor .ProseMirror h6 { font-size: 15px !important; font-weight: 600 !important; color: rgba(255,255,255,0.8) !important; }
-    /* Paragraphs */
-    .toastui-editor .ProseMirror p { margin: 0.35em 0 !important; }
-    /* Lists */
-    .toastui-editor .ProseMirror ul, .toastui-editor .ProseMirror ol { padding-left: 1.4em !important; }
-    .toastui-editor .ProseMirror li { margin: 0.2em 0 !important; }
-    .toastui-editor .ProseMirror ul > li::marker { color: rgba(255,255,255,0.45); }
-    /* Task list (checkbox) */
-    .toastui-editor .ProseMirror .task-list-item { padding-left: 24px !important; position: relative; list-style: none; }
-    .toastui-editor .ProseMirror .task-list-item::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 5px;
+    .ProseMirror ul[data-type="taskList"] li > label > input[type="checkbox"] {
         width: 16px;
         height: 16px;
-        border: 1.5px solid rgba(140, 148, 160, 0.9);
-        border-radius: 4px;
-        background: transparent;
+        accent-color: #4cc66e;
         cursor: pointer;
     }
-    .toastui-editor .ProseMirror .task-list-item.checked::before {
-        background: #4cc66e;
-        border-color: #4cc66e;
+    .ProseMirror ul[data-type="taskList"] li > div {
+        flex: 1;
+        min-width: 0;
     }
-    .toastui-editor .ProseMirror .task-list-item.checked::after {
-        content: "";
-        position: absolute;
-        left: 4px;
-        top: 8px;
-        width: 8px;
-        height: 5px;
-        border-left: 2px solid white;
-        border-bottom: 2px solid white;
-        transform: rotate(-45deg);
-    }
-    .toastui-editor .ProseMirror .task-list-item.checked {
+    .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
         color: rgba(255,255,255,0.45);
         text-decoration: line-through;
     }
-    /* Inline code & blocks */
-    .toastui-editor .ProseMirror code {
-        background: rgba(255,255,255,0.07) !important;
-        color: #f79e33 !important;
+
+    .ProseMirror code {
+        background: rgba(255,255,255,0.08);
+        color: #f79e33;
         border-radius: 4px;
         padding: 1px 5px;
         font-family: ui-monospace, "SF Mono", monospace;
         font-size: 13px;
     }
-    .toastui-editor .ProseMirror pre {
-        background: rgba(255,255,255,0.05) !important;
+    .ProseMirror pre {
+        background: rgba(255,255,255,0.05);
         border-radius: 6px;
-        padding: 10px 12px !important;
+        padding: 10px 12px;
+        overflow-x: auto;
     }
-    /* Blockquote */
-    .toastui-editor .ProseMirror blockquote {
-        border-left: 3px solid rgba(247, 158, 51, 0.6) !important;
-        background: rgba(255,255,255,0.03) !important;
-        color: rgba(255,255,255,0.75) !important;
-        padding: 4px 14px !important;
-        margin: 0.6em 0 !important;
+    .ProseMirror pre code { background: transparent; padding: 0; }
+    .ProseMirror blockquote {
+        border-left: 3px solid rgba(247, 158, 51, 0.6);
+        background: rgba(255,255,255,0.03);
+        color: rgba(255,255,255,0.75);
+        padding: 4px 14px;
+        margin: 0.6em 0;
     }
-    /* Selection */
-    .toastui-editor .ProseMirror ::selection {
-        background: rgba(247, 158, 51, 0.32);
-    }
-    /* Placeholder */
-    .toastui-editor .ProseMirror p.placeholder::before {
-        color: rgba(255,255,255,0.25) !important;
+    .ProseMirror hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 1.2em 0; }
+    .ProseMirror strong { color: #fff; font-weight: 700; }
+    .ProseMirror em { color: rgba(255,255,255,0.95); }
+    .ProseMirror a { color: #f79e33; text-decoration: underline; }
+    .ProseMirror ::selection { background: rgba(247, 158, 51, 0.32); }
+
+    /* Placeholder (empty doc only) */
+    .ProseMirror p.is-editor-empty:first-child::before {
+        content: attr(data-placeholder);
+        color: rgba(255,255,255,0.25);
+        float: left;
+        height: 0;
+        pointer-events: none;
     }
     </style>
     </head>
     <body>
     <div id="editor"></div>
-    <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
-    <script>
+    <script type="module">
+    import { Editor } from 'https://esm.sh/@tiptap/core@2.10.3';
+    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.10.3';
+    import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2.10.3';
+    import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2.10.3';
+    import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.10.3';
+    import { Markdown } from 'https://esm.sh/tiptap-markdown@0.8.10';
+
     let editor = null;
     let lastEmitted = "";
 
@@ -243,30 +230,38 @@ struct MarkdownWebEditor: NSViewRepresentable {
 
     window.dayflowSetMarkdown = function(md) {
         if (!editor) return;
-        if (editor.getMarkdown() === md) return;
+        const current = editor.storage.markdown.getMarkdown();
+        if (current === md) return;
         lastEmitted = md;
-        editor.setMarkdown(md);
+        editor.commands.setContent(md, false);
     };
 
-    window.addEventListener("DOMContentLoaded", () => {
-        editor = new toastui.Editor({
-            el: document.querySelector("#editor"),
-            height: "100%",
-            theme: "dark",
-            initialEditType: "wysiwyg",     // Notion-style: `-` instantly becomes a bullet,
-                                            // `## ` instantly becomes a heading.
-            previewStyle: "tab",
-            hideModeSwitch: true,
-            toolbarItems: [],
-            usageStatistics: false,
-            placeholder: "오늘 할 일을 markdown 으로 적어봐",
-            events: {
-                change: () => {
-                    postChange(editor.getMarkdown());
-                }
-            }
-        });
-        postReady();
+    editor = new Editor({
+        element: document.querySelector('#editor'),
+        extensions: [
+            StarterKit,
+            TaskList,
+            TaskItem.configure({ nested: true }),
+            Placeholder.configure({
+                placeholder: '## 오늘\\n- [ ] 첫 할 일을 적어봐\\n\\n# / ## 헤더, - 리스트, [ ] 체크박스 — 입력 즉시 변환'
+            }),
+            Markdown.configure({
+                html: false,
+                tightLists: true,
+                bulletListMarker: '-',
+                linkify: false,
+                breaks: false,
+            })
+        ],
+        content: '',
+        autofocus: true,
+        onUpdate: ({ editor }) => {
+            const md = editor.storage.markdown.getMarkdown();
+            postChange(md);
+        },
+        onCreate: () => {
+            postReady();
+        }
     });
     </script>
     </body>
