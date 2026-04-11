@@ -30,6 +30,10 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 enum AppStorageKeys {
     static let dayEditorFontSize       = "dayflow.editor.fontSize"
     static let monthPlanEditorFontSize = "dayflow.editor.fontSize.monthPlan"
+    /// Default `.off` (enforced at each `@AppStorage` call site) —
+    /// holidays are opt-in so first-launch users see the calendar
+    /// clean until they ask for KR/US markers.
+    static let holidaysMode            = "dayflow.holidays.mode"
 
     static let dayEditorFontSizeDefault: Double       = 15
     static let monthPlanEditorFontSizeDefault: Double = 13

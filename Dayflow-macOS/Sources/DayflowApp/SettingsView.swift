@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var language: AppLanguage = LanguagePreference.current
     @AppStorage(AppStorageKeys.dayEditorFontSize) private var dayEditorFontSize: Double = AppStorageKeys.dayEditorFontSizeDefault
     @AppStorage(AppStorageKeys.monthPlanEditorFontSize) private var monthPlanEditorFontSize: Double = AppStorageKeys.monthPlanEditorFontSizeDefault
+    @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
     @State private var saved: Bool = false
     @State private var hasExisting: Bool = false
     @State private var errorMessage: String?
@@ -108,6 +109,19 @@ struct SettingsView: View {
             fontSizeSlider(label: L("settings.editor_font_size.month_plan"),
                            hint: nil,
                            value: $monthPlanEditorFontSize)
+
+            field(
+                label: L("settings.holidays"),
+                hint: L("settings.holidays.hint")
+            ) {
+                Picker("", selection: $holidaysMode) {
+                    ForEach(HolidayDisplayMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
 
             HStack(spacing: 8) {
                 Button(L("settings.save")) { save() }

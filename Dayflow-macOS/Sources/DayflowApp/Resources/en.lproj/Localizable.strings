@@ -90,6 +90,14 @@
 "settings.editor_font_size.hint" = "Body font size. Updates live — no restart needed.";
 "settings.editor_font_size.day" = "Day editor font size";
 "settings.editor_font_size.month_plan" = "Month plan editor font size";
+
+/* Holidays */
+"settings.holidays" = "Holidays";
+"settings.holidays.hint" = "Mark public holidays on the Week and Month views. Data is bundled with the app — no network.";
+"settings.holidays.off" = "Off";
+"settings.holidays.kr" = "Korea";
+"settings.holidays.us" = "US";
+"settings.holidays.both" = "Both";
 "settings.language.restart_hint" = "Language changes take effect after you relaunch Dayflow.";
 
 /* LLM errors */

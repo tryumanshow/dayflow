@@ -92,6 +92,14 @@
 "settings.editor_font_size.day" = "Day 에디터 글자 크기";
 "settings.editor_font_size.month_plan" = "이달 계획 에디터 글자 크기";
 
+/* Holidays */
+"settings.holidays" = "공휴일";
+"settings.holidays.hint" = "주간/월간 뷰에 공휴일 표시. 데이터는 앱 번들 내장 — 네트워크 안 씀.";
+"settings.holidays.off" = "끄기";
+"settings.holidays.kr" = "한국";
+"settings.holidays.us" = "미국";
+"settings.holidays.both" = "둘 다";
+
 /* LLM errors */
 "llm.error.missing_api_key" = "%@ API 키가 없어. 메뉴 → Dayflow → Settings… 에서 등록해.";
 "llm.error.bad_response" = "LLM API %d at %@\n%@";
