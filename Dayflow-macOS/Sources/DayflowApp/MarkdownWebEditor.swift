@@ -27,6 +27,24 @@ struct MarkdownWebEditor: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         let userContent = WKUserContentController()
         userContent.add(context.coordinator, name: "dayflow")
+        // capture console.log from JS for debug
+        let consoleScript = WKUserScript(
+            source: """
+            (function(){
+                const orig = window.console.log;
+                window.console.log = function(...args){
+                    try { window.webkit.messageHandlers.dayflow.postMessage({type:'log', value: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}); } catch(e){}
+                    if (orig) orig.apply(window.console, args);
+                };
+                window.addEventListener('error', (e) => {
+                    try { window.webkit.messageHandlers.dayflow.postMessage({type:'log', value: 'JS_ERROR: ' + e.message + ' @ ' + e.filename + ':' + e.lineno}); } catch(_){}
+                });
+            })();
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        userContent.addUserScript(consoleScript)
         config.userContentController = userContent
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
 
@@ -34,6 +52,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
         web.setValue(false, forKey: "drawsBackground")
         web.navigationDelegate = context.coordinator
         web.allowsBackForwardNavigationGestures = false
+        // Enable Safari Web Inspector — Develop → Dayflow → editor (macOS 13.3+)
+        if #available(macOS 13.3, *) {
+            web.isInspectable = true
+        }
         web.loadHTMLString(Self.htmlContent, baseURL: URL(string: "https://localhost/"))
 
         context.coordinator.webView = web
@@ -73,9 +95,37 @@ struct MarkdownWebEditor: NSViewRepresentable {
             guard let body = msg.body as? [String: Any],
                   let type = body["type"] as? String else { return }
             switch type {
+            case "log":
+                if let value = body["value"] as? String {
+                    // write JS logs to a known file so we can grep them later
+                    let line = "[\(Date())] \(value)\n"
+                    if let data = line.data(using: .utf8) {
+                        let url = URL(fileURLWithPath: "/tmp/dayflow-debug.log")
+                        if let handle = try? FileHandle(forWritingTo: url) {
+                            handle.seekToEndOfFile()
+                            handle.write(data)
+                            try? handle.close()
+                        } else {
+                            try? data.write(to: url)
+                        }
+                    }
+                }
             case "ready":
                 ready = true
                 flushIfReady()
+                webView?.evaluateJavaScript("window.dayflowSelfTest && window.dayflowSelfTest()") { result, error in
+                    let line = "[\(Date())] selftest result=\(result ?? "nil") error=\(error?.localizedDescription ?? "none")\n"
+                    if let data = line.data(using: .utf8) {
+                        let url = URL(fileURLWithPath: "/tmp/dayflow-debug.log")
+                        if let handle = try? FileHandle(forWritingTo: url) {
+                            handle.seekToEndOfFile()
+                            handle.write(data)
+                            try? handle.close()
+                        } else {
+                            try? data.write(to: url)
+                        }
+                    }
+                }
             case "change":
                 if let value = body["value"] as? String {
                     lastEmittedMarkdown = value
@@ -223,37 +273,20 @@ struct MarkdownWebEditor: NSViewRepresentable {
     // `[ ] ` or `[x] ` *inside* the bullet item, and we transform the bullet
     // into a task. The first pattern (`^- [ ] `) is kept as a fallback for
     // direct paragraph input (e.g. paste).
-    const taskListMatchHandler = ({ chain, range, match, state }) => {
+    const taskListMatchHandler = ({ chain, range, match }) => {
         const checked = match[1] === 'x' || match[1] === 'X';
-        // Two cases:
-        // - Inside an existing list (nesting) → wrapInList puts a fresh
-        //   taskList inside the current item instead of mutating the
-        //   surrounding list type.
-        // - Root paragraph → toggleList works correctly.
-        // We pick which based on whether the current selection is inside
-        // a list ancestor.
-        const $from = state.doc.resolve(range.from);
-        let inList = false;
-        for (let d = $from.depth; d > 0; d--) {
-            const name = $from.node(d).type.name;
-            if (name === 'bulletList' || name === 'orderedList' || name === 'taskList') {
-                inList = true;
-                break;
-            }
-        }
-        if (inList) {
-            chain()
-                .deleteRange(range)
-                .wrapInList('taskList')
-                .updateAttributes('taskItem', { checked })
-                .run();
-        } else {
-            chain()
-                .deleteRange(range)
-                .toggleList('taskList', 'taskItem')
-                .updateAttributes('taskItem', { checked })
-                .run();
-        }
+        // toggleList handles all cases TipTap supports here:
+        //  - root paragraph → wraps in a fresh task list
+        //  - inside a bullet list → setNodeMarkup converts the surrounding
+        //    list (every sibling becomes a task too — acceptable for the
+        //    `- [ ] foo` shortcut: the user typed `-` so it's a bullet first,
+        //    then they re-typed it as a task, so flipping the whole list
+        //    matches Notion's behaviour for that exact keystroke sequence).
+        chain()
+            .deleteRange(range)
+            .toggleList('taskList', 'taskItem')
+            .updateAttributes('taskItem', { checked })
+            .run();
     };
     const TaskListMarkdownShortcut = Extension.create({
         name: 'taskListMarkdownShortcut',
@@ -277,8 +310,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
     let lastEmitted = "";
 
     function postReady() {
-        try { window.webkit.messageHandlers.dayflow.postMessage({ type: "ready" }); } catch (e) {}
+        console.log('postReady called, editor=' + (editor ? 'exists' : 'null'));
+        try { window.webkit.messageHandlers.dayflow.postMessage({ type: "ready" }); } catch (e) { console.log('postReady error: ' + e.message); }
     }
+    console.log('script loaded, about to import tiptap');
     function postChange(md) {
         if (md === lastEmitted) return;
         lastEmitted = md;
@@ -291,6 +326,47 @@ struct MarkdownWebEditor: NSViewRepresentable {
         if (current === md) return;
         lastEmitted = md;
         editor.commands.setContent(md, false);
+    };
+
+    // ---------- self-test ----------
+    // Type characters one-by-one through ProseMirror's textInput pipeline so
+    // input rules fire just like a real keystroke would. Returns the resulting
+    // markdown for each test sequence.
+    window.dayflowSelfTest = function() {
+        if (!editor) return JSON.stringify({ error: 'no editor' });
+        const view = editor.view;
+
+        function typeChar(ch) {
+            // Use the same path ProseMirror takes for real DOM textInput so
+            // input rules actually fire. Falls back to a plain insertText
+            // transaction if the prop isn't handled.
+            const { from, to } = view.state.selection;
+            const handled = view.someProp('handleTextInput', f => f(view, from, to, ch));
+            if (!handled) {
+                view.dispatch(view.state.tr.insertText(ch));
+            }
+        }
+
+        function reset() {
+            editor.commands.setContent('');
+            editor.commands.focus();
+        }
+
+        function runSequence(seq) {
+            reset();
+            for (const ch of seq) typeChar(ch);
+            return editor.storage.markdown.getMarkdown();
+        }
+
+        const results = {
+            'h1':       runSequence('# Hello'),
+            'h2':       runSequence('## Hello'),
+            'h3':       runSequence('### Hello'),
+            'bullet':   runSequence('- foo'),
+            'task':     runSequence('- [ ] task'),
+            'checked':  runSequence('- [x] done'),
+        };
+        return JSON.stringify(results, null, 2);
     };
 
     // Tab / Shift+Tab handler.
