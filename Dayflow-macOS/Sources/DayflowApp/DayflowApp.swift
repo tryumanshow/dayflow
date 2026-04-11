@@ -44,5 +44,9 @@ struct DayflowApp: App {
             Text(store.menuBarText)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView()
+        }
     }
 }

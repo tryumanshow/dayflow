@@ -87,17 +87,16 @@ private struct QuickThrowView: View {
     private func submit() {
         let v = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !v.isEmpty else { onDone(); return }
-        // append a checkbox line to the target day's markdown body
         var body = DayflowDB.shared.getDayNote(date: date)
         if !body.isEmpty && !body.hasSuffix("\n") {
             body.append("\n")
         }
         body.append("- [ ] \(v)\n")
         DayflowDB.shared.saveDayNote(date: date, body: body)
-        // if we're throwing onto the currently-shown day, refresh in place
-        if Calendar.current.isDate(date, inSameDayAs: store.selectedDate) {
-            store.refresh(force: true)
-        }
+        // Hand the new body to the store so the in-memory cache stays in
+        // sync with the DB. Cheap path — avoids the month-range SQL query
+        // that `refresh(force:)` would re-run on every toss.
+        store.applyExternalEdit(date: date, body: body)
         title = ""
         onDone()
     }

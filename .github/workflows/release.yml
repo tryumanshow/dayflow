@@ -1,0 +1,66 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # Step 1 — release-please scans conventional-commits on main and either
+  # opens/updates a "chore(main): release x.y.z" PR, or (when that PR is
+  # merged) cuts the git tag + GitHub Release shell.
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Step 2 — when release-please actually cut a release, this job builds the
+  # macOS .app on an Apple Silicon runner, zips it, and uploads it as a
+  # release asset so users can download from the GitHub Releases page.
+  build-macos:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Install Python (for icon renderer)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python3 -m pip install --upgrade pip && python3 -m pip install Pillow
+
+      - name: Build app bundle
+        working-directory: Dayflow-macOS
+        env:
+          DAYFLOW_VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          ./build.sh
+
+      - name: Zip app bundle
+        working-directory: Dayflow-macOS
+        run: |
+          ditto -c -k --keepParent Dayflow.app "Dayflow-${{ needs.release-please.outputs.version }}.zip"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+            "Dayflow-macOS/Dayflow-${{ needs.release-please.outputs.version }}.zip" \
+            --clobber

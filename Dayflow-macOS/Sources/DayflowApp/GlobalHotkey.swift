@@ -42,7 +42,7 @@ final class GlobalHotkey {
             return noErr
         }, 1, &eventType, selfPtr, &eventHandler)
 
-        var hkID = EventHotKeyID(signature: OSType(0x44464C57 /* "DFLW" */), id: 1)
+        let hkID = EventHotKeyID(signature: OSType(0x44464C57 /* "DFLW" */), id: 1)
         RegisterEventHotKey(keyCode, modifiers, hkID, GetApplicationEventTarget(), 0, &hotKeyRef)
     }
 

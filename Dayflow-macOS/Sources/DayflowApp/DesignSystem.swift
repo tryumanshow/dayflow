@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Centralised design tokens for dayflow.
+/// Centralised design tokens for Dayflow.
 ///
 /// Calibrated from the design-taste-frontend skill (DESIGN_VARIANCE 8 /
 /// MOTION_INTENSITY 6 / VISUAL_DENSITY 4) — anti-emoji, single accent,
@@ -14,6 +14,9 @@ enum DS {
         static let xl: CGFloat = 24
         static let xxl: CGFloat = 36
         static let huge: CGFloat = 56
+        /// Extra breathing room above primary focal elements (display titles,
+        /// metric numbers). Used where `xl` felt cramped against chrome.
+        static let breathe: CGFloat = 44
     }
 
     enum Radius {
@@ -29,6 +32,10 @@ enum DS {
         static let snap: Animation = .interactiveSpring(response: 0.18, dampingFraction: 0.86, blendDuration: 0.1)
         static let quick: Animation = .spring(response: 0.28, dampingFraction: 0.84)
         static let smooth: Animation = .easeInOut(duration: 0.22)
+        /// View transitions (Day ↔ Week ↔ Month). Spring physics read as
+        /// "look at me", which is wrong for navigation. A soft ease-out lets
+        /// the transition happen without drawing attention.
+        static let settle: Animation = .easeOut(duration: 0.15)
     }
 
     enum FontStyle {
@@ -42,11 +49,119 @@ enum DS {
     }
 }
 
+// MARK: - Date formatters ------------------------------------------------------
+
+/// Cached `DateFormatter` instances. `DateFormatter()` init is expensive;
+/// the week view alone hits format helpers 14+ times per render, the month
+/// view 42+ times. Hoisting these into `static let` turns render-time
+/// allocations into property lookups.
+enum DF {
+    static let ymd: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    static let isoTimestamp: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return f
+    }()
+
+    static let koWeekday: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "E"
+        return f
+    }()
+
+    static let dayNumber: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d"
+        return f
+    }()
+
+    static let koMonthTitle: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yyyy년 M월"
+        return f
+    }()
+
+    static let koFullDate: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yyyy년 M월 d일 (E)"
+        return f
+    }()
+
+    static let koShortDate: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "M월 d일 (E)"
+        return f
+    }()
+
+    static let koShortMonthDay: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "M월 d일"
+        return f
+    }()
+}
+
+// MARK: - Markdown line parsing ------------------------------------------------
+
+/// Classifies a single trimmed markdown line. BlockNote's
+/// `blocksToMarkdownLossy` emits `*   [x] foo` (multi-space after the
+/// bullet), which is still valid CommonMark — all parsing sites need to
+/// tolerate that, so we centralise the rule here.
+enum MarkdownLine {
+    case heading(level: Int, text: String)
+    case task(checked: Bool, text: String)
+    case bullet(text: String)
+    case plain(text: String)
+
+    /// Parse a single trimmed line. Returns `nil` only when the line is
+    /// empty; every other input yields one of the four cases.
+    static func parse(_ rawTrimmed: String) -> MarkdownLine? {
+        let trimmed = rawTrimmed.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return nil }
+
+        if trimmed.hasPrefix("### ") { return .heading(level: 3, text: String(trimmed.dropFirst(4))) }
+        if trimmed.hasPrefix("## ")  { return .heading(level: 2, text: String(trimmed.dropFirst(3))) }
+        if trimmed.hasPrefix("# ")   { return .heading(level: 1, text: String(trimmed.dropFirst(2))) }
+
+        guard let first = trimmed.first, first == "-" || first == "*" || first == "+" else {
+            return .plain(text: trimmed)
+        }
+        var rest = trimmed.dropFirst()
+        rest = rest.drop(while: { $0 == " " || $0 == "\t" })
+
+        if rest.hasPrefix("["), rest.count >= 3 {
+            let inside = rest.dropFirst()
+            if let mark = inside.first {
+                let close = inside.index(after: inside.startIndex)
+                if inside[close] == "]" {
+                    var after = inside.dropFirst(2)
+                    after = after.drop(while: { $0 == " " || $0 == "\t" })
+                    switch mark {
+                    case " ":
+                        return .task(checked: false, text: String(after))
+                    case "x", "X", "✓":
+                        return .task(checked: true,  text: String(after))
+                    default: break
+                    }
+                }
+            }
+        }
+        return .bullet(text: String(rest))
+    }
+}
+
 // MARK: - Color palette --------------------------------------------------------
-//
-// One warm accent (dfAccent), one positive (dfDone), and a slate neutral
-// scale. No purple, no blue glows, no oversaturated chrome — see
-// design-taste-frontend rule 2 (Color Calibration) and rule 7 (AI Tells).
 
 extension Color {
     /// Warm signature accent — used sparingly for highlight, focus, today.
@@ -58,19 +173,20 @@ extension Color {
     static let dfCanvas = Color(red: 0.06, green: 0.07, blue: 0.085)
     /// Slightly raised surface (cards, side rail).
     static let dfSurface = Color(red: 0.10, green: 0.11, blue: 0.13)
+    /// Quiet panel — 2% brighter than canvas, used for side rails so the
+    /// divide reads even without a border. Replaces `dfSurface.opacity(0.4)`.
+    static let dfQuiet = Color(red: 0.08, green: 0.09, blue: 0.105)
     /// Hairline border for surface separation.
     static let dfHairline = Color.white.opacity(0.06)
-
-    static func status(_ s: TaskStatus) -> Color {
-        s == .done ? .dfDone : .dfTodo
-    }
+    /// Even softer hairline for repeated structures (grid cells) where the
+    /// standard hairline accumulates into visual noise.
+    static let dfHairlineSoft = Color.white.opacity(0.035)
 }
 
 // MARK: - Card chrome ----------------------------------------------------------
 
 /// Reusable card surface. Used sparingly — design-taste rule 4 says cards
-/// should be the exception, not the rule. We give it 1px hairline border
-/// and a tinted shadow.
+/// should be the exception, not the rule.
 struct DSCard<Content: View>: View {
     var padding: CGFloat = DS.Space.lg
     var background: Color = .dfSurface
@@ -92,7 +208,6 @@ struct DSCard<Content: View>: View {
 }
 
 /// Section header — used for grouping things without resorting to nested cards.
-/// Tight tracking, small caps, secondary colour.
 struct SectionLabel: View {
     let text: String
     var body: some View {
@@ -100,27 +215,6 @@ struct SectionLabel: View {
             .font(.system(size: 10, weight: .semibold, design: .default))
             .tracking(1.2)
             .foregroundStyle(.secondary)
-    }
-}
-
-/// Status pill — used in the per-task detail view.
-struct StatusPill: View {
-    let status: TaskStatus
-    var body: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(Color.status(status))
-                .frame(width: 6, height: 6)
-            Text(status == .done ? "DONE" : "TODO")
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(Color.status(status))
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(
-            Capsule().fill(Color.status(status).opacity(0.14))
-        )
     }
 }
 
@@ -147,6 +241,31 @@ struct EmptyState: View {
         }
         .padding(DS.Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Compact brand mark — mirrors the app icon (warm 3/4 arc around a bold D).
+/// Used in the navigation bar so the nav logo and Dock icon read as the same
+/// thing. Sized parametrically so the same view covers 14pt nav usage and
+/// larger hero surfaces.
+struct DayflowLogo: View {
+    var size: CGFloat = 18
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .trim(from: 0, to: 0.75)
+                .stroke(
+                    Color.dfAccent,
+                    style: StrokeStyle(lineWidth: size * 0.14, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+            Text("D")
+                .font(.system(size: size * 0.58, weight: .bold))
+                .foregroundStyle(.white)
+                .offset(x: size * 0.015)
+        }
+        .frame(width: size, height: size)
     }
 }
 

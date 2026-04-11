@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build dayflow native macOS app and wrap in a .app bundle.
+# Build Dayflow native macOS app and wrap in a .app bundle.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -9,6 +9,30 @@ BUNDLE_ID="com.swryu.dayflow"
 EXEC_NAME="DayflowApp"
 APP_DIR="${APP_NAME}.app"
 
+# Version sourcing — precedence: env var → release-please manifest → git tag → fallback.
+# release-please maintains `.release-please-manifest.json` at the repo root
+# as the canonical version number, so CI and local builds read from the
+# same place. CI overrides via DAYFLOW_VERSION env to skip the lookup.
+MANIFEST_PATH="../.release-please-manifest.json"
+if [[ -n "${DAYFLOW_VERSION:-}" ]]; then
+    APP_VERSION="${DAYFLOW_VERSION}"
+elif [[ -f "${MANIFEST_PATH}" ]] && command -v python3 >/dev/null 2>&1; then
+    APP_VERSION="$(python3 -c "import json,sys; print(json.load(open('${MANIFEST_PATH}')).get('.', '0.0.0'))")"
+elif command -v git >/dev/null 2>&1 && git describe --tags --abbrev=0 >/dev/null 2>&1; then
+    APP_VERSION="$(git describe --tags --abbrev=0 | sed 's/^v//')"
+else
+    APP_VERSION="0.0.0"
+fi
+
+# Build number — monotonic integer from total commit count. Guarantees Apple
+# won't reject updates with the same short version during development.
+if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+    BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+else
+    BUILD_NUMBER="1"
+fi
+
+echo "==> version ${APP_VERSION} (build ${BUILD_NUMBER})"
 echo "==> swift build (release)"
 swift build -c release
 
@@ -18,6 +42,13 @@ mkdir -p "${APP_DIR}/Contents/MacOS"
 mkdir -p "${APP_DIR}/Contents/Resources"
 
 cp ".build/release/${EXEC_NAME}" "${APP_DIR}/Contents/MacOS/${EXEC_NAME}"
+
+# Regenerate .icns from the Pillow-based renderer and copy into Resources.
+if command -v python3 >/dev/null 2>&1; then
+    echo "==> rendering app icon"
+    python3 tools/make_icon.py >/dev/null
+    cp "Dayflow.icns" "${APP_DIR}/Contents/Resources/Dayflow.icns"
+fi
 
 cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -36,16 +67,18 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
     <string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key>
     <string>${APP_NAME}</string>
+    <key>CFBundleIconFile</key>
+    <string>Dayflow</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>${APP_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUMBER}</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSHumanReadableCopyright</key>
-    <string>swryu</string>
+    <string>Copyright © 2026 tryumanshow. All rights reserved.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>

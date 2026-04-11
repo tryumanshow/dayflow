@@ -1,0 +1,111 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+      - "chore/**"
+      - "refactor/**"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast lane — parse release-please config and enforce the basic repo
+  # hygiene that doesn't need a macOS runner. Runs on every push.
+  lint-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release-please config JSON
+        run: |
+          python3 -c "import json,sys; json.load(open('.release-please-config.json'))"
+          python3 -c "import json,sys; json.load(open('.release-please-manifest.json'))"
+
+      - name: Check README links
+        run: |
+          for path in Dayflow-macOS/docs/screenshots/day.png \
+                      Dayflow-macOS/docs/screenshots/week.png \
+                      Dayflow-macOS/docs/screenshots/month.png \
+                      Dayflow-macOS/docs/screenshots/settings.png \
+                      CONTRIBUTING.md; do
+            if ! grep -q "$path" README.md; then
+              echo "::warning::README.md does not reference $path"
+            fi
+            if [ ! -e "$path" ]; then
+              echo "::error::$path referenced by README.md is missing"; exit 1
+            fi
+          done
+
+      - name: Verify .gitignore keeps personal data out
+        run: |
+          for pattern in dayflow.db .env "*.pem" "*.key"; do
+            if ! grep -qF "$pattern" .gitignore; then
+              echo "::error::.gitignore missing $pattern"; exit 1
+            fi
+          done
+
+  # Main lane — actually compile the macOS target. Warnings are promoted to
+  # errors so future commits can't sneak in "variable never mutated" or
+  # invalid-escape regressions the way `hkID` did.
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (for icon renderer)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python3 -m pip install --upgrade pip && python3 -m pip install Pillow
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version || true
+          sw_vers
+
+      - name: swift build (release, warnings as errors)
+        working-directory: Dayflow-macOS
+        run: |
+          swift build -c release -Xswiftc -warnings-as-errors
+
+      - name: swift test
+        working-directory: Dayflow-macOS
+        run: |
+          # The project has no test target yet. When one is added, this step
+          # fails loud if tests start regressing. Until then, surface a
+          # notice so we don't forget to wire it up.
+          if swift package describe --type text 2>/dev/null | grep -q "test"; then
+            swift test -c release
+          else
+            echo "::notice::no test target yet — add one to Package.swift"
+          fi
+
+      - name: End-to-end bundle check
+        working-directory: Dayflow-macOS
+        run: |
+          ./build.sh
+          test -f Dayflow.app/Contents/MacOS/DayflowApp
+          test -f Dayflow.app/Contents/Resources/Dayflow.icns
+          test -f Dayflow.app/Contents/Info.plist
+          # Confirm the version was actually injected — a regression that
+          # leaves a literal `${APP_VERSION}` in the plist would otherwise
+          # slip through.
+          if grep -q '\${APP_VERSION}' Dayflow.app/Contents/Info.plist; then
+            echo "::error::Info.plist still has unexpanded \${APP_VERSION} placeholder"
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+            Dayflow.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" \
+            Dayflow.app/Contents/Info.plist

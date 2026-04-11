@@ -22,23 +22,17 @@ extension Array {
 @MainActor
 @Observable
 final class DayflowStore {
-    // navigation
     var viewMode: CalendarViewMode = .day
     var selectedDate: Date = Calendar.current.startOfDay(for: Date())
 
-    // markdown body for the current day
     var dayBody: String = ""
     private var dayBodyLoadedFor: String = ""
 
-    // bulk markdown bodies for week/month views
-    var weekBodies: [String: String] = [:]
-    var monthBodies: [String: String] = [:]
+    /// Markdown bodies keyed by `yyyy-MM-dd`, covering the month-grid range
+    /// (which always subsumes the 7-day week range) for the current
+    /// selected date. Both week and month views read from here.
+    var bodies: [String: String] = [:]
 
-    // monthly plan editor
-    var monthPlanBody: String = ""
-    private var monthPlanLoadedFor: String = ""
-
-    // daily review
     var reviewBody: String = ""
     var reviewIsLoading: Bool = false
     var reviewError: String?
@@ -53,21 +47,19 @@ final class DayflowStore {
 
     var menuBarText: String {
         let counts = DayflowDB.parseCheckboxes(dayBody)
-        if counts.open == 0 && counts.done == 0 { return "🌱 dayflow" }
-        if counts.open == 0 { return "✓ done" }
-        return "📋 \(counts.open)"
+        if counts.open == 0 && counts.done == 0 { return "Dayflow" }
+        if counts.open == 0 { return "all done" }
+        return "\(counts.open) open"
     }
 
     // MARK: - navigation
 
     func goToToday() {
-        commitDayBodyIfDirty()
         selectedDate = Calendar.current.startOfDay(for: Date())
         refresh(force: true)
     }
 
     func step(by direction: Int) {
-        commitDayBodyIfDirty()
         let cal = Calendar.current
         let unit: Calendar.Component = {
             switch viewMode {
@@ -83,13 +75,11 @@ final class DayflowStore {
     }
 
     func setMode(_ mode: CalendarViewMode) {
-        commitDayBodyIfDirty()
         viewMode = mode
         refresh(force: true)
     }
 
     func selectDate(_ date: Date) {
-        commitDayBodyIfDirty()
         selectedDate = Calendar.current.startOfDay(for: date)
         refresh(force: true)
     }
@@ -97,24 +87,16 @@ final class DayflowStore {
     // MARK: - refresh
 
     func refresh(force: Bool = false) {
-        let cal = Calendar.current
         let dayKey = DayflowDB.ymd(selectedDate)
 
-        // load day body if changed
         if force || dayKey != dayBodyLoadedFor {
             dayBody = db.getDayNote(date: selectedDate)
             dayBodyLoadedFor = dayKey
         }
 
-        // bulk load week + month markdown bodies for metrics
-        let weekStart = startOfWeek(selectedDate)
-        let weekEnd = cal.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart
-        weekBodies = db.loadDayNoteRange(start: weekStart, end: weekEnd)
-
         let (monthStart, monthEnd) = monthGridRange(selectedDate)
-        monthBodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
+        bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
 
-        loadMonthPlanIfNeeded()
         loadReview()
     }
 
@@ -143,45 +125,127 @@ final class DayflowStore {
 
     // MARK: - day body editing
 
-    /// Called from the editor on every change. Persists immediately —
-    /// `saveDayNote` is one INSERT, fast enough to fire on each keystroke.
+    /// Called from the editor on every change (post 200ms JS-side debounce).
+    /// Persists immediately — `saveDayNote` is a single INSERT.
     func updateDayBody(_ newValue: String) {
         dayBody = newValue
         db.saveDayNote(date: selectedDate, body: newValue)
-        // mirror to weekly/monthly cache so cells refresh in real time
-        let key = DayflowDB.ymd(selectedDate)
-        weekBodies[key] = newValue
-        monthBodies[key] = newValue
+        bodies[DayflowDB.ymd(selectedDate)] = newValue
     }
 
-    private func commitDayBodyIfDirty() {
-        // updateDayBody already persists eagerly; this is a no-op safety net
-        // for navigation away from a day with unflushed changes.
-        db.saveDayNote(date: selectedDate, body: dayBody)
-    }
-
-    // MARK: - metric helpers (for week/month views)
-
-    func dayCounts(_ date: Date) -> (open: Int, done: Int) {
+    /// Fast path for external edits (Quick Throw, Week checkbox toggles
+    /// for days other than the current one, etc). Updates the in-memory
+    /// cache without re-running the month-range SQL query — which a full
+    /// `refresh(force:)` would do on every call.
+    func applyExternalEdit(date: Date, body: String) {
         let key = DayflowDB.ymd(date)
-        let body = monthBodies[key] ?? weekBodies[key] ?? ""
-        return DayflowDB.parseCheckboxes(body)
-    }
-
-    // MARK: - month plan
-
-    private func loadMonthPlanIfNeeded() {
-        let ym = DayflowDB.ym(selectedDate)
-        if ym != monthPlanLoadedFor {
-            monthPlanBody = db.getMonthPlan(yearMonth: ym)
-            monthPlanLoadedFor = ym
+        if bodies[key] != nil {
+            bodies[key] = body
+        }
+        if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
+            dayBody = body
+            dayBodyLoadedFor = key
         }
     }
 
-    func saveMonthPlan() {
-        let ym = DayflowDB.ym(selectedDate)
-        db.saveMonthPlan(yearMonth: ym, body: monthPlanBody)
-        monthPlanLoadedFor = ym
+    /// Toggle the Nth *preview-visible* task checkbox for a given day without
+    /// leaving the current view. `previewIndex` is the order of the task
+    /// within the week-column preview (which may be clipped to 8 lines and
+    /// skips any line the parser rejects).
+    ///
+    /// We walk the body with the same parser the preview uses and map
+    /// preview index → source line index, then rewrite that single line's
+    /// `[ ]`/`[x]` marker. The rest of the body is left byte-identical.
+    func toggleWeekTask(day: Date, previewIndex: Int) {
+        let key = DayflowDB.ymd(day)
+        let body = bodies[key] ?? db.getDayNote(date: day)
+        guard !body.isEmpty else { return }
+
+        // Split preserving line positions so we can splice one line back in.
+        var lines = body.components(separatedBy: "\n")
+        var previewCount = 0
+        var targetLineIdx: Int?
+
+        for (idx, rawLine) in lines.enumerated() {
+            if previewCount > 8 { break }
+            guard let parsed = MarkdownLine.parse(rawLine) else { continue }
+            if case .task = parsed {
+                if previewCount == previewIndex {
+                    targetLineIdx = idx
+                    break
+                }
+                previewCount += 1
+            } else {
+                previewCount += 1
+            }
+        }
+
+        guard let lineIdx = targetLineIdx else { return }
+        let toggled = toggleTaskMarker(in: lines[lineIdx])
+        guard toggled != lines[lineIdx] else { return }
+        lines[lineIdx] = toggled
+
+        let newBody = lines.joined(separator: "\n")
+        db.saveDayNote(date: day, body: newBody)
+        bodies[key] = newBody
+
+        // If we just toggled today's own note, mirror into `dayBody` so the
+        // Day view will show the flipped state next time it becomes active.
+        if Calendar.current.isDate(day, inSameDayAs: selectedDate) {
+            dayBody = newBody
+        }
+    }
+
+    /// Flip the `[ ]` ↔ `[x]` marker in a single markdown task line,
+    /// preserving indentation, bullet char, and all whitespace.
+    private func toggleTaskMarker(in line: String) -> String {
+        var chars = Array(line)
+        var i = 0
+        // skip leading whitespace
+        while i < chars.count && (chars[i] == " " || chars[i] == "\t") { i += 1 }
+        guard i < chars.count, chars[i] == "-" || chars[i] == "*" || chars[i] == "+" else { return line }
+        i += 1
+        while i < chars.count && (chars[i] == " " || chars[i] == "\t") { i += 1 }
+        guard i + 2 < chars.count, chars[i] == "[" else { return line }
+        let markIdx = i + 1
+        guard chars[i + 2] == "]" else { return line }
+        switch chars[markIdx] {
+        case " ":
+            chars[markIdx] = "x"
+        case "x", "X", "✓":
+            chars[markIdx] = " "
+        default:
+            return line
+        }
+        return String(chars)
+    }
+
+    // MARK: - metric helpers
+
+    func dayCounts(_ date: Date) -> (open: Int, done: Int) {
+        DayflowDB.parseCheckboxes(dayBody(for: date))
+    }
+
+    func dayBody(for date: Date) -> String {
+        bodies[DayflowDB.ymd(date)] ?? ""
+    }
+
+    /// Week-wide aggregate counts (open + done across 7 days) for the week
+    /// containing `selectedDate`.
+    func weekTotals() -> (open: Int, done: Int, trackedDays: Int) {
+        let cal = Calendar.current
+        let start = startOfWeek(selectedDate)
+        var open = 0
+        var done = 0
+        var tracked = 0
+        for offset in 0..<7 {
+            guard let day = cal.date(byAdding: .day, value: offset, to: start) else { continue }
+            let counts = dayCounts(day)
+            if counts.open + counts.done > 0 { tracked += 1 }
+            open += counts.open
+            done += counts.done
+        }
+        return (open, done, tracked)
     }
 
     // MARK: - review
@@ -195,7 +259,7 @@ final class DayflowStore {
         let target = selectedDate
         let body = db.getDayNote(date: target)
         if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let empty = "오늘은 적어둔 게 하나도 없어. 내일은 한 줄이라도 적어보자."
+            let empty = "오늘은 아직 적어둔 게 없어. 괜찮아, 지금 한 줄 적어볼까?"
             reviewBody = empty
             db.saveReview(date: target, body: empty)
             return
@@ -210,7 +274,7 @@ final class DayflowStore {
 
         _Concurrency.Task {
             do {
-                let result = try await AnthropicClient.shared.dailyReview(payload: payload)
+                let result = try await LLMClient.shared.dailyReview(payload: payload)
                 await MainActor.run {
                     self.reviewBody = result
                     self.db.saveReview(date: target, body: result)
@@ -218,7 +282,7 @@ final class DayflowStore {
                 }
             } catch {
                 await MainActor.run {
-                    self.reviewError = "\(error)"
+                    self.reviewError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
                     self.reviewIsLoading = false
                 }
             }
@@ -236,6 +300,9 @@ final class DayflowStore {
         var longestStreak: Int
         var doneByDay: [String: Int]
         var openByDay: [String: Int]
+        /// First non-heading line of the day with the most done items.
+        var standoutLine: String?
+        var standoutDate: String?
     }
 
     func currentMonthStats() -> MonthStats {
@@ -245,7 +312,8 @@ final class DayflowStore {
               let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart),
               let monthEnd = cal.date(byAdding: .day, value: -1, to: nextMonth) else {
             return MonthStats(totalTasks: 0, doneTasks: 0, openTasks: 0, completionRate: 0,
-                              busiestWeekday: nil, longestStreak: 0, doneByDay: [:], openByDay: [:])
+                              busiestWeekday: nil, longestStreak: 0, doneByDay: [:], openByDay: [:],
+                              standoutLine: nil, standoutDate: nil)
         }
 
         var doneByDay: [String: Int] = [:]
@@ -256,7 +324,7 @@ final class DayflowStore {
         var cursor = monthStart
         while cursor <= monthEnd {
             let key = DayflowDB.ymd(cursor)
-            let body = monthBodies[key] ?? ""
+            let body = bodies[key] ?? ""
             let counts = DayflowDB.parseCheckboxes(body)
             doneByDay[key] = counts.done
             openByDay[key] = counts.open
@@ -267,11 +335,8 @@ final class DayflowStore {
 
         let weekdays = ["일", "월", "화", "수", "목", "금", "토"]
         var weekdayCounts: [Int: Int] = [:]
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
         for (key, count) in doneByDay where count > 0 {
-            if let d = f.date(from: key) {
+            if let d = DF.ymd.date(from: key) {
                 let wd = cal.component(.weekday, from: d)
                 weekdayCounts[wd, default: 0] += count
             }
@@ -293,6 +358,20 @@ final class DayflowStore {
             cursor = cal.date(byAdding: .day, value: 1, to: cursor) ?? cursor
         }
 
+        // Standout day: most done items this month. Tie-breaker: most recent.
+        var standoutKey: String?
+        var standoutCount = 0
+        for (key, count) in doneByDay {
+            if count > standoutCount || (count == standoutCount && (key > (standoutKey ?? ""))) {
+                standoutKey = key
+                standoutCount = count
+            }
+        }
+        var standoutLine: String?
+        if let key = standoutKey, standoutCount > 0 {
+            standoutLine = firstMeaningfulLine(bodies[key] ?? "")
+        }
+
         let total = totalDone + totalOpen
         return MonthStats(
             totalTasks: total,
@@ -302,7 +381,23 @@ final class DayflowStore {
             busiestWeekday: busiest,
             longestStreak: maxStreak,
             doneByDay: doneByDay,
-            openByDay: openByDay
+            openByDay: openByDay,
+            standoutLine: standoutLine,
+            standoutDate: standoutKey
         )
+    }
+
+    /// Return the first line of real content — headings are skipped because
+    /// they identify a section, not the work the user actually did.
+    private func firstMeaningfulLine(_ body: String) -> String? {
+        for raw in body.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline) {
+            guard let line = MarkdownLine.parse(String(raw)) else { continue }
+            switch line {
+            case .heading: continue
+            case .task(_, let text), .bullet(let text), .plain(let text):
+                if !text.isEmpty { return text }
+            }
+        }
+        return nil
     }
 }
