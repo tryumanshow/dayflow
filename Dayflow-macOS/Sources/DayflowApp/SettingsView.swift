@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var model: String = ""
     @State private var systemPrompt: String = LLMConfigStore.systemPrompt
     @State private var language: AppLanguage = LanguagePreference.current
+    @AppStorage("dayflow.editor.fontSize") private var editorFontSize: Double = 15
     @State private var saved: Bool = false
     @State private var hasExisting: Bool = false
     @State private var errorMessage: String?
@@ -97,6 +98,20 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
                 .onChange(of: language) { _, newValue in
                     LanguagePreference.current = newValue
+                }
+            }
+
+            field(
+                label: L("settings.editor_font_size"),
+                hint: L("settings.editor_font_size.hint")
+            ) {
+                HStack(spacing: 10) {
+                    Slider(value: $editorFontSize, in: 11...20, step: 1)
+                        .frame(maxWidth: 260)
+                    Text("\(Int(editorFontSize)) px")
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 48, alignment: .leading)
                 }
             }
 

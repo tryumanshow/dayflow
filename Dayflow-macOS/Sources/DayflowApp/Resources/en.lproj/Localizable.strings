@@ -83,6 +83,8 @@
 "language.korean" = "한국어";
 "settings.language" = "Language";
 "settings.language.hint" = "Overrides the macOS system language for Dayflow. Requires an app restart.";
+"settings.editor_font_size" = "Editor font size";
+"settings.editor_font_size.hint" = "Body font size in the Day and Month plan editors. Updates live — no restart needed.";
 "settings.language.restart_hint" = "Language changes take effect after you relaunch Dayflow.";
 
 /* LLM errors */

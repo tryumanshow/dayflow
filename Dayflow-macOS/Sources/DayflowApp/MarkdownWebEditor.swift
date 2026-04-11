@@ -26,6 +26,10 @@ import WebKit
 struct MarkdownWebEditor: NSViewRepresentable {
     @Binding var markdown: String
     @Binding var markdownJSON: String?
+    /// Editor body font size in CSS pixels. Pushed into a CSS
+    /// variable so Settings can live-update without a relaunch.
+    /// Headings scale proportionally via `em`.
+    var fontSize: Double = 15
     var onChange: (String, String?) -> Void
 
     func makeNSView(context: Context) -> WKWebView {
@@ -52,6 +56,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
         context.coordinator.webView = web
         context.coordinator.pendingMarkdown = markdown
         context.coordinator.pendingJSON = markdownJSON
+        context.coordinator.pendingFontSize = fontSize
         return web
     }
 
@@ -65,6 +70,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
             context.coordinator.pendingJSON = markdownJSON
             context.coordinator.flushIfReady()
         }
+        if fontSize != context.coordinator.appliedFontSize {
+            context.coordinator.pendingFontSize = fontSize
+            context.coordinator.applyFontSizeIfReady()
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -77,6 +86,12 @@ struct MarkdownWebEditor: NSViewRepresentable {
         var pendingJSON: String? = nil
         var lastEmittedMarkdown: String = ""
         var lastEmittedJSON: String = ""
+        /// Pending font size push; flushed on editor-ready or
+        /// whenever `updateNSView` sees a new value.
+        var pendingFontSize: Double? = nil
+        /// Last value actually pushed to the WebView. Used as the
+        /// dirty check so we don't re-inject on every tick.
+        var appliedFontSize: Double = -1
 
         init(_ parent: MarkdownWebEditor) { self.parent = parent }
 
@@ -87,6 +102,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             case "ready":
                 ready = true
                 flushIfReady()
+                applyFontSizeIfReady()
             case "change":
                 let md = (body["md"] as? String) ?? ""
                 let json = body["json"] as? String
@@ -136,6 +152,17 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 return literal
             }
             return "\"\""
+        }
+
+        /// Push the pending font size into the WebView as a CSS
+        /// custom property. Headings scale via `em` so a single
+        /// variable controls body + all heading levels.
+        func applyFontSizeIfReady() {
+            guard ready, let size = pendingFontSize else { return }
+            pendingFontSize = nil
+            appliedFontSize = size
+            let js = "document.documentElement.style.setProperty('--editor-font-size', '\(Int(size))px')"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 
@@ -233,26 +260,12 @@ struct MarkdownWebEditor: NSViewRepresentable {
     /* Narrow containers (Month plan rail ~440px and below): force
        every logical group onto its own row so [B I U S] sits
        alone, and the two color rows stack with their labels
-       aligned at the same left margin. Also shrink the editor
-       body font — the Month plan is a compact side panel, not a
-       full-width writing surface, so 15px reads too loud. Day
-       view stays at the larger size above the breakpoint. */
+       aligned at the same left margin. Body font is user-
+       controlled via Settings → Editor font size, so we no longer
+       hard-shrink it here. */
     @media (max-width: 540px) {
         #dayflow-toolbar .tb-group {
             flex-basis: 100%;
-        }
-        .bn-container, .bn-editor, .ProseMirror {
-            font-size: 13px !important;
-            line-height: 1.55 !important;
-        }
-        .bn-block-content[data-content-type="heading"][data-level="1"] {
-            font-size: 20px !important;
-        }
-        .bn-block-content[data-content-type="heading"][data-level="2"] {
-            font-size: 16px !important;
-        }
-        .bn-block-content[data-content-type="heading"][data-level="3"] {
-            font-size: 14px !important;
         }
     }
     #dayflow-toolbar button {
@@ -291,22 +304,29 @@ struct MarkdownWebEditor: NSViewRepresentable {
         outline-offset: 1px;
     }
 
+    /* Root CSS variable set by Swift (Settings slider) so the user
+       can live-adjust the editor body font. Default matches the
+       pre-slider look. Headings are expressed in `em` so a single
+       variable drives the whole size ramp. */
+    :root {
+        --editor-font-size: 15px;
+    }
     /* BlockNote dark theme overrides */
     .bn-container, .bn-editor, .ProseMirror {
         background: transparent !important;
         color: rgba(255,255,255,0.92) !important;
         outline: none !important;
-        font-size: 15px !important;
+        font-size: var(--editor-font-size) !important;
         line-height: 1.7 !important;
     }
     .bn-block-content[data-content-type="heading"][data-level="1"] {
-        font-size: 28px !important; font-weight: 700 !important; letter-spacing: -0.5px;
+        font-size: 1.85em !important; font-weight: 700 !important; letter-spacing: -0.5px;
     }
     .bn-block-content[data-content-type="heading"][data-level="2"] {
-        font-size: 22px !important; font-weight: 600 !important;
+        font-size: 1.45em !important; font-weight: 600 !important;
     }
     .bn-block-content[data-content-type="heading"][data-level="3"] {
-        font-size: 18px !important; font-weight: 600 !important;
+        font-size: 1.2em !important; font-weight: 600 !important;
     }
     .bn-inline-content { color: rgba(255,255,255,0.92); }
     .bn-block-outer { padding: 1px 0; }
