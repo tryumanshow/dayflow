@@ -11,6 +11,11 @@ struct ContentView: View {
     @State private var aptDateInput: Date = Date()
     @FocusState private var aptTitleFocused: Bool
 
+    // Global editor body font size, controlled by Settings. Both
+    // the Day and Month plan editors read this so the slider
+    // live-updates everything.
+    @AppStorage("dayflow.editor.fontSize") private var editorFontSize: Double = 15
+
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
@@ -132,9 +137,14 @@ struct ContentView: View {
     private var dayView: some View {
         @Bindable var store = store
         return HStack(alignment: .top, spacing: 0) {
-            MarkdownWebEditor(markdown: $store.dayBody, markdownJSON: $store.dayBodyJSON, onChange: { newMD, newJSON in
-                store.updateDayBody(newMD, bodyJSON: newJSON)
-            })
+            MarkdownWebEditor(
+                markdown: $store.dayBody,
+                markdownJSON: $store.dayBodyJSON,
+                fontSize: editorFontSize,
+                onChange: { newMD, newJSON in
+                    store.updateDayBody(newMD, bodyJSON: newJSON)
+                }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, DS.Space.lg)
             .padding(.top, DS.Space.breathe)
@@ -726,6 +736,7 @@ struct ContentView: View {
             MarkdownWebEditor(
                 markdown: $store.monthPlanBody,
                 markdownJSON: $store.monthPlanJSON,
+                fontSize: editorFontSize,
                 onChange: { md, json in
                     store.updateMonthPlan(md, bodyJSON: json)
                 }
