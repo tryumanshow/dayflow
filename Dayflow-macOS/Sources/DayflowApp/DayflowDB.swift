@@ -497,14 +497,16 @@ final class DayflowDB {
         sqlite3_finalize(stmt)
     }
 
-    /// Returns (open count, done count) for any markdown body that uses
-    /// `- [ ]` / `- [x]` checkboxes (case-insensitive on the x).
+    /// Returns (open count, done count) for a body that may use either the
+    /// canonical markdown form (`- [ ]` / `- [x]`) or the rendered glyph form
+    /// (`☐` / `☑`) emitted by MarkdownEditor.
     static func parseCheckboxes(_ body: String) -> (open: Int, done: Int) {
         var open = 0
         var done = 0
         for line in body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
-            // accept "- [ ]", "* [ ]", "+ [ ]"
+            if trimmed.hasPrefix("☐") { open += 1; continue }
+            if trimmed.hasPrefix("☑") { done += 1; continue }
             guard trimmed.count >= 5 else { continue }
             let bullet = trimmed.first!
             guard bullet == "-" || bullet == "*" || bullet == "+" else { continue }

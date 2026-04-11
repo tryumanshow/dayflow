@@ -5,70 +5,119 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            navigationBar.background(.bar)
-            Divider()
-            content.background(Color(nsColor: .windowBackgroundColor))
+            navigationBar
+            content
         }
-        .frame(minWidth: 1080, minHeight: 680)
+        .background(Color.dfCanvas)
+        .frame(minWidth: 1120, minHeight: 720)
     }
 
     // MARK: - navigation bar -------------------------------------------------
 
     private var navigationBar: some View {
         let counts = DayflowDB.parseCheckboxes(store.dayBody)
-        return HStack(spacing: DS.Space.md) {
-            HStack(spacing: 6) {
-                Circle().fill(LinearGradient(colors: [.dfAccent, .dfDone], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 14, height: 14)
-                Text("dayflow").font(DS.FontStyle.display)
+        return HStack(alignment: .firstTextBaseline, spacing: DS.Space.lg) {
+            HStack(spacing: 8) {
+                Image(systemName: "rays")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.dfAccent)
+                Text("dayflow")
+                    .font(.system(size: 17, weight: .bold))
+                    .tracking(-0.3)
             }
 
-            Picker("", selection: Binding(
-                get: { store.viewMode },
-                set: { store.setMode($0) }
-            )) {
-                ForEach(CalendarViewMode.allCases) { m in
-                    Text(m.label).tag(m)
+            Divider().frame(height: 16)
+
+            HStack(spacing: 2) {
+                ForEach(CalendarViewMode.allCases) { mode in
+                    Button {
+                        store.setMode(mode)
+                    } label: {
+                        Text(mode.label)
+                            .font(.system(size: 12, weight: store.viewMode == mode ? .semibold : .regular))
+                            .foregroundStyle(store.viewMode == mode ? Color.primary : Color.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: DS.Radius.sm)
+                                    .fill(store.viewMode == mode ? Color.white.opacity(0.08) : .clear)
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .pickerStyle(.segmented)
-            .frame(width: 220)
 
-            HStack(spacing: 4) {
-                Button { store.step(by: -1) } label: { Image(systemName: "chevron.left") }
-                    .buttonStyle(.borderless)
-                Button("Today") { store.goToToday() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                Button { store.step(by: 1) } label: { Image(systemName: "chevron.right") }
-                    .buttonStyle(.borderless)
+            Divider().frame(height: 16)
+
+            HStack(spacing: 6) {
+                navIconButton("chevron.left") { store.step(by: -1) }
+                Button {
+                    store.goToToday()
+                } label: {
+                    Text("Today")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule().fill(Color.white.opacity(0.06))
+                        )
+                }
+                .buttonStyle(.plain)
+                navIconButton("chevron.right") { store.step(by: 1) }
             }
 
             Text(headerLabel)
-                .font(DS.FontStyle.title)
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.primary)
 
             Spacer()
 
             HStack(spacing: 14) {
-                summaryChip(label: "open", count: counts.open, color: .dfTodo)
-                summaryChip(label: "done", count: counts.done, color: .dfDone)
+                summaryChip(symbol: "circle", count: counts.open, color: .dfTodo)
+                summaryChip(symbol: "checkmark.circle.fill", count: counts.done, color: .dfDone)
             }
 
-            Button { store.refresh(force: true) } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.borderless)
-                .help("Refresh")
+            navIconButton("arrow.clockwise") { store.refresh(force: true) }
         }
-        .padding(.horizontal, DS.Space.lg)
+        .padding(.horizontal, DS.Space.xl)
         .padding(.vertical, DS.Space.md)
+        .background(Color.dfCanvas)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.dfHairline).frame(height: 0.7)
+        }
     }
 
-    private func summaryChip(label: String, count: Int, color: Color) -> some View {
-        HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 7, height: 7)
-            Text("\(count)").font(.system(size: 13, weight: .semibold).monospacedDigit())
-            Text(label).font(DS.FontStyle.caption).foregroundStyle(.secondary)
+    private func navIconButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: DS.Radius.sm)
+                        .fill(Color.white.opacity(0.04))
+                )
         }
+        .buttonStyle(.plain)
+    }
+
+    private func summaryChip(symbol: String, count: Int, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(color)
+            Text("\(count)")
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(
+            Capsule().fill(color.opacity(0.10))
+        )
+        .overlay(
+            Capsule().stroke(color.opacity(0.20), lineWidth: 0.7)
+        )
     }
 
     private var headerLabel: String {
@@ -100,74 +149,138 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - day view (markdown editor) -------------------------------------
+    // MARK: - day view (asymmetric: 70/30) -----------------------------------
 
     private var dayView: some View {
         @Bindable var store = store
-        return HStack(alignment: .top, spacing: DS.Space.lg) {
-            DSCard(padding: DS.Space.sm) {
-                VStack(alignment: .leading, spacing: DS.Space.sm) {
-                    HStack {
-                        Text("오늘의 노트").font(DS.FontStyle.title)
-                        Spacer()
-                        Text("`- [ ]` 체크박스 · `## 헤더` · Tab 들여쓰기 · 클릭으로 토글")
-                            .font(DS.FontStyle.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    Divider()
-                    MarkdownEditor(text: $store.dayBody, onChange: { newValue in
-                        store.updateDayBody(newValue)
-                    })
-                    .frame(minHeight: 480)
-                }
-            }
-            .frame(maxWidth: .infinity)
-
-            VStack(alignment: .leading, spacing: DS.Space.lg) {
-                reviewCard
-            }
-            .frame(width: 360)
-        }
-        .padding(DS.Space.lg)
-    }
-
-    private var reviewCard: some View {
-        DSCard {
-            VStack(alignment: .leading, spacing: DS.Space.sm) {
-                HStack {
-                    Label("일일 회고", systemImage: "sparkles")
-                        .font(DS.FontStyle.title)
+        return HStack(alignment: .top, spacing: 0) {
+            // LEFT — markdown editor, large area
+            VStack(alignment: .leading, spacing: DS.Space.md) {
+                HStack(alignment: .lastTextBaseline) {
+                    Text(longDateLabel(store.selectedDate))
+                        .font(DS.FontStyle.display)
+                        .tracking(-0.5)
                     Spacer()
-                    if store.reviewIsLoading {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Button {
-                            store.generateReview()
-                        } label: {
-                            Text(store.reviewBody.isEmpty ? "Generate" : "Regenerate")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-                if let err = store.reviewError {
-                    Text(err)
-                        .font(DS.FontStyle.caption)
-                        .foregroundStyle(.red)
-                }
-                if store.reviewBody.isEmpty {
-                    Text("LLM 에게 오늘 회고 부탁해 — 한 클릭")
+                    Text("`- [ ]`  ·  Tab 들여쓰기  ·  체크박스 클릭으로 토글")
                         .font(DS.FontStyle.caption)
                         .foregroundStyle(.tertiary)
-                } else {
-                    ScrollView {
-                        Text(store.reviewBody)
-                            .font(DS.FontStyle.body)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 380)
                 }
+                .padding(.horizontal, DS.Space.xl)
+                .padding(.top, DS.Space.xl)
+                .padding(.bottom, DS.Space.sm)
+
+                MarkdownEditor(text: $store.dayBody, onChange: { newValue in
+                    store.updateDayBody(newValue)
+                })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, DS.Space.lg)
+                .padding(.bottom, DS.Space.lg)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // hairline divider, not a card border
+            Rectangle().fill(Color.dfHairline).frame(width: 0.7)
+
+            // RIGHT — narrow rail (review only) — 30% width
+            ScrollView {
+                VStack(alignment: .leading, spacing: DS.Space.xl) {
+                    daySummaryRail
+                    reviewRail
+                }
+                .padding(DS.Space.xl)
+            }
+            .frame(width: 360)
+            .background(Color.dfSurface.opacity(0.4))
+        }
+    }
+
+    private var daySummaryRail: some View {
+        let counts = DayflowDB.parseCheckboxes(store.dayBody)
+        let total = counts.open + counts.done
+        let ratio = total == 0 ? 0.0 : Double(counts.done) / Double(total)
+        return VStack(alignment: .leading, spacing: DS.Space.md) {
+            SectionLabel(text: "오늘 진행")
+            HStack(alignment: .bottom, spacing: DS.Space.md) {
+                Text("\(Int(ratio * 100))")
+                    .font(DS.FontStyle.metric)
+                    .foregroundStyle(Color.dfDone)
+                Text("%")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 6)
+                Spacer()
+                if total > 0 {
+                    CompletionRing(ratio: ratio, lineWidth: 4, size: 36,
+                                   color: ratio == 1 ? .dfDone : .dfAccent)
+                }
+            }
+            HStack(spacing: DS.Space.md) {
+                statTile(value: "\(counts.open)", label: "open", color: .dfTodo)
+                statTile(value: "\(counts.done)", label: "done", color: .dfDone)
+            }
+        }
+    }
+
+    private func statTile(value: String, label: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 18, weight: .semibold).monospacedDigit())
+                .foregroundStyle(color)
+            Text(label)
+                .font(DS.FontStyle.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.Radius.sm)
+                .stroke(color.opacity(0.15), lineWidth: 0.7)
+        )
+    }
+
+    private var reviewRail: some View {
+        VStack(alignment: .leading, spacing: DS.Space.md) {
+            HStack {
+                SectionLabel(text: "AI 회고")
+                Spacer()
+                if store.reviewIsLoading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button {
+                        store.generateReview()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(store.reviewBody.isEmpty ? "Generate" : "Regenerate")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule().fill(Color.dfAccent.opacity(0.14))
+                        )
+                        .foregroundStyle(Color.dfAccent)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if let err = store.reviewError {
+                Text(err)
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.red)
+            }
+            if store.reviewBody.isEmpty {
+                Text("하루를 마무리하면서 LLM 에게 회고를 부탁해.")
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, DS.Space.sm)
+            } else {
+                Text(store.reviewBody)
+                    .font(DS.FontStyle.body)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -175,21 +288,44 @@ struct ContentView: View {
     // MARK: - week view ------------------------------------------------------
 
     private var weekView: some View {
+        @Bindable var store = store
         let cal = Calendar.current
         let weekStart = store.startOfWeek(store.selectedDate)
         let days: [Date] = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) }
-        return VStack(spacing: DS.Space.lg) {
-            DSCard(padding: DS.Space.md) {
-                HStack(spacing: DS.Space.sm) {
-                    ForEach(days, id: \.self) { day in
+        return HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .lastTextBaseline) {
+                    Text(longDateLabel(store.selectedDate))
+                        .font(DS.FontStyle.display)
+                        .tracking(-0.5)
+                    Spacer()
+                }
+                .padding(.horizontal, DS.Space.xl)
+                .padding(.top, DS.Space.xl)
+                .padding(.bottom, DS.Space.lg)
+
+                // 7-day strip — narrow horizontal slice, no card chrome
+                HStack(spacing: 0) {
+                    ForEach(Array(days.enumerated()), id: \.element) { idx, day in
+                        if idx > 0 {
+                            Rectangle().fill(Color.dfHairline).frame(width: 0.7)
+                        }
                         weekDayChip(for: day)
                     }
                 }
+                .padding(.horizontal, DS.Space.lg)
+                .padding(.bottom, DS.Space.lg)
+
+                Rectangle().fill(Color.dfHairline).frame(height: 0.7)
+
+                // selected day editor
+                MarkdownEditor(text: $store.dayBody, onChange: { newValue in
+                    store.updateDayBody(newValue)
+                })
+                .padding(DS.Space.lg)
             }
-            dayView
-                .padding(0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(DS.Space.lg)
     }
 
     private func weekDayChip(for day: Date) -> some View {
@@ -203,46 +339,51 @@ struct ContentView: View {
         return Button {
             store.selectDate(day)
         } label: {
-            VStack(spacing: 6) {
-                Text(weekdayLabel(day))
-                    .font(DS.FontStyle.caption)
+            VStack(spacing: 8) {
+                Text(weekdayLabel(day).uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(1.0)
                     .foregroundStyle(isToday ? Color.dfAccent : .secondary)
                 Text(dayLabel(day))
-                    .font(.system(size: 22, weight: .semibold).monospacedDigit())
+                    .font(.system(size: 26, weight: .semibold).monospacedDigit())
                     .foregroundColor(isToday ? Color.dfAccent : .primary)
                 if total > 0 {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.08))
+                            Capsule().fill(Color.white.opacity(0.06))
                             Capsule().fill(Color.dfDone).frame(width: geo.size.width * ratio)
                         }
                     }
-                    .frame(height: 4)
+                    .frame(height: 3)
+                    .padding(.horizontal, 10)
                     Text("\(counts.done)/\(total)")
                         .font(DS.FontStyle.micro)
                         .foregroundStyle(.tertiary)
                 } else {
-                    Capsule().fill(Color.primary.opacity(0.05)).frame(height: 4)
-                    Text("—").font(DS.FontStyle.micro).foregroundStyle(.tertiary)
+                    Capsule().fill(Color.white.opacity(0.04)).frame(height: 3).padding(.horizontal, 10)
+                    Text("·")
+                        .font(DS.FontStyle.micro)
+                        .foregroundStyle(.tertiary)
                 }
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 4)
+            .padding(.vertical, 14)
             .frame(maxWidth: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .fill(isSelected ? Color.dfAccent.opacity(0.14) : Color.clear)
+                isSelected ? Color.dfAccent.opacity(0.10) : Color.clear
             )
             .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .stroke(isSelected ? Color.dfAccent : Color.clear, lineWidth: 1.2)
+                Rectangle()
+                    .fill(isSelected ? Color.dfAccent : Color.clear)
+                    .frame(height: 2),
+                alignment: .top
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(DS.Motion.quick, value: isSelected)
     }
 
-    // MARK: - month view -----------------------------------------------------
+    // MARK: - month view (asymmetric: heatmap left, narrow stats rail right) -
 
     private var monthView: some View {
         @Bindable var store = store
@@ -257,73 +398,173 @@ struct ContentView: View {
         }
         let weekdayHeaders = ["월", "화", "수", "목", "금", "토", "일"]
 
-        return HStack(alignment: .top, spacing: DS.Space.lg) {
+        return HStack(alignment: .top, spacing: 0) {
+            // LEFT — heatmap dominant
             VStack(alignment: .leading, spacing: DS.Space.lg) {
-                statsHeader(stats)
-                DSCard(padding: DS.Space.md) {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 4) {
-                            ForEach(weekdayHeaders, id: \.self) { wd in
-                                Text(wd)
-                                    .font(DS.FontStyle.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity)
-                            }
-                        }
-                        let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
-                        LazyVGrid(columns: columns, spacing: 4) {
-                            ForEach(days, id: \.self) { day in
-                                heatCell(for: day, stats: stats)
-                            }
-                        }
+                HStack(alignment: .lastTextBaseline) {
+                    Text(monthLabel(store.selectedDate))
+                        .font(DS.FontStyle.display)
+                        .tracking(-0.5)
+                    Spacer()
+                }
+                .padding(.horizontal, DS.Space.xl)
+                .padding(.top, DS.Space.xl)
+
+                // weekday header — divide-y style, no card
+                HStack(spacing: 4) {
+                    ForEach(weekdayHeaders, id: \.self) { wd in
+                        Text(wd)
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, DS.Space.xl)
 
-            VStack(alignment: .leading, spacing: DS.Space.lg) {
-                selectedDayCard
-                monthlyPlanCard
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
+                    ForEach(days, id: \.self) { day in
+                        heatCell(for: day, stats: stats)
+                    }
+                }
+                .padding(.horizontal, DS.Space.xl)
+                .padding(.bottom, DS.Space.lg)
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Rectangle().fill(Color.dfHairline).frame(width: 0.7)
+
+            // RIGHT — narrow rail
+            ScrollView {
+                VStack(alignment: .leading, spacing: DS.Space.xl) {
+                    monthMetricsRail(stats)
+                    selectedDayPreviewRail
+                    monthPlanRail
+                }
+                .padding(DS.Space.xl)
             }
             .frame(width: 360)
+            .background(Color.dfSurface.opacity(0.4))
         }
-        .padding(DS.Space.lg)
     }
 
-    private func statsHeader(_ stats: DayflowStore.MonthStats) -> some View {
-        DSCard(padding: DS.Space.lg) {
-            HStack(spacing: DS.Space.xl) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        Text("\(Int(stats.completionRate * 100))")
-                            .font(.system(size: 38, weight: .bold).monospacedDigit())
-                            .foregroundStyle(Color.dfDone)
-                        Text("%").font(.system(size: 16, weight: .semibold)).foregroundStyle(.secondary)
-                    }
-                    Text("이 달 완료율")
-                        .font(DS.FontStyle.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Divider().frame(height: 44)
-                statBlock(value: "\(stats.doneTasks)", label: "done", color: .dfDone)
-                statBlock(value: "\(stats.openTasks)", label: "open", color: .dfTodo)
-                statBlock(value: "\(stats.longestStreak)일", label: "streak", color: .dfAccent)
-                if let busy = stats.busiestWeekday {
-                    statBlock(value: busy, label: "busiest", color: .purple)
-                }
+    private func monthMetricsRail(_ stats: DayflowStore.MonthStats) -> some View {
+        VStack(alignment: .leading, spacing: DS.Space.md) {
+            SectionLabel(text: monthLabel(store.selectedDate))
+            HStack(alignment: .bottom, spacing: DS.Space.sm) {
+                Text("\(Int(stats.completionRate * 100))")
+                    .font(DS.FontStyle.metric)
+                    .foregroundStyle(Color.dfDone)
+                Text("%")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 6)
                 Spacer()
+                CompletionRing(ratio: stats.completionRate, lineWidth: 4, size: 40,
+                               color: stats.completionRate == 1 ? .dfDone : .dfAccent)
             }
+            // 2x2 minimal grid — no nested cards, just hairlines
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    metricCell(value: "\(stats.doneTasks)", label: "완료")
+                    Rectangle().fill(Color.dfHairline).frame(width: 0.7)
+                    metricCell(value: "\(stats.openTasks)", label: "남음")
+                }
+                Rectangle().fill(Color.dfHairline).frame(height: 0.7)
+                HStack(spacing: 0) {
+                    metricCell(value: "\(stats.longestStreak)", label: "최장 연속")
+                    Rectangle().fill(Color.dfHairline).frame(width: 0.7)
+                    metricCell(value: stats.busiestWeekday ?? "·", label: "가장 바쁜 요일")
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.Radius.sm)
+                    .stroke(Color.dfHairline, lineWidth: 0.7)
+            )
         }
     }
 
-    private func statBlock(value: String, label: String, color: Color) -> some View {
+    private func metricCell(value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 18, weight: .semibold).monospacedDigit())
-                .foregroundStyle(color)
+                .font(.system(size: 17, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.primary)
             Text(label)
                 .font(DS.FontStyle.caption)
                 .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+    }
+
+    private var selectedDayPreviewRail: some View {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "M월 d일 (E)"
+        let dateLabel = f.string(from: store.selectedDate)
+        let body = store.monthBodies[DayflowDB.ymd(store.selectedDate)]
+            ?? store.weekBodies[DayflowDB.ymd(store.selectedDate)]
+            ?? ""
+        return VStack(alignment: .leading, spacing: DS.Space.sm) {
+            HStack {
+                SectionLabel(text: dateLabel)
+                Spacer()
+                Button {
+                    store.setMode(.day)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("열기").font(.system(size: 11, weight: .semibold))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundStyle(Color.dfAccent)
+                }
+                .buttonStyle(.plain)
+            }
+            if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("이 날 적어둔 게 없어")
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 6)
+            } else {
+                Text(MarkdownEditor.markdownToDisplay(body))
+                    .font(DS.FontStyle.body)
+                    .lineLimit(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var monthPlanRail: some View {
+        @Bindable var store = store
+        return VStack(alignment: .leading, spacing: DS.Space.sm) {
+            HStack {
+                SectionLabel(text: "Monthly Plan")
+                Spacer()
+                Button {
+                    store.saveMonthPlan()
+                } label: {
+                    Text("Save")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.dfAccent)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("s", modifiers: [.command])
+            }
+            TextEditor(text: $store.monthPlanBody)
+                .font(DS.FontStyle.body)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.Radius.sm)
+                        .stroke(Color.dfHairline, lineWidth: 0.7)
+                )
+                .frame(minHeight: 200)
         }
     }
 
@@ -341,107 +582,71 @@ struct ContentView: View {
         return Button {
             store.selectDate(day)
         } label: {
-            VStack(spacing: 2) {
-                Text("\(cal.component(.day, from: day))")
-                    .font(.system(size: 12, weight: isToday ? .bold : .regular).monospacedDigit())
-                    .foregroundColor(inMonth ? (isToday ? Color.dfAccent : Color.primary) : Color.secondary.opacity(0.4))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("\(cal.component(.day, from: day))")
+                        .font(.system(size: 12, weight: isToday ? .bold : .medium).monospacedDigit())
+                        .foregroundColor(inMonth ? (isToday ? Color.dfAccent : Color.primary) : Color.secondary.opacity(0.4))
+                    Spacer()
+                    if total > 0 {
+                        Text("\(done)/\(total)")
+                            .font(DS.FontStyle.micro)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                Spacer(minLength: 0)
                 if total > 0 {
-                    Text("\(done)/\(total)")
-                        .font(DS.FontStyle.micro)
-                        .foregroundStyle(.secondary)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.white.opacity(0.06))
+                            Capsule().fill(ratio == 1 ? Color.dfDone : Color.dfAccent)
+                                .frame(width: geo.size.width * ratio)
+                        }
+                    }
+                    .frame(height: 3)
                 }
             }
+            .padding(8)
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(height: 64)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
                     .fill(heatColor(inMonth: inMonth, total: total, ratio: ratio, isSelected: isSelected))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(isToday ? Color.dfAccent : (isSelected ? Color.dfAccent.opacity(0.7) : Color.clear),
-                            lineWidth: isToday ? 1.4 : (isSelected ? 1.2 : 0))
+                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                    .stroke(isToday ? Color.dfAccent : (isSelected ? Color.dfAccent.opacity(0.6) : Color.dfHairline),
+                            lineWidth: isToday ? 1.4 : (isSelected ? 1.0 : 0.7))
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(DS.Motion.snap, value: isSelected)
     }
 
     private func heatColor(inMonth: Bool, total: Int, ratio: Double, isSelected: Bool) -> Color {
-        if !inMonth { return Color.primary.opacity(0.02) }
-        if total == 0 { return Color.primary.opacity(0.04) }
+        if !inMonth { return Color.white.opacity(0.015) }
+        if total == 0 { return Color.white.opacity(0.03) }
         let intensity = min(1.0, Double(total) / 6.0)
         if ratio >= 0.999 {
-            return Color.dfDone.opacity(0.18 + intensity * 0.40)
+            return Color.dfDone.opacity(0.10 + intensity * 0.30)
         } else if ratio >= 0.5 {
-            return Color.dfDone.opacity(0.10 + intensity * 0.25)
+            return Color.dfDone.opacity(0.06 + intensity * 0.18)
         } else if ratio > 0 {
-            return Color.dfAccent.opacity(0.08 + intensity * 0.22)
+            return Color.dfAccent.opacity(0.06 + intensity * 0.18)
         } else {
-            return Color.dfTodo.opacity(0.10 + intensity * 0.18)
-        }
-    }
-
-    private var selectedDayCard: some View {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "M월 d일 (E)"
-        let dateLabel = f.string(from: store.selectedDate)
-        let body = store.monthBodies[DayflowDB.ymd(store.selectedDate)]
-            ?? store.weekBodies[DayflowDB.ymd(store.selectedDate)]
-            ?? ""
-        return DSCard {
-            VStack(alignment: .leading, spacing: DS.Space.sm) {
-                HStack {
-                    Text(dateLabel).font(DS.FontStyle.title)
-                    Spacer()
-                    Button("열기") { store.setMode(.day) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-                if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("이 날 적어둔 게 없어")
-                        .font(DS.FontStyle.caption)
-                        .foregroundStyle(.tertiary)
-                } else {
-                    ScrollView {
-                        Text(body)
-                            .font(DS.FontStyle.body)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 180)
-                }
-            }
-        }
-    }
-
-    private var monthlyPlanCard: some View {
-        @Bindable var store = store
-        return DSCard {
-            VStack(alignment: .leading, spacing: DS.Space.sm) {
-                HStack {
-                    Label("Monthly Plan", systemImage: "list.bullet.rectangle")
-                        .font(DS.FontStyle.title)
-                    Spacer()
-                    Button("Save") { store.saveMonthPlan() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .keyboardShortcut("s", modifiers: [.command])
-                }
-                Text("이 달의 큰 흐름")
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(.tertiary)
-                TextEditor(text: $store.monthPlanBody)
-                    .font(DS.FontStyle.body)
-                    .padding(8)
-                    .background(Color.primary.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
-                    .frame(minHeight: 220)
-            }
+            return Color.white.opacity(0.04 + intensity * 0.06)
         }
     }
 
     // MARK: - helpers --------------------------------------------------------
+
+    private func longDateLabel(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "M월 d일 EEEE"
+        return f.string(from: d)
+    }
 
     private func weekdayLabel(_ d: Date) -> String {
         let f = DateFormatter()
@@ -453,6 +658,13 @@ struct ContentView: View {
     private func dayLabel(_ d: Date) -> String {
         let f = DateFormatter()
         f.dateFormat = "d"
+        return f.string(from: d)
+    }
+
+    private func monthLabel(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yyyy년 M월"
         return f.string(from: d)
     }
 }

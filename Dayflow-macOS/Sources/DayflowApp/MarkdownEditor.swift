@@ -1,16 +1,20 @@
 import AppKit
 import SwiftUI
 
-/// A multi-line plain-text Markdown editor wrapping `NSTextView`.
+/// Markdown editor with live rendering of `- [ ]` / `- [x]` checkboxes.
 ///
-/// Why NSTextView and not SwiftUI's TextEditor:
-/// - We want Tab to actually insert a literal tab (not advance focus).
-/// - We want to intercept clicks on `- [ ]` / `- [x]` so the user can toggle
-///   a checkbox by clicking, exactly like Obsidian.
-/// - We syntax-highlight bullets/headers/checkboxes inline.
-/// - We persist on every keystroke via the binding.
+/// What "live rendering" means in this implementation:
+/// - The DB / Store always holds canonical markdown (`- [ ]`, `- [x]`).
+/// - The NSTextView displays canonical markdown collapsed to single glyphs
+///   (`☐`, `☑`). The user types markdown the normal way; the moment a
+///   `- [ ] ` or `- [x] ` literal lands in the buffer it is rewritten in
+///   place to its glyph form.
+/// - Clicking a `☐` / `☑` glyph toggles it.
+/// - On every change we re-expand the visible text back to canonical markdown
+///   and bubble that up via `onChange`, so the persisted DB content stays
+///   markdown-clean.
 struct MarkdownEditor: NSViewRepresentable {
-    @Binding var text: String
+    @Binding var text: String           // canonical markdown — source of truth
     var onChange: (String) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -21,7 +25,7 @@ struct MarkdownEditor: NSViewRepresentable {
 
         let tv = scroll.documentView as! NSTextView
         tv.delegate = context.coordinator
-        tv.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        tv.font = NSFont.systemFont(ofSize: 14, weight: .regular)
         tv.isRichText = false
         tv.allowsUndo = true
         tv.isAutomaticQuoteSubstitutionEnabled = false
@@ -31,15 +35,13 @@ struct MarkdownEditor: NSViewRepresentable {
         tv.isAutomaticDataDetectionEnabled = false
         tv.isAutomaticLinkDetectionEnabled = false
         tv.smartInsertDeleteEnabled = false
-        tv.textContainerInset = NSSize(width: 12, height: 12)
+        tv.textContainerInset = NSSize(width: 18, height: 18)
         tv.drawsBackground = false
         tv.usesFindBar = true
-        tv.string = text
+        tv.string = Self.markdownToDisplay(text)
 
-        // intercept tab as literal indent
         context.coordinator.textView = tv
 
-        // click handler for checkboxes
         let click = NSClickGestureRecognizer(target: context.coordinator,
                                              action: #selector(Coordinator.handleClick(_:)))
         click.delaysPrimaryMouseButtonEvents = false
@@ -53,17 +55,90 @@ struct MarkdownEditor: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let tv = scroll.documentView as? NSTextView else { return }
-        if tv.string != text {
-            // preserve selection
+        let display = Self.markdownToDisplay(text)
+        if tv.string != display {
+            // External change (different day loaded). Reset wholesale.
             let sel = tv.selectedRange()
-            tv.string = text
-            let safe = NSRange(location: min(sel.location, text.count), length: 0)
+            tv.string = display
+            let safe = NSRange(location: min(sel.location, display.count), length: 0)
             tv.setSelectedRange(safe)
             context.coordinator.applyHighlighting()
         }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    // MARK: - md ↔ display conversion -----------------------------------------
+
+    /// Collapse `- [ ]` → `☐`, `- [x]` → `☑` (only for the literal markdown
+    /// checkbox prefix; doesn't touch text outside the prefix). Indent is
+    /// preserved exactly.
+    static func markdownToDisplay(_ md: String) -> String {
+        var out = ""
+        out.reserveCapacity(md.count)
+        let lines = md.components(separatedBy: "\n")
+        for (i, line) in lines.enumerated() {
+            out.append(transformLineMdToDisplay(line))
+            if i < lines.count - 1 { out.append("\n") }
+        }
+        return out
+    }
+
+    static func displayToMarkdown(_ display: String) -> String {
+        var out = ""
+        out.reserveCapacity(display.count + 16)
+        let lines = display.components(separatedBy: "\n")
+        for (i, line) in lines.enumerated() {
+            out.append(transformLineDisplayToMd(line))
+            if i < lines.count - 1 { out.append("\n") }
+        }
+        return out
+    }
+
+    private static func transformLineMdToDisplay(_ line: String) -> String {
+        // capture leading whitespace
+        var idx = line.startIndex
+        while idx < line.endIndex, line[idx] == " " { idx = line.index(after: idx) }
+        let indent = String(line[line.startIndex..<idx])
+        let body = line[idx..<line.endIndex]
+
+        if body.hasPrefix("- [ ] ") {
+            return indent + "☐ " + String(body.dropFirst(6))
+        }
+        if body.hasPrefix("- [ ]") {
+            return indent + "☐" + String(body.dropFirst(5))
+        }
+        if body.hasPrefix("- [x] ") || body.hasPrefix("- [X] ") || body.hasPrefix("- [✓] ") {
+            return indent + "☑ " + String(body.dropFirst(6))
+        }
+        if body.hasPrefix("- [x]") || body.hasPrefix("- [X]") || body.hasPrefix("- [✓]") {
+            return indent + "☑" + String(body.dropFirst(5))
+        }
+        return line
+    }
+
+    private static func transformLineDisplayToMd(_ line: String) -> String {
+        var idx = line.startIndex
+        while idx < line.endIndex, line[idx] == " " { idx = line.index(after: idx) }
+        let indent = String(line[line.startIndex..<idx])
+        let body = line[idx..<line.endIndex]
+
+        if body.hasPrefix("☐ ") {
+            return indent + "- [ ] " + String(body.dropFirst(2))
+        }
+        if body.hasPrefix("☐") {
+            return indent + "- [ ]" + String(body.dropFirst(1))
+        }
+        if body.hasPrefix("☑ ") {
+            return indent + "- [x] " + String(body.dropFirst(2))
+        }
+        if body.hasPrefix("☑") {
+            return indent + "- [x]" + String(body.dropFirst(1))
+        }
+        return line
+    }
+
+    // MARK: - Coordinator -----------------------------------------------------
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MarkdownEditor
@@ -73,14 +148,23 @@ struct MarkdownEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
-            parent.text = tv.string
-            parent.onChange(tv.string)
+
+            // Pass 1: literal `- [ ] ` / `- [x] ` was just typed → collapse to glyph.
+            collapseFreshCheckboxes(tv)
+
+            // Pass 2: convert visible buffer back to canonical markdown for storage.
+            let md = MarkdownEditor.displayToMarkdown(tv.string)
+            if md != parent.text {
+                parent.text = md
+                parent.onChange(md)
+            }
+
             applyHighlighting()
         }
 
-        // Tab → literal "  " (2 spaces) for nesting markdown lists.
-        // Shift+Tab → outdent the current line (remove 2 leading spaces).
-        // Enter → smart continuation: if previous line is `- [ ]` or `- `, repeat.
+        /// Tab inserts 2 literal spaces (markdown nesting).
+        /// Shift+Tab removes 2 leading spaces from the current line.
+        /// Enter continues `☐ ` / `- ` / `* ` list items at the same indent.
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             switch commandSelector {
             case #selector(NSResponder.insertTab(_:)):
@@ -96,61 +180,84 @@ struct MarkdownEditor: NSViewRepresentable {
             }
         }
 
+        // MARK: - in-place collapse
+
+        /// Scan the buffer for any literal markdown checkbox prefix that
+        /// hasn't been collapsed yet and rewrite it as a single-glyph form.
+        /// We do this on every text change so users can paste markdown,
+        /// type `- [ ] `, etc., and immediately see the rendered form.
+        private func collapseFreshCheckboxes(_ tv: NSTextView) {
+            let storage = tv.textStorage!
+            let ns = storage.string as NSString
+            let full = NSRange(location: 0, length: ns.length)
+            // Walk lines from the end so range mutations don't break indices.
+            var lineRanges: [NSRange] = []
+            ns.enumerateSubstrings(in: full, options: [.byLines, .substringNotRequired]) { _, lineRange, _, _ in
+                lineRanges.append(lineRange)
+            }
+            for lineRange in lineRanges.reversed() {
+                let line = ns.substring(with: lineRange)
+                guard let collapsed = collapsedLine(line), collapsed != line else { continue }
+                let priorCaret = tv.selectedRange().location
+                let priorLineEnd = lineRange.location + lineRange.length
+                let delta = collapsed.count - line.count
+
+                tv.shouldChangeText(in: lineRange, replacementString: collapsed)
+                storage.replaceCharacters(in: lineRange, with: collapsed)
+                tv.didChangeText()
+
+                // adjust caret if it sat at/after this line
+                if priorCaret >= priorLineEnd {
+                    let newCaret = max(0, priorCaret + delta)
+                    tv.setSelectedRange(NSRange(location: newCaret, length: 0))
+                } else if priorCaret > lineRange.location {
+                    // caret was inside the line — clamp to new line end
+                    let newEnd = lineRange.location + collapsed.count
+                    tv.setSelectedRange(NSRange(location: min(priorCaret + delta, newEnd), length: 0))
+                }
+            }
+        }
+
+        private func collapsedLine(_ line: String) -> String? {
+            // Only collapse if literal markdown form is present.
+            guard line.contains("- [ ]") || line.contains("- [x]") || line.contains("- [X]") || line.contains("- [✓]") else {
+                return nil
+            }
+            return MarkdownEditor.transformLineMdToDisplay(line)
+        }
+
+        // MARK: - outdent / list continuation
+
         private func outdentCurrentLine(_ tv: NSTextView) {
             let ns = tv.string as NSString
             let sel = tv.selectedRange()
             let lineRange = ns.lineRange(for: NSRange(location: sel.location, length: 0))
             let line = ns.substring(with: lineRange)
-            if line.hasPrefix("  ") {
-                let newLine = String(line.dropFirst(2))
-                tv.shouldChangeText(in: lineRange, replacementString: newLine)
-                tv.replaceCharacters(in: lineRange, with: newLine)
-                tv.didChangeText()
-                let newCaret = max(lineRange.location, sel.location - 2)
-                tv.setSelectedRange(NSRange(location: newCaret, length: 0))
-            } else if line.hasPrefix(" ") {
-                let newLine = String(line.dropFirst(1))
-                tv.shouldChangeText(in: lineRange, replacementString: newLine)
-                tv.replaceCharacters(in: lineRange, with: newLine)
-                tv.didChangeText()
-                let newCaret = max(lineRange.location, sel.location - 1)
-                tv.setSelectedRange(NSRange(location: newCaret, length: 0))
-            }
+            let leadingSpaces = line.prefix(while: { $0 == " " }).count
+            if leadingSpaces == 0 { return }
+            let drop = min(2, leadingSpaces)
+            let newLine = String(line.dropFirst(drop))
+            tv.shouldChangeText(in: lineRange, replacementString: newLine)
+            tv.replaceCharacters(in: lineRange, with: newLine)
+            tv.didChangeText()
+            let newCaret = max(lineRange.location, sel.location - drop)
+            tv.setSelectedRange(NSRange(location: newCaret, length: 0))
         }
 
-        /// On Enter, peek at the current line. If it's a list item, continue the list.
-        /// If the line is an empty list marker (e.g. just "- [ ] "), break out instead.
         private func continueListItem(_ tv: NSTextView) -> Bool {
             let ns = tv.string as NSString
             let sel = tv.selectedRange()
             let lineRange = ns.lineRange(for: NSRange(location: sel.location, length: 0))
-            let line = ns.substring(with: lineRange).trimmingCharacters(in: .newlines)
+            let raw = ns.substring(with: lineRange).trimmingCharacters(in: .newlines)
 
-            // count leading spaces
             var indent = ""
-            for ch in line {
+            for ch in raw {
                 if ch == " " { indent.append(" ") } else { break }
             }
-            let body = line.dropFirst(indent.count)
+            let body = raw.dropFirst(indent.count)
 
-            // checkbox: "- [ ] xxx" or "- [x] xxx"
-            if let match = checkboxPrefix(of: String(body)) {
-                let rest = body.dropFirst(match.count).trimmingCharacters(in: .whitespaces)
-                if rest.isEmpty {
-                    // empty list item — clear the line and break out of the list
-                    tv.shouldChangeText(in: lineRange, replacementString: "\n")
-                    tv.replaceCharacters(in: lineRange, with: "\n")
-                    tv.didChangeText()
-                    tv.setSelectedRange(NSRange(location: lineRange.location + 1, length: 0))
-                    return true
-                }
-                let newLine = "\n\(indent)- [ ] "
-                tv.insertText(newLine, replacementRange: tv.selectedRange())
-                return true
-            }
-            // plain bullet: "- xxx" or "* xxx"
-            if body.hasPrefix("- ") || body.hasPrefix("* ") {
-                let marker = String(body.prefix(2))
+            // Already-rendered checkbox glyph
+            if body.hasPrefix("☐ ") || body.hasPrefix("☑ ") {
                 let rest = body.dropFirst(2).trimmingCharacters(in: .whitespaces)
                 if rest.isEmpty {
                     tv.shouldChangeText(in: lineRange, replacementString: "\n")
@@ -159,29 +266,25 @@ struct MarkdownEditor: NSViewRepresentable {
                     tv.setSelectedRange(NSRange(location: lineRange.location + 1, length: 0))
                     return true
                 }
-                tv.insertText("\n\(indent)\(marker)", replacementRange: tv.selectedRange())
+                tv.insertText("\n\(indent)☐ ", replacementRange: tv.selectedRange())
+                return true
+            }
+            if body.hasPrefix("- ") || body.hasPrefix("* ") {
+                let rest = body.dropFirst(2).trimmingCharacters(in: .whitespaces)
+                if rest.isEmpty {
+                    tv.shouldChangeText(in: lineRange, replacementString: "\n")
+                    tv.replaceCharacters(in: lineRange, with: "\n")
+                    tv.didChangeText()
+                    tv.setSelectedRange(NSRange(location: lineRange.location + 1, length: 0))
+                    return true
+                }
+                tv.insertText("\n\(indent)- ", replacementRange: tv.selectedRange())
                 return true
             }
             return false
         }
 
-        private func checkboxPrefix(of line: String) -> String? {
-            // matches "- [ ] " or "- [x] " (and *,+; X,✓)
-            let bullets: [Character] = ["-", "*", "+"]
-            guard let first = line.first, bullets.contains(first) else { return nil }
-            let after = line.dropFirst()
-            guard after.hasPrefix(" [") else { return nil }
-            // need 4 more chars: "[", x, "]", " "
-            let inside = after.dropFirst(2)
-            guard inside.count >= 3 else { return nil }
-            let arr = Array(inside)
-            let mark = arr[0]
-            guard arr[1] == "]", arr[2] == " " else { return nil }
-            guard mark == " " || mark == "x" || mark == "X" || mark == "✓" else { return nil }
-            return "\(first) [\(mark)] "
-        }
-
-        // MARK: - click toggling
+        // MARK: - click toggle on glyph
 
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
             guard let tv = textView else { return }
@@ -189,35 +292,24 @@ struct MarkdownEditor: NSViewRepresentable {
             let inset = tv.textContainerInset
             let glyphPoint = NSPoint(x: point.x - inset.width, y: point.y - inset.height)
             guard let container = tv.textContainer, let lm = tv.layoutManager else { return }
-            let index = lm.characterIndex(for: glyphPoint, in: container, fractionOfDistanceBetweenInsertionPoints: nil)
-            let ns = tv.string as NSString
+            let index = lm.characterIndex(for: glyphPoint, in: container,
+                                          fractionOfDistanceBetweenInsertionPoints: nil)
+            let storage = tv.textStorage!
+            let ns = storage.string as NSString
             guard index < ns.length else { return }
-            let lineRange = ns.lineRange(for: NSRange(location: index, length: 0))
-            let line = ns.substring(with: lineRange)
+            let charRange = NSRange(location: index, length: 1)
+            let char = ns.substring(with: charRange)
+            if char != "☐" && char != "☑" { return }
 
-            // find "- [ ]" or "- [x]" and the position of the inner char
-            guard let openBracket = line.range(of: "[") else { return }
-            let innerIdx = line.index(after: openBracket.lowerBound)
-            guard innerIdx < line.endIndex else { return }
-            let inner = line[innerIdx]
-            guard inner == " " || inner == "x" || inner == "X" || inner == "✓" else { return }
-
-            // compute absolute index of the inner char
-            let innerOffset = line.distance(from: line.startIndex, to: innerIdx)
-            let absIndex = lineRange.location + innerOffset
-
-            // figure out if click landed within ~12pt of the bracket horizontally
-            let bracketRange = NSRange(location: lineRange.location + line.distance(from: line.startIndex, to: openBracket.lowerBound), length: 3)
-            let bracketRect = lm.boundingRect(forGlyphRange: bracketRange, in: container)
-            let expanded = bracketRect.insetBy(dx: -6, dy: -3)
-            guard expanded.contains(glyphPoint) else { return }
-
-            // toggle the inner character
-            let newChar: String = (inner == " ") ? "x" : " "
-            let replaceRange = NSRange(location: absIndex, length: 1)
-            tv.shouldChangeText(in: replaceRange, replacementString: newChar)
-            tv.replaceCharacters(in: replaceRange, with: newChar)
+            let toggled = (char == "☐") ? "☑" : "☐"
+            tv.shouldChangeText(in: charRange, replacementString: toggled)
+            storage.replaceCharacters(in: charRange, with: toggled)
             tv.didChangeText()
+            // bubble out the new markdown body
+            let md = MarkdownEditor.displayToMarkdown(tv.string)
+            parent.text = md
+            parent.onChange(md)
+            applyHighlighting()
         }
 
         // MARK: - syntax highlighting
@@ -225,7 +317,7 @@ struct MarkdownEditor: NSViewRepresentable {
         func applyHighlighting() {
             guard let tv = textView, let storage = tv.textStorage else { return }
             let full = NSRange(location: 0, length: (tv.string as NSString).length)
-            let baseFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+            let baseFont = NSFont.systemFont(ofSize: 14, weight: .regular)
             storage.beginEditing()
             storage.setAttributes([
                 .font: baseFont,
@@ -235,51 +327,58 @@ struct MarkdownEditor: NSViewRepresentable {
             let ns = tv.string as NSString
             ns.enumerateSubstrings(in: full, options: .byLines) { (substring, lineRange, _, _) in
                 guard let line = substring else { return }
-                let trimmedStart = line.firstIndex(where: { $0 != " " }) ?? line.startIndex
-                let leadingSpaces = line.distance(from: line.startIndex, to: trimmedStart)
-                let body = line[trimmedStart...]
+                let indent = line.prefix(while: { $0 == " " }).count
+                let body = line.dropFirst(indent)
 
                 // headers
                 if body.hasPrefix("# ") {
                     storage.addAttributes([
-                        .font: NSFont.boldSystemFont(ofSize: 18),
-                        .foregroundColor: NSColor.labelColor,
+                        .font: NSFont.systemFont(ofSize: 22, weight: .bold),
                     ], range: lineRange)
                     return
                 }
                 if body.hasPrefix("## ") {
                     storage.addAttributes([
-                        .font: NSFont.boldSystemFont(ofSize: 15),
-                        .foregroundColor: NSColor.labelColor,
+                        .font: NSFont.systemFont(ofSize: 17, weight: .semibold),
                     ], range: lineRange)
                     return
                 }
-                // checkbox
-                if body.hasPrefix("- [x]") || body.hasPrefix("- [X]") || body.hasPrefix("- [✓]") {
+                if body.hasPrefix("### ") {
+                    storage.addAttributes([
+                        .font: NSFont.systemFont(ofSize: 14, weight: .semibold),
+                        .foregroundColor: NSColor.secondaryLabelColor,
+                    ], range: lineRange)
+                    return
+                }
+
+                // checkbox glyphs
+                if body.hasPrefix("☑") {
                     storage.addAttributes([
                         .strikethroughStyle: NSUnderlineStyle.single.rawValue,
                         .foregroundColor: NSColor.tertiaryLabelColor,
                     ], range: lineRange)
-                    let bracketRange = NSRange(location: lineRange.location + leadingSpaces, length: 5)
+                    let glyphRange = NSRange(location: lineRange.location + indent, length: 1)
                     storage.addAttributes([
                         .foregroundColor: NSColor.systemGreen,
-                        .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .bold),
-                    ], range: bracketRange)
+                        .strikethroughStyle: 0,
+                        .font: NSFont.systemFont(ofSize: 16, weight: .bold),
+                    ], range: glyphRange)
                     return
                 }
-                if body.hasPrefix("- [ ]") {
-                    let bracketRange = NSRange(location: lineRange.location + leadingSpaces, length: 5)
+                if body.hasPrefix("☐") {
+                    let glyphRange = NSRange(location: lineRange.location + indent, length: 1)
                     storage.addAttributes([
-                        .foregroundColor: NSColor.systemOrange,
-                        .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .bold),
-                    ], range: bracketRange)
+                        .foregroundColor: NSColor.tertiaryLabelColor,
+                        .font: NSFont.systemFont(ofSize: 16, weight: .regular),
+                    ], range: glyphRange)
                     return
                 }
+
                 // bullets
                 if body.hasPrefix("- ") || body.hasPrefix("* ") || body.hasPrefix("+ ") {
-                    let bulletRange = NSRange(location: lineRange.location + leadingSpaces, length: 1)
+                    let bulletRange = NSRange(location: lineRange.location + indent, length: 1)
                     storage.addAttributes([
-                        .foregroundColor: NSColor.secondaryLabelColor,
+                        .foregroundColor: NSColor.tertiaryLabelColor,
                     ], range: bulletRange)
                 }
             }
