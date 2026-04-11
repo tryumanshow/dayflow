@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# uv
+.uv-cache/
+
+# dayflow runtime
+dayflow.db
+dayflow.db-journal
+dayflow.db-wal
+dayflow.db-shm
+
+# OS
+.DS_Store
+
+# internal docs (not for the public repo)
+docs/
+
