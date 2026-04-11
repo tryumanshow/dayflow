@@ -24,6 +24,7 @@
 "appointments.update" = "Update";
 "appointments.cancel" = "Cancel";
 "appointments.time_placeholder" = "HH:MM";
+"appointments.end_time_placeholder" = "end";
 "appointments.title_placeholder" = "Title";
 "appointments.month_header" = "This month";
 "appointments.month_hint" = "edit here";
@@ -86,7 +87,9 @@
 "settings.language" = "Language";
 "settings.language.hint" = "Overrides the macOS system language for Dayflow. Requires an app restart.";
 "settings.editor_font_size" = "Editor font size";
-"settings.editor_font_size.hint" = "Body font size in the Day and Month plan editors. Updates live — no restart needed.";
+"settings.editor_font_size.hint" = "Body font size. Updates live — no restart needed.";
+"settings.editor_font_size.day" = "Day editor font size";
+"settings.editor_font_size.month_plan" = "Month plan editor font size";
 "settings.language.restart_hint" = "Language changes take effect after you relaunch Dayflow.";
 
 /* LLM errors */

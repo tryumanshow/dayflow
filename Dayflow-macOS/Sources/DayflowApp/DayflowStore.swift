@@ -254,15 +254,18 @@ final class DayflowStore {
             .sorted { $0.startAt < $1.startAt }
     }
 
-    /// Parse `HH:mm` against the target day and insert. Returns false
-    /// on empty title or unparseable time.
+    /// Parse `HH:mm` against the target day and insert. `endHHmm` is
+    /// optional — empty string / nil means the appointment has no
+    /// explicit end, rendering as a point event. Returns false on
+    /// empty title or unparseable time.
     @discardableResult
-    func addAppointment(on day: Date, hhmm: String, title: String) -> Bool {
+    func addAppointment(on day: Date, hhmm: String, endHHmm: String? = nil, title: String) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
         guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
-        db.insertAppointment(startAt: startAt, endAt: nil, title: trimmedTitle, note: nil)
+        let endAt = Self.parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt)
+        db.insertAppointment(startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil)
         reloadAppointments()
         return true
     }
@@ -273,17 +276,28 @@ final class DayflowStore {
     }
 
     /// In-place edit of an existing appointment. Same parsing rules
-    /// as `addAppointment` — empty title or bad time → returns false,
-    /// no mutation.
+    /// as `addAppointment` — empty title or bad start time returns
+    /// false with no mutation. Empty `endHHmm` clears `end_at`.
     @discardableResult
-    func updateAppointment(_ id: Int64, on day: Date, hhmm: String, title: String) -> Bool {
+    func updateAppointment(_ id: Int64, on day: Date, hhmm: String, endHHmm: String? = nil, title: String) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
         guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
-        db.updateAppointment(id: id, startAt: startAt, endAt: nil, title: trimmedTitle, note: nil)
+        let endAt = Self.parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt)
+        db.updateAppointment(id: id, startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil)
         reloadAppointments()
         return true
+    }
+
+    /// Parse the optional end-time field. Empty / nil / bad input
+    /// all resolve to `nil` (no end). If the parsed end is at or
+    /// before the start we also drop it — a zero-duration or
+    /// negative range is almost certainly a typo, not an intent.
+    private static func parseOptionalEnd(day: Date, hhmm: String?, startAt: Date) -> Date? {
+        guard let raw = hhmm?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        guard let end = combine(day: day, hhmm: raw) else { return nil }
+        return end > startAt ? end : nil
     }
 
     /// Parse an `HH:mm` / `H:m` / `HHmm` string and attach it to
