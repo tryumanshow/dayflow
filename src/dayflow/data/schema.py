@@ -44,6 +44,18 @@ CREATE TABLE IF NOT EXISTS notes (
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS reviews (
+    review_date  TEXT PRIMARY KEY,        -- YYYY-MM-DD, one review per day
+    body_md      TEXT NOT NULL,
+    generated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS month_plans (
+    year_month TEXT PRIMARY KEY,           -- "YYYY-MM"
+    body_md    TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_inbox_at ON tasks(inbox_at);
 CREATE INDEX IF NOT EXISTS idx_state_history_task ON state_history(task_id);
 CREATE INDEX IF NOT EXISTS idx_time_log_task ON time_log(task_id);
