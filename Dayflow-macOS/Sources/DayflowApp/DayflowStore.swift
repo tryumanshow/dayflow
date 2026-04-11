@@ -4,13 +4,6 @@ import Observation
 enum CalendarViewMode: String, CaseIterable, Identifiable {
     case day, week, month
     var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .day:   return "Day"
-        case .week:  return "Week"
-        case .month: return "Month"
-        }
-    }
 }
 
 extension Array {

@@ -105,42 +105,43 @@ enum DF {
         return f
     }()
 
-    // Locale-aware formatters — these follow whatever language macOS /
-    // the Dayflow language override currently resolves to. They read
-    // `Locale.current` so the first access after a language change picks
-    // up the new locale on the next relaunch.
+    // Locale-aware formatters. They read `DayflowL10n.activeLocale`
+    // so the app's language override (Settings → Language) drives
+    // weekday / month / date display — `Locale.current` alone would
+    // stay pinned to the OS system locale and leave the nav bar date
+    // in English when the app runs in Korean.
 
     static var weekday: DateFormatter {
         let f = DateFormatter()
-        f.locale = Locale.current
+        f.locale = DayflowL10n.activeLocale
         f.setLocalizedDateFormatFromTemplate("E")
         return f
     }
 
     static var monthTitle: DateFormatter {
         let f = DateFormatter()
-        f.locale = Locale.current
+        f.locale = DayflowL10n.activeLocale
         f.setLocalizedDateFormatFromTemplate("yMMMM")
         return f
     }
 
     static var fullDate: DateFormatter {
         let f = DateFormatter()
-        f.locale = Locale.current
+        f.locale = DayflowL10n.activeLocale
         f.setLocalizedDateFormatFromTemplate("yMMMdEEE")
         return f
     }
 
     static var shortDate: DateFormatter {
         let f = DateFormatter()
-        f.locale = Locale.current
+        f.locale = DayflowL10n.activeLocale
         f.setLocalizedDateFormatFromTemplate("MMMdEEE")
         return f
     }
 
     static var shortMonthDay: DateFormatter {
         let f = DateFormatter()
-        f.locale = Locale.current
+        f.locale = DayflowL10n.activeLocale
         f.setLocalizedDateFormatFromTemplate("MMMd")
         return f
     }

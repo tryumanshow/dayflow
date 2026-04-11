@@ -70,75 +70,173 @@ trap cleanup EXIT
 
 mkdir -p "$DB_DIR"
 
+wipe_seed_tables() {
+    # Scrub any row that `seed_*` might own so EN/KO runs don't
+    # contaminate each other with stale content.
+    sqlite3 "$DB_PATH" <<'SQL'
+DELETE FROM day_notes WHERE note_date BETWEEN date('now', 'localtime', '-10 days') AND date('now', 'localtime', '+10 days');
+DELETE FROM month_plans WHERE month_key = strftime('%Y-%m', 'now', 'localtime');
+DELETE FROM appointments WHERE start_at BETWEEN date('now', 'localtime', '-10 days') || 'T00:00' AND date('now', 'localtime', '+10 days') || 'T23:59';
+SQL
+}
+
 seed_en() {
     sqlite3 "$DB_PATH" <<SQL
-DELETE FROM day_notes WHERE note_date BETWEEN date('now', '-6 days') AND date('now', '+1 days');
 INSERT INTO day_notes (note_date, body_md, updated_at) VALUES
-  (date('now', '-5 days'), '## Monday kickoff
+  (date('now', 'localtime', '-5 days'), '## Work
 - [x] Sprint planning
-- [x] Portfolio review
-- [ ] Schedule standup
-### Notes
-Moderate energy', datetime('now')),
-  (date('now', '-4 days'), '## Tuesday
+    - [x] Backlog triage
+    - [x] Story pointing
+- [x] 1:1 with lead
+- [ ] Write proposal draft
+
+## Personal
+- [x] Gym
+- [ ] Pick up dry cleaning', datetime('now')),
+  (date('now', 'localtime', '-4 days'), '## Work
 - [x] Code review (3 PRs)
 - [x] Bug fix PR
+    - [x] Reproduce locally
+    - [x] Add regression test
+- [ ] Update onboarding docs
+
+## Research
+- [ ] Skim latest RAG paper', datetime('now')),
+  (date('now', 'localtime', '-3 days'), '## Work
 - [x] Deploy rehearsal
-- [ ] Update docs', datetime('now')),
-  (date('now', '-3 days'), '## Wednesday
-- [ ] Read research paper
+- [x] Architecture review notes
+
+## Personal
 - [x] Afternoon walk', datetime('now')),
-  (date('now', '-2 days'), '## Thursday
-- [x] Move apartment boxes
-- [x] Tax paperwork
-- [x] Family dinner
-- [ ] Prep for next week
-### Notes
-Heaviest day of the week.', datetime('now')),
-  (date('now', '-1 day'), '', datetime('now')),
-  (date('now'),          '## Today
+  (date('now', 'localtime', '-2 days'), '## Work
+- [x] Ship v0.2 to staging
+    - [x] Migration dry-run
+    - [x] Smoke test dashboard
+    - [x] Rollback plan
+- [x] Post-mortem write-up
+- [ ] Send summary to team
+
+## Personal
+- [x] Grocery run
+- [x] Family dinner', datetime('now')),
+  (date('now', 'localtime', '-1 day'), '## Work
 - [x] Design review follow-up
-- [ ] Clean up README
-- [ ] Verify icon
-- [x] Lunch appointment', datetime('now')),
-  (date('now', '+1 day'), '## Sunday
-- Rest day', datetime('now'));
+- [ ] Retro notes
+
+## Research
+- [ ] Finish reading paper', datetime('now')),
+  (date('now', 'localtime'),           '## Work
+- [x] Morning inbox zero
+- [ ] Finalize Q2 proposal
+    - [x] Draft bullets
+    - [ ] Pricing table
+    - [ ] Review with lead
+- [ ] Post release notes
+
+## Personal
+- [x] Coffee with Min
+- [ ] Run 5k', datetime('now')),
+  (date('now', 'localtime', '+1 day'), '## Personal
+- [ ] Rest day', datetime('now'));
+
+INSERT INTO month_plans (month_key, body_md, updated_at) VALUES
+  (strftime('%Y-%m', 'now', 'localtime'), '## This month
+- [x] Ship v0.2
+- [ ] Land Q2 proposal
+    - [x] Kick-off meeting
+    - [ ] Review with lead
+    - [ ] Send to customer
+- [ ] Read 2 research papers
+- [ ] Plan 3-day holiday', datetime('now'));
+
+INSERT INTO appointments (start_at, end_at, title, note, created_at, updated_at) VALUES
+  (date('now', 'localtime', '-2 days') || 'T10:00', NULL, 'Architecture review',  NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime', '-1 day')  || 'T14:30', NULL, 'Design review',        NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime')            || 'T09:30', NULL, 'Standup',              NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime')            || 'T12:30', NULL, 'Lunch · Min',          NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime')            || 'T16:00', NULL, 'Proposal sync',        NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime', '+1 day')  || 'T10:00', NULL, 'Dentist',              NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime', '+2 days') || 'T18:00', NULL, 'Team dinner',          NULL, datetime('now'), datetime('now'));
 SQL
 }
 
 seed_ko() {
     sqlite3 "$DB_PATH" <<SQL
-DELETE FROM day_notes WHERE note_date BETWEEN date('now', '-6 days') AND date('now', '+1 days');
 INSERT INTO day_notes (note_date, body_md, updated_at) VALUES
-  (date('now', '-5 days'), '## 월요일 킥오프
+  (date('now', 'localtime', '-5 days'), '## 업무
 - [x] 스프린트 계획 회의
-- [x] 포트폴리오 점검
-- [ ] 다음 주 미팅 셋업
-### 메모
-에너지 보통', datetime('now')),
-  (date('now', '-4 days'), '## 화요일
+    - [x] 백로그 정리
+    - [x] 스토리 포인팅
+- [x] 팀장 1:1
+- [ ] 기획서 초안 쓰기
+
+## 개인
+- [x] 헬스
+- [ ] 세탁소 찾기', datetime('now')),
+  (date('now', 'localtime', '-4 days'), '## 업무
 - [x] 코드 리뷰 3건
 - [x] 버그 수정 PR
+    - [x] 로컬 재현
+    - [x] 회귀 테스트 추가
+- [ ] 온보딩 문서 업데이트
+
+## 리서치
+- [ ] RAG 논문 훑기', datetime('now')),
+  (date('now', 'localtime', '-3 days'), '## 업무
 - [x] 배포 리허설
-- [ ] 문서 업데이트', datetime('now')),
-  (date('now', '-3 days'), '## 수요일
-- [ ] 리서치 읽기
+- [x] 아키텍처 리뷰 노트
+
+## 개인
 - [x] 오후 산책', datetime('now')),
-  (date('now', '-2 days'), '## 목요일
-- [x] 이사 정리
-- [x] 세금 자료
-- [x] 가족 저녁
-- [ ] 다음주 준비
-### 메모
-가장 빡셌던 날.', datetime('now')),
-  (date('now', '-1 day'), '', datetime('now')),
-  (date('now'),          '## 오늘 할 일
+  (date('now', 'localtime', '-2 days'), '## 업무
+- [x] v0.2 스테이징 배포
+    - [x] 마이그레이션 드라이런
+    - [x] 스모크 테스트 대시보드
+    - [x] 롤백 플랜
+- [x] 포스트모템 정리
+- [ ] 팀 요약 발송
+
+## 개인
+- [x] 장보기
+- [x] 가족 저녁', datetime('now')),
+  (date('now', 'localtime', '-1 day'), '## 업무
 - [x] 디자인 리뷰 반영
-- [ ] README 정리
-- [ ] 아이콘 확인
-- [x] 점심 약속', datetime('now')),
-  (date('now', '+1 day'), '## 일요일
-- 쉬는 날', datetime('now'));
+- [ ] 회고 노트
+
+## 리서치
+- [ ] 논문 마무리', datetime('now')),
+  (date('now', 'localtime'),           '## 업무
+- [x] 아침 메일 정리
+- [ ] Q2 제안서 마무리
+    - [x] 불릿 초안
+    - [ ] 가격표
+    - [ ] 팀장 검토
+- [ ] 릴리즈 노트 발행
+
+## 개인
+- [x] 민이랑 커피
+- [ ] 5km 달리기', datetime('now')),
+  (date('now', 'localtime', '+1 day'), '## 개인
+- [ ] 쉬는 날', datetime('now'));
+
+INSERT INTO month_plans (month_key, body_md, updated_at) VALUES
+  (strftime('%Y-%m', 'now', 'localtime'), '## 이달 목표
+- [x] v0.2 배포
+- [ ] Q2 제안서 확정
+    - [x] 킥오프 회의
+    - [ ] 팀장 검토
+    - [ ] 고객사 전달
+- [ ] 리서치 논문 2편 읽기
+- [ ] 3일 휴가 계획', datetime('now'));
+
+INSERT INTO appointments (start_at, end_at, title, note, created_at, updated_at) VALUES
+  (date('now', 'localtime', '-2 days') || 'T10:00', NULL, '아키텍처 리뷰',  NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime', '-1 day')  || 'T14:30', NULL, '디자인 리뷰',    NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime')            || 'T09:30', NULL, '스탠드업',       NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime')            || 'T12:30', NULL, '점심 · 민',      NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime')            || 'T16:00', NULL, '제안서 싱크',    NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime', '+1 day')  || 'T10:00', NULL, '치과',           NULL, datetime('now'), datetime('now')),
+  (date('now', 'localtime', '+2 days') || 'T18:00', NULL, '팀 저녁',        NULL, datetime('now'), datetime('now'));
 SQL
 }
 
@@ -204,9 +302,10 @@ capture_for_language() {
     osascript -e 'tell application id "com.swryu.dayflow" to quit' 2>/dev/null || true
     sleep 3
 
-    # Seed demo data matching the target language so the Day / Week /
-    # Month previews show something meaningful and in-language. The
+    # Scrub previous seed rows first so EN and KO runs don't
+    # contaminate each other, then seed fresh in-language data. The
     # script-level trap restores the user's real DB on exit.
+    wipe_seed_tables
     case "$lang" in
         en) seed_en ;;
         ko) seed_ko ;;

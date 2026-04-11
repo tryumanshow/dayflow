@@ -151,6 +151,25 @@ final class DayflowDB: @unchecked Sendable {
             sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_appointments_start ON appointments(start_at)", nil, nil, nil)
             sqlite3_exec(db, "PRAGMA user_version = 3", nil, nil, nil)
         }
+        if current < 4 {
+            // v4: month_plans was resurrected from an ancient app
+            // version with a `year_month` key column. The v2 `CREATE
+            // TABLE IF NOT EXISTS` was a no-op on those DBs, leaving
+            // month-plan writes to silently fail at `month_key`. The
+            // feature shipped publicly for the first time in v0.1.3
+            // so no end-user data is at risk — drop the legacy shape
+            // and recreate.
+            sqlite3_exec(db, "DROP TABLE IF EXISTS month_plans", nil, nil, nil)
+            sqlite3_exec(db, """
+                CREATE TABLE month_plans (
+                    month_key  TEXT PRIMARY KEY,
+                    body_md    TEXT NOT NULL,
+                    body_json  TEXT,
+                    updated_at TEXT NOT NULL
+                )
+            """, nil, nil, nil)
+            sqlite3_exec(db, "PRAGMA user_version = 4", nil, nil, nil)
+        }
     }
 
     // MARK: - format helpers
