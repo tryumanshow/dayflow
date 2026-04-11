@@ -36,7 +36,6 @@
 "month.caption.streak_days" = "%d일 연속";
 "month.caption.busiest" = "가장 활발: %@요일";
 "month.plan_header" = "이달 계획";
-"month.plan.empty" = "이 달은 무슨 계획?";
 "month.plan.hint" = "입력하면 자동 저장";
 
 /* Quick Throw */
