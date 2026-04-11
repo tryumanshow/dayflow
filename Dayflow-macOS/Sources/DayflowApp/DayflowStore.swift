@@ -43,6 +43,14 @@ final class DayflowStore {
     var reviewIsLoading: Bool = false
     var reviewError: String?
 
+    /// Per-month TODO list, independent of any day note. Lives in the
+    /// `month_plans` table keyed by `yyyy-MM`. Shown in the Month view
+    /// right rail and edited with the same BlockNote editor as the Day
+    /// view.
+    var monthPlanBody: String = ""
+    var monthPlanJSON: String? = nil
+    private var monthPlanLoadedFor: String = ""
+
     private let db = DayflowDB.shared
 
     init() {
@@ -100,6 +108,14 @@ final class DayflowStore {
             setDayBuffers(md: full.body, json: full.bodyJSON, cacheKey: dayKey)
         }
 
+        let monthKey = DayflowDB.monthKey(selectedDate)
+        if force || monthKey != monthPlanLoadedFor {
+            let plan = db.getMonthPlanFull(date: selectedDate)
+            monthPlanBody = plan.body
+            monthPlanJSON = plan.bodyJSON
+            monthPlanLoadedFor = monthKey
+        }
+
         let (monthStart, monthEnd) = monthGridRange(selectedDate)
         bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
 
@@ -117,16 +133,23 @@ final class DayflowStore {
         dayBodyLoadedFor = cacheKey
     }
 
+    /// Gregorian calendar reused by every layout helper that walks
+    /// weeks/months, so we don't re-initialise a `Calendar` on every
+    /// render tick. Monday-first on this branch.
+    private static let gregorian: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.firstWeekday = 2
+        return c
+    }()
+
     func startOfWeek(_ date: Date) -> Date {
-        var cal = Calendar(identifier: .gregorian)
-        cal.firstWeekday = 2
+        let cal = Self.gregorian
         let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         return cal.date(from: comps) ?? date
     }
 
     func monthGridRange(_ date: Date) -> (Date, Date) {
-        var cal = Calendar(identifier: .gregorian)
-        cal.firstWeekday = 2
+        let cal = Self.gregorian
         let comps = cal.dateComponents([.year, .month], from: date)
         let firstOfMonth = cal.date(from: comps) ?? date
         let gridStart = startOfWeek(firstOfMonth)
@@ -152,6 +175,13 @@ final class DayflowStore {
         bodies[key] = newValue
     }
 
+    func updateMonthPlan(_ newValue: String, bodyJSON: String? = nil) {
+        guard newValue != monthPlanBody || bodyJSON != monthPlanJSON else { return }
+        monthPlanBody = newValue
+        monthPlanJSON = bodyJSON
+        db.saveMonthPlan(date: selectedDate, body: newValue, bodyJSON: bodyJSON)
+    }
+
     /// Fast path for external markdown-only edits (QuickThrow, Week
     /// checkbox toggles). Updates the in-memory cache without the
     /// month-range SQL round-trip that `refresh(force:)` would cost.
@@ -162,55 +192,6 @@ final class DayflowStore {
         }
         if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
             setDayBuffers(md: body, json: nil, cacheKey: key)
-        }
-    }
-
-    /// Toggle the Nth *preview-visible* task checkbox for a given day without
-    /// leaving the current view. `previewIndex` is the order of the task
-    /// within the week-column preview (which may be clipped to 8 lines and
-    /// skips any line the parser rejects).
-    ///
-    /// We walk the body with the same parser the preview uses and map
-    /// preview index → source line index, then rewrite that single line's
-    /// `[ ]`/`[x]` marker. The rest of the body is left byte-identical.
-    func toggleWeekTask(day: Date, previewIndex: Int) {
-        let key = DayflowDB.ymd(day)
-        let body = bodies[key] ?? db.getDayNote(date: day)
-        guard !body.isEmpty else { return }
-
-        // Split preserving line positions so we can splice one line back in.
-        var lines = body.components(separatedBy: "\n")
-        var previewCount = 0
-        var targetLineIdx: Int?
-
-        for (idx, rawLine) in lines.enumerated() {
-            if previewCount > 8 { break }
-            guard let parsed = MarkdownLine.parse(rawLine) else { continue }
-            if case .task = parsed {
-                if previewCount == previewIndex {
-                    targetLineIdx = idx
-                    break
-                }
-                previewCount += 1
-            } else {
-                previewCount += 1
-            }
-        }
-
-        guard let lineIdx = targetLineIdx else { return }
-        let toggled = toggleTaskMarker(in: lines[lineIdx])
-        guard toggled != lines[lineIdx] else { return }
-        lines[lineIdx] = toggled
-
-        let newBody = lines.joined(separator: "\n")
-        // Markdown-only path — stored JSON tree is cleared so the editor
-        // re-derives blocks on next load. Rich styles on the affected day
-        // are dropped; acceptable for a Week-preview convenience toggle.
-        db.saveDayNote(date: day, body: newBody, bodyJSON: nil)
-        bodies[key] = newBody
-
-        if Calendar.current.isDate(day, inSameDayAs: selectedDate) {
-            setDayBuffers(md: newBody, json: nil, cacheKey: key)
         }
     }
 
@@ -236,6 +217,105 @@ final class DayflowStore {
             return line
         }
         return String(chars)
+    }
+
+    // MARK: - week preview
+
+    /// Grouped task preview for a single day column in Week view.
+    /// A "group" is a heading with its tasks in source order (both
+    /// open and done). Tasks before any heading land in a synthetic
+    /// group with `heading == nil`, rendered as a flat list.
+    struct WeekGroup: Identifiable {
+        let id: Int
+        let heading: String?
+        let tasks: [PreviewTask]
+    }
+    struct PreviewTask: Identifiable {
+        let id: Int
+        let text: String
+        let checked: Bool
+        let sourceLineIndex: Int
+        /// Indent level — 0 for top-level, 1+ for nesting. Week
+        /// preview renders a padding offset per level so Day-view
+        /// hierarchy is visible at a glance.
+        let depth: Int
+    }
+
+    private static let weekPreviewMaxGroups = 2
+    private static let weekPreviewMaxTasksPerGroup = 5
+
+    func weekGroups(for date: Date) -> [WeekGroup] {
+        let body = dayBody(for: date)
+        guard !body.isEmpty else { return [] }
+
+        // Indent depth is computed from the RAW line (before
+        // `MarkdownLine.parse` trims whitespace) so subtasks show up
+        // under their parents. Source order is preserved, including
+        // done tasks — the user wants to see what's finished, not
+        // just what's outstanding.
+        var groups: [(heading: String?, tasks: [PreviewTask])] = [(nil, [])]
+        let lines = body.components(separatedBy: "\n")
+        var nextTaskID = 0
+        for (idx, raw) in lines.enumerated() {
+            let depth = Self.indentDepth(of: raw)
+            guard let parsed = MarkdownLine.parse(raw) else { continue }
+            switch parsed {
+            case .heading(_, let text):
+                groups.append((text, []))
+            case .task(let checked, let text):
+                var current = groups[groups.count - 1]
+                if current.tasks.count < Self.weekPreviewMaxTasksPerGroup {
+                    current.tasks.append(PreviewTask(
+                        id: nextTaskID, text: text, checked: checked,
+                        sourceLineIndex: idx, depth: depth))
+                    nextTaskID += 1
+                }
+                groups[groups.count - 1] = current
+            case .bullet, .plain:
+                continue
+            }
+        }
+
+        let filtered = groups.filter { !$0.tasks.isEmpty }
+        let capped = Array(filtered.prefix(Self.weekPreviewMaxGroups))
+        return capped.enumerated().map { i, g in
+            WeekGroup(id: i, heading: g.heading, tasks: g.tasks)
+        }
+    }
+
+    /// `blocksToMarkdownLossy` emits this many spaces per nesting
+    /// level (verified against live DB output — CommonMark list
+    /// continuation). Used by `indentDepth` below.
+    private static let indentUnitSpaces = 4
+
+    /// Indent depth for a raw markdown line. Tabs are expanded to one
+    /// indent unit each.
+    private static func indentDepth(of raw: String) -> Int {
+        let leading = raw.prefix(while: { $0 == " " || $0 == "\t" })
+            .reduce(0) { $0 + ($1 == "\t" ? indentUnitSpaces : 1) }
+        return leading / indentUnitSpaces
+    }
+
+    /// Toggle an open task found in the week preview by its source line
+    /// index. The line index comes from `weekGroups(...)` / `OpenTask`;
+    /// no parser re-walk, no preview index → source index mapping.
+    func toggleWeekTask(day: Date, sourceLineIndex: Int) {
+        let key = DayflowDB.ymd(day)
+        let body = bodies[key] ?? db.getDayNote(date: day)
+        guard !body.isEmpty else { return }
+        var lines = body.components(separatedBy: "\n")
+        guard lines.indices.contains(sourceLineIndex) else { return }
+        let toggled = toggleTaskMarker(in: lines[sourceLineIndex])
+        guard toggled != lines[sourceLineIndex] else { return }
+        lines[sourceLineIndex] = toggled
+
+        let newBody = lines.joined(separator: "\n")
+        db.saveDayNote(date: day, body: newBody, bodyJSON: nil)
+        bodies[key] = newBody
+
+        if Calendar.current.isDate(day, inSameDayAs: selectedDate) {
+            setDayBuffers(md: newBody, json: nil, cacheKey: key)
+        }
     }
 
     // MARK: - metric helpers

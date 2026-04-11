@@ -18,14 +18,15 @@
 "week.footer.done" = "done";
 "week.footer.open" = "open";
 "week.footer.days_tracked" = "days tracked";
+"week.footer.day_tracked" = "day tracked";
 
 /* Month view */
 "month.standout_header" = "이번 달의 한 줄";
 "month.caption.n_of_m" = "%d of %d";
 "month.caption.streak_days" = "%d일 연속";
 "month.caption.busiest" = "가장 활발: %@요일";
-"month.selected_day.open" = "열기";
-"month.selected_day.empty" = "이 날은 아직 비어 있어";
+"month.plan_header" = "이달 계획";
+"month.plan.hint" = "입력하면 자동 저장";
 
 /* Quick Throw */
 "quick_throw.title" = "→ 할 일 던지기";

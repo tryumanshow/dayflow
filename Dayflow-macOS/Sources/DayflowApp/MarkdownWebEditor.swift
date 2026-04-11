@@ -183,12 +183,18 @@ struct MarkdownWebEditor: NSViewRepresentable {
        component isn't loaded (we're on @blocknote/core only), so we
        build a minimal vanilla one that calls editor.toggleStyles /
        addStyles / removeStyles directly. */
+    /* Toolbar is a column of logical groups that wrap as units, not as
+       individual buttons. On wide containers (Day view, ~1200px) all
+       groups land on one row; on narrow containers (Month plan rail,
+       ~300px) each group drops onto its own line cleanly. */
     #dayflow-toolbar {
         flex: 0 0 auto;
         display: flex;
         align-items: center;
-        gap: 4px;
-        padding: 6px 10px;
+        flex-wrap: wrap;
+        row-gap: 6px;
+        column-gap: 10px;
+        padding: 6px 12px;
         background: rgba(28, 28, 32, 0.7);
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         backdrop-filter: blur(12px);
@@ -196,11 +202,22 @@ struct MarkdownWebEditor: NSViewRepresentable {
         font-size: 13px;
         user-select: none;
     }
-    #dayflow-toolbar .sep {
-        width: 1px;
-        height: 16px;
-        background: rgba(255, 255, 255, 0.12);
-        margin: 0 4px;
+    #dayflow-toolbar .tb-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        /* Never break a group across rows. */
+        flex: 0 0 auto;
+    }
+    #dayflow-toolbar .tb-group.colors {
+        gap: 6px;
+    }
+    /* Swatch row is a nested flex so its circles share a 7px gap
+       regardless of the parent group's gap. */
+    #dayflow-toolbar [data-row] {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
     }
     #dayflow-toolbar .label {
         font-size: 11px;
@@ -313,16 +330,20 @@ struct MarkdownWebEditor: NSViewRepresentable {
     </head>
     <body>
     <div id="dayflow-toolbar">
-      <button data-cmd="bold" title="Bold (⌘B)">B</button>
-      <button data-cmd="italic" class="italic" title="Italic (⌘I)">I</button>
-      <button data-cmd="underline" class="underline" title="Underline (⌘U)">U</button>
-      <button data-cmd="strike" class="strike" title="Strikethrough">S</button>
-      <div class="sep"></div>
-      <span class="label">A</span>
-      <span data-row="textColor"></span>
-      <div class="sep"></div>
-      <span class="label">▨</span>
-      <span data-row="backgroundColor"></span>
+      <div class="tb-group">
+        <button data-cmd="bold" title="Bold (⌘B)">B</button>
+        <button data-cmd="italic" class="italic" title="Italic (⌘I)">I</button>
+        <button data-cmd="underline" class="underline" title="Underline (⌘U)">U</button>
+        <button data-cmd="strike" class="strike" title="Strikethrough">S</button>
+      </div>
+      <div class="tb-group colors">
+        <span class="label">A</span>
+        <span data-row="textColor"></span>
+      </div>
+      <div class="tb-group colors">
+        <span class="label">▨</span>
+        <span data-row="backgroundColor"></span>
+      </div>
     </div>
     <div id="editor"></div>
     <script type="module">
@@ -544,10 +565,16 @@ struct MarkdownWebEditor: NSViewRepresentable {
         for (const b of cmdButtons) {
             b.classList.toggle('active', !!active[b.dataset.cmd]);
         }
+        // Color swatches: highlight ONLY a non-default color that's
+        // actually applied to the selection. The "×" (default) button
+        // never wears the active ring — a blank selection is the normal
+        // state and shouldn't look selected.
         for (const prop of ['textColor', 'backgroundColor']) {
-            const current = active[prop] || 'default';
+            const current = active[prop];
             for (const b of colorButtons[prop]) {
-                b.classList.toggle('active', b.dataset.color === current);
+                const val = b.dataset.color;
+                const isActive = (val !== 'default') && (val === current);
+                b.classList.toggle('active', isActive);
             }
         }
     }
