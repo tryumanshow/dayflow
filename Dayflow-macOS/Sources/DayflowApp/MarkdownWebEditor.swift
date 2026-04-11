@@ -225,9 +225,16 @@ struct MarkdownWebEditor: NSViewRepresentable {
     // direct paragraph input (e.g. paste).
     const taskListMatchHandler = ({ chain, range, match }) => {
         const checked = match[1] === 'x' || match[1] === 'X';
+        // IMPORTANT: don't use toggleTaskList() — it calls toggleList(),
+        // which when invoked inside an existing list of a different type
+        // (e.g. inside a bullet list) does setNodeMarkup on the *parent
+        // list*, converting every bullet into a task. We want to NEST a
+        // task list inside the current bullet item instead, so we use
+        // wrapInList() which always wraps the current block in a fresh
+        // list rather than rewriting the surrounding one.
         chain()
             .deleteRange(range)
-            .toggleTaskList()
+            .wrapInList('taskList')
             .updateAttributes('taskItem', { checked })
             .run();
     };
