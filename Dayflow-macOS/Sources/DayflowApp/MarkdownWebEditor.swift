@@ -217,22 +217,34 @@ struct MarkdownWebEditor: NSViewRepresentable {
     import { Markdown } from 'https://esm.sh/tiptap-markdown@0.8.10';
 
     // TipTap doesn't ship a markdown input rule for task lists, so we add one.
-    // Triggers when the user types `- [ ] ` or `- [x] ` at the start of a line.
+    //
+    // The trick: StarterKit's BulletList input rule runs first, so when the
+    // user types `- ` we IMMEDIATELY get a bullet list. They then type
+    // `[ ] ` or `[x] ` *inside* the bullet item, and we transform the bullet
+    // into a task. The first pattern (`^- [ ] `) is kept as a fallback for
+    // direct paragraph input (e.g. paste).
+    const taskListMatchHandler = ({ chain, range, match }) => {
+        const checked = match[1] === 'x' || match[1] === 'X';
+        chain()
+            .deleteRange(range)
+            .toggleTaskList()
+            .updateAttributes('taskItem', { checked })
+            .run();
+    };
     const TaskListMarkdownShortcut = Extension.create({
         name: 'taskListMarkdownShortcut',
         addInputRules() {
             return [
+                // Inside an existing bullet item (most common path).
+                new InputRule({
+                    find: /^\\[([ xX])\\]\\s$/,
+                    handler: taskListMatchHandler,
+                }),
+                // Direct paragraph form (e.g. paste).
                 new InputRule({
                     find: /^\\s*[-+*]\\s\\[([ xX])\\]\\s$/,
-                    handler: ({ chain, range, match }) => {
-                        const checked = match[1] === 'x' || match[1] === 'X';
-                        chain()
-                            .deleteRange(range)
-                            .toggleTaskList()
-                            .updateAttributes('taskItem', { checked })
-                            .run();
-                    }
-                })
+                    handler: taskListMatchHandler,
+                }),
             ];
         }
     });
