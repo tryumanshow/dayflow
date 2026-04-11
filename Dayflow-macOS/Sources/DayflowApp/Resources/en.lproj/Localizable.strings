@@ -94,7 +94,7 @@
 
 /* LLM errors */
 "llm.error.missing_api_key" = "%@ API key is missing. Open Dayflow → Settings… to add one.";
-"llm.error.bad_response" = "LLM API %d at %@\n%@";
+"llm.error.bad_response" = "LLM API %d at %@";
 "llm.error.decode_failed" = "Failed to decode LLM response";
 
 /* LLM prompts */

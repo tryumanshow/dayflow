@@ -130,14 +130,12 @@ struct MarkdownWebEditor: NSViewRepresentable {
             pendingJSON = nil
             lastEmittedMarkdown = md
             lastEmittedJSON = json ?? ""
-            // `md` is a plain string → encode it as a JS string literal
-            // so quotes, backslashes, newlines, and multi-byte unicode
-            // come through cleanly. `json` is already a valid JSON text
-            // (a subset of JS expression grammar since ES2019), so it
-            // can be spliced in as a JS object literal directly without
-            // the extra encode/parse round-trip.
+            // Both args are passed as JS string literals (no raw JSON
+            // splicing): a tampered `body_json` row in SQLite would
+            // otherwise execute as JS inside the editor origin. The
+            // JS side calls `JSON.parse` on the string before using.
             let mdLiteral = Self.jsStringLiteral(md)
-            let jsonLiteral = json ?? "null"
+            let jsonLiteral = json.map(Self.jsStringLiteral) ?? "null"
             let js = "window.dayflowSetContent(\(mdLiteral), \(jsonLiteral))"
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
@@ -535,14 +533,26 @@ struct MarkdownWebEditor: NSViewRepresentable {
         return root.children;
     }
 
-    // `jsonTree` arrives as an already-parsed array (Swift inlines the
-    // raw JSON as a JS object literal), or `null` for markdown-only
-    // rows. Markdown is only re-parsed when the JSON sidecar is absent.
-    window.dayflowSetContent = async function(md, jsonTree) {
+    // `jsonText` arrives as a JSON string (Swift passes a quoted
+    // literal, not raw JS), or `null` for markdown-only rows. We
+    // `JSON.parse` here so a tampered `body_json` in the DB can't
+    // be interpreted as JS inside the editor origin — the parse
+    // enforces a data-only boundary.
+    window.dayflowSetContent = async function(md, jsonText) {
         if (!editor) return;
         try {
             suppressEmit = true;
-            let blocks = (Array.isArray(jsonTree) && jsonTree.length > 0) ? jsonTree : null;
+            let blocks = null;
+            if (typeof jsonText === 'string' && jsonText.length > 0) {
+                try {
+                    const parsed = JSON.parse(jsonText);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        blocks = parsed;
+                    }
+                } catch (e) {
+                    console.log('setContent JSON parse error: ' + e.message);
+                }
+            }
             if (!blocks) {
                 blocks = mdToBlocks(md || '');
             }
@@ -552,7 +562,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             }
             editor.replaceBlocks(editor.document, blocks);
             lastEmitted = md;
-            lastEmittedJSON = jsonTree ? JSON.stringify(jsonTree) : "";
+            lastEmittedJSON = typeof jsonText === 'string' ? jsonText : "";
         } catch (e) {
             console.log('setContent error: ' + e.message + ' :: ' + (e.stack || ''));
         } finally {
