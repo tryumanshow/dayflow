@@ -21,6 +21,8 @@
 "appointments.header" = "Appointments";
 "appointments.empty" = "No appointments";
 "appointments.add" = "Add";
+"appointments.update" = "Update";
+"appointments.cancel" = "Cancel";
 "appointments.time_placeholder" = "HH:MM";
 "appointments.title_placeholder" = "Title";
 "appointments.month_header" = "This month";

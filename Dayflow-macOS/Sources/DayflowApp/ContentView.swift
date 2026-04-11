@@ -4,11 +4,13 @@ import SwiftUI
 struct ContentView: View {
     @Environment(DayflowStore.self) private var store
 
-    // Month rail appointment add form. Persists across view switches
-    // so a half-typed entry survives a Day/Week detour.
+    // Month rail appointment form. Doubles as the add form and the
+    // edit form — `editingAppointmentId` being non-nil flips the
+    // submit button label and routes to `updateAppointment`.
     @State private var aptTimeInput: String = ""
     @State private var aptTitleInput: String = ""
     @State private var aptDateInput: Date = Date()
+    @State private var editingAppointmentId: Int64? = nil
     @FocusState private var aptTitleFocused: Bool
 
     // Global editor body font size, controlled by Settings. Both
@@ -635,40 +637,7 @@ struct ContentView: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(items) { apt in
-                        HStack(spacing: 10) {
-                            Button {
-                                store.selectDate(apt.startAt)
-                                store.setMode(.day)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Text(DF.shortMonthDay.string(from: apt.startAt))
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 60, alignment: .leading)
-                                    Text(DF.hourMinute.string(from: apt.startAt))
-                                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                                        .foregroundStyle(Color.dfAccent)
-                                        .frame(width: 40, alignment: .leading)
-                                    Text(apt.title)
-                                        .font(DS.FontStyle.body)
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Spacer(minLength: 0)
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            Button {
-                                store.deleteAppointment(apt)
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                                    .frame(width: 16, height: 16)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        appointmentMonthRow(apt)
                     }
                 }
             }
@@ -702,7 +671,7 @@ struct ContentView: View {
                 Button {
                     submitMonthAppointment()
                 } label: {
-                    Text(L("appointments.add"))
+                    Text(L(editingAppointmentId == nil ? "appointments.add" : "appointments.update"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.dfAccent)
                         .padding(.horizontal, 10)
@@ -710,13 +679,106 @@ struct ContentView: View {
                         .background(Capsule().fill(Color.dfAccent.opacity(0.14)))
                 }
                 .buttonStyle(.plain)
+                if editingAppointmentId != nil {
+                    Button {
+                        cancelAppointmentEdit()
+                    } label: {
+                        Text(L("appointments.cancel"))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
 
+    /// One row in the month appointments list. Click the date/time/
+    /// title area to navigate to Day; pencil loads into the edit
+    /// form; × deletes. Selected (being-edited) row wears the accent
+    /// background so the user sees which row the form is bound to.
+    @ViewBuilder
+    private func appointmentMonthRow(_ apt: Appointment) -> some View {
+        let isEditing = (editingAppointmentId == apt.id)
+        HStack(spacing: 10) {
+            Button {
+                store.selectDate(apt.startAt)
+                store.setMode(.day)
+            } label: {
+                HStack(spacing: 10) {
+                    Text(DF.shortMonthDay.string(from: apt.startAt))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 60, alignment: .leading)
+                    Text(DF.hourMinute.string(from: apt.startAt))
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Color.dfAccent)
+                        .frame(width: 40, alignment: .leading)
+                    Text(apt.title)
+                        .font(DS.FontStyle.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button {
+                startAppointmentEdit(apt)
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(isEditing ? AnyShapeStyle(Color.dfAccent) : AnyShapeStyle(.tertiary))
+                    .frame(width: 18, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button {
+                if isEditing { cancelAppointmentEdit() }
+                store.deleteAppointment(apt)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isEditing ? Color.dfAccent.opacity(0.12) : .clear)
+        )
+    }
+
+    private func startAppointmentEdit(_ apt: Appointment) {
+        editingAppointmentId = apt.id
+        aptDateInput = apt.startAt
+        aptTimeInput = DF.hourMinute.string(from: apt.startAt)
+        aptTitleInput = apt.title
+        aptTitleFocused = true
+    }
+
+    private func cancelAppointmentEdit() {
+        editingAppointmentId = nil
+        aptTimeInput = ""
+        aptTitleInput = ""
+        aptTitleFocused = false
+    }
+
     private func submitMonthAppointment() {
-        let ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, title: aptTitleInput)
+        let ok: Bool
+        if let id = editingAppointmentId {
+            ok = store.updateAppointment(id, on: aptDateInput, hhmm: aptTimeInput, title: aptTitleInput)
+        } else {
+            ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, title: aptTitleInput)
+        }
         if ok {
+            editingAppointmentId = nil
             aptTimeInput = ""
             aptTitleInput = ""
             aptTitleFocused = false

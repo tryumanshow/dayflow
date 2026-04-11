@@ -367,6 +367,23 @@ final class DayflowDB: @unchecked Sendable {
         sqlite3_step(stmt)
     }
 
+    func updateAppointment(id: Int64, startAt: Date, endAt: Date?, title: String, note: String?) {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, """
+            UPDATE appointments
+            SET start_at = ?, end_at = ?, title = ?, note = ?, updated_at = ?
+            WHERE id = ?
+        """, -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, DF.appointmentStamp.string(from: startAt))
+        bindTextOrNull(stmt, 2, endAt.map { DF.appointmentStamp.string(from: $0) })
+        bindText(stmt, 3, title)
+        bindTextOrNull(stmt, 4, note)
+        bindText(stmt, 5, nowISO())
+        sqlite3_bind_int64(stmt, 6, id)
+        sqlite3_step(stmt)
+    }
+
     // MARK: - reviews (LLM daily review)
 
     func getReview(date: Date) -> String? {

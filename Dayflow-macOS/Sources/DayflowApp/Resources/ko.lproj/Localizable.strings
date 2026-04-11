@@ -21,6 +21,8 @@
 "appointments.header" = "약속";
 "appointments.empty" = "약속 없음";
 "appointments.add" = "추가";
+"appointments.update" = "수정";
+"appointments.cancel" = "취소";
 "appointments.time_placeholder" = "HH:MM";
 "appointments.title_placeholder" = "제목";
 "appointments.month_header" = "이 달의 일정";
