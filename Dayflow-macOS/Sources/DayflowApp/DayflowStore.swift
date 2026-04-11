@@ -51,6 +51,11 @@ final class DayflowStore {
     var monthPlanJSON: String? = nil
     private var monthPlanLoadedFor: String = ""
 
+    /// Appointments keyed by `yyyy-MM-dd`, covering the same
+    /// month-grid range as `bodies`. Week / Month / Day rails all
+    /// read from this cache instead of re-querying per render.
+    var appointmentsByDay: [String: [Appointment]] = [:]
+
     private let db = DayflowDB.shared
 
     init() {
@@ -118,8 +123,19 @@ final class DayflowStore {
 
         let (monthStart, monthEnd) = monthGridRange(selectedDate)
         bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
+        reloadAppointments(start: monthStart, end: monthEnd)
 
         loadReview()
+    }
+
+    private func reloadAppointments(start: Date, end: Date) {
+        let items = db.getAppointments(start: start, end: end)
+        var byDay: [String: [Appointment]] = [:]
+        for apt in items {
+            let key = DayflowDB.ymd(apt.startAt)
+            byDay[key, default: []].append(apt)
+        }
+        appointmentsByDay = byDay
     }
 
     /// Single point of assignment for the three buffers that always move
@@ -211,6 +227,65 @@ final class DayflowStore {
             return line
         }
         return String(chars)
+    }
+
+    // MARK: - appointments
+
+    func appointments(for date: Date) -> [Appointment] {
+        appointmentsByDay[DayflowDB.ymd(date)] ?? []
+    }
+
+    /// All appointments whose startAt falls within the calendar month
+    /// that contains `selectedDate`. Sorted by startAt.
+    func currentMonthAppointments() -> [Appointment] {
+        let cal = Calendar.current
+        guard let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: selectedDate)),
+              let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart) else { return [] }
+        return appointmentsByDay.keys.sorted().flatMap { key -> [Appointment] in
+            guard let d = DF.ymd.date(from: key),
+                  d >= monthStart, d < nextMonth else { return [] }
+            return appointmentsByDay[key] ?? []
+        }
+    }
+
+    /// Parse `HH:mm` against the selected date and insert. Returns
+    /// false if the time string is unparseable.
+    @discardableResult
+    func addAppointment(on day: Date, hhmm: String, title: String) -> Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return false }
+        guard let startAt = combine(day: day, hhmm: trimmedTime) else { return false }
+        db.insertAppointment(startAt: startAt, endAt: nil, title: trimmedTitle, note: nil)
+        let (monthStart, monthEnd) = monthGridRange(selectedDate)
+        reloadAppointments(start: monthStart, end: monthEnd)
+        return true
+    }
+
+    func deleteAppointment(_ apt: Appointment) {
+        db.deleteAppointment(id: apt.id)
+        let (monthStart, monthEnd) = monthGridRange(selectedDate)
+        reloadAppointments(start: monthStart, end: monthEnd)
+    }
+
+    /// Combine a calendar day with an `HH:mm` string into a single
+    /// Date at that wall-clock instant, in the user's local calendar.
+    /// Accepts `H:m`, `HH:mm`, `HHmm` (no separator).
+    private func combine(day: Date, hhmm: String) -> Date? {
+        // Normalise "HHmm" → "HH:mm" to be forgiving of typing style.
+        var normalized = hhmm
+        if normalized.count == 4, !normalized.contains(":") {
+            let idx = normalized.index(normalized.startIndex, offsetBy: 2)
+            normalized = String(normalized[..<idx]) + ":" + String(normalized[idx...])
+        }
+        let parts = normalized.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        let hour = parts[0], minute = parts[1]
+        guard (0...23).contains(hour), (0...59).contains(minute) else { return nil }
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: day)
+        comps.hour = hour
+        comps.minute = minute
+        return Calendar.current.date(from: comps)
     }
 
     // MARK: - week preview

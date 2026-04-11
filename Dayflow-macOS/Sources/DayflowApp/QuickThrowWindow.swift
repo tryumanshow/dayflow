@@ -52,25 +52,57 @@ final class QuickThrowController {
     }
 }
 
+private enum QuickThrowKind: String, CaseIterable, Identifiable {
+    case task
+    case appointment
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .task:        return "Task"
+        case .appointment: return "Appointment"
+        }
+    }
+}
+
 @MainActor
 private struct QuickThrowView: View {
     let store: DayflowStore
     let onDone: () -> Void
 
+    @State private var kind: QuickThrowKind = .task
     @State private var title: String = ""
     @State private var date: Date = Date()
+    @State private var timeInput: String = ""
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("→ throw a task")
-                .font(.headline)
-            TextField("e.g. 내일 회의자료 만들기", text: $title)
-                .textFieldStyle(.roundedBorder)
-                .focused($focused)
-                .onSubmit(submit)
+            Picker("", selection: $kind) {
+                ForEach(QuickThrowKind.allCases) { k in
+                    Text(k.label).tag(k)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            HStack(spacing: 8) {
+                if kind == .appointment {
+                    TextField("HH:MM", text: $timeInput)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .monospacedDigit()
+                }
+                TextField(kind == .task ? "e.g. draft tomorrow's meeting notes"
+                                        : "e.g. Lunch with Jane",
+                          text: $title)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($focused)
+                    .onSubmit(submit)
+            }
+
             DatePicker("on", selection: $date, displayedComponents: [.date])
                 .datePickerStyle(.compact)
+
             HStack {
                 Spacer()
                 Button("Cancel") { onDone() }
@@ -81,24 +113,28 @@ private struct QuickThrowView: View {
             }
         }
         .padding(18)
-        .frame(width: 380)
+        .frame(width: 420)
         .onAppear { focused = true }
     }
 
     private func submit() {
         let v = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !v.isEmpty else { onDone(); return }
-        var body = DayflowDB.shared.getDayNote(date: date)
-        if !body.isEmpty && !body.hasSuffix("\n") {
-            body.append("\n")
+        switch kind {
+        case .task:
+            var body = DayflowDB.shared.getDayNote(date: date)
+            if !body.isEmpty && !body.hasSuffix("\n") {
+                body.append("\n")
+            }
+            body.append("- [ ] \(v)\n")
+            DayflowDB.shared.saveDayNote(date: date, body: body)
+            store.applyExternalEdit(date: date, body: body)
+        case .appointment:
+            let ok = store.addAppointment(on: date, hhmm: timeInput, title: v)
+            guard ok else { return }  // bad time — leave dialog open
         }
-        body.append("- [ ] \(v)\n")
-        DayflowDB.shared.saveDayNote(date: date, body: body)
-        // Hand the new body to the store so the in-memory cache stays in
-        // sync with the DB. Cheap path — avoids the month-range SQL query
-        // that `refresh(force:)` would re-run on every toss.
-        store.applyExternalEdit(date: date, body: body)
         title = ""
+        timeInput = ""
         onDone()
     }
 }

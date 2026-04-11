@@ -4,6 +4,12 @@ import SwiftUI
 struct ContentView: View {
     @Environment(DayflowStore.self) private var store
 
+    // Day rail appointment add form. Persist across view switches so a
+    // half-typed entry isn't lost when the user taps Week/Month.
+    @State private var aptTimeInput: String = ""
+    @State private var aptTitleInput: String = ""
+    @FocusState private var aptTitleFocused: Bool
+
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
@@ -139,6 +145,7 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.Space.breathe) {
                         daySummaryRail
+                        appointmentsRail
                         reviewRail
                     }
                     .padding(.horizontal, DS.Space.xl)
@@ -149,7 +156,7 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
                 appCredit
             }
-            .frame(width: 320)
+            .frame(width: 340)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
         }
@@ -198,6 +205,95 @@ struct ContentView: View {
                     .font(DS.FontStyle.caption)
                     .foregroundStyle(.tertiary)
             }
+        }
+    }
+
+    private var appointmentsRail: some View {
+        let items = store.appointments(for: store.selectedDate)
+        return VStack(alignment: .leading, spacing: DS.Space.sm) {
+            SectionLabel(text: L("appointments.header"))
+            if items.isEmpty {
+                Text(L("appointments.empty"))
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 2)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(items) { apt in
+                        appointmentRow(apt)
+                    }
+                }
+            }
+            // Inline add form. Always visible — low-friction. Enter in
+            // either field commits.
+            HStack(spacing: 6) {
+                TextField(L("appointments.time_placeholder"), text: $aptTimeInput)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .frame(width: 52)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.04))
+                    )
+                    .onSubmit { submitAppointment() }
+                TextField(L("appointments.title_placeholder"), text: $aptTitleInput)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.04))
+                    )
+                    .focused($aptTitleFocused)
+                    .onSubmit { submitAppointment() }
+                Button {
+                    submitAppointment()
+                } label: {
+                    Text(L("appointments.add"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.dfAccent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.dfAccent.opacity(0.14)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func appointmentRow(_ apt: Appointment) -> some View {
+        HStack(spacing: 8) {
+            Text(DF.hourMinute.string(from: apt.startAt))
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(Color.dfAccent)
+                .frame(width: 44, alignment: .leading)
+            Text(apt.title)
+                .font(DS.FontStyle.body)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button {
+                store.deleteAppointment(apt)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func submitAppointment() {
+        let ok = store.addAppointment(on: store.selectedDate, hhmm: aptTimeInput, title: aptTitleInput)
+        if ok {
+            aptTimeInput = ""
+            aptTitleInput = ""
+            aptTitleFocused = false
         }
     }
 
@@ -337,6 +433,23 @@ struct ContentView: View {
                 store.setMode(.day)
             }
 
+            let dayAppointments = store.appointments(for: day)
+            if !dayAppointments.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(dayAppointments) { apt in
+                        HStack(spacing: 5) {
+                            Text(DF.hourMinute.string(from: apt.startAt))
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(Color.dfAccent)
+                            Text(apt.title)
+                                .font(DS.FontStyle.caption)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+
             if !groups.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(groups) { group in
@@ -465,6 +578,7 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.Space.breathe) {
                         monthMetricsRail(stats)
+                        monthAppointmentsRail
                         monthPlanRail
                         monthStandoutRail(stats)
                     }
@@ -533,6 +647,42 @@ struct ContentView: View {
                 Text(humanDateLabel(from: dateKey))
                     .font(DS.FontStyle.caption)
                     .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var monthAppointmentsRail: some View {
+        let items = store.currentMonthAppointments()
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                SectionLabel(text: L("appointments.month_header"))
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(items.prefix(12)) { apt in
+                        Button {
+                            store.selectDate(apt.startAt)
+                            store.setMode(.day)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(DF.shortMonthDay.string(from: apt.startAt))
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 60, alignment: .leading)
+                                Text(DF.hourMinute.string(from: apt.startAt))
+                                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                                    .foregroundStyle(Color.dfAccent)
+                                    .frame(width: 40, alignment: .leading)
+                                Text(apt.title)
+                                    .font(DS.FontStyle.body)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
     }
