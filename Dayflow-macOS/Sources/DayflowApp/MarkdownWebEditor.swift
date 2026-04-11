@@ -114,7 +114,8 @@ struct MarkdownWebEditor: NSViewRepresentable {
     <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor@3.10.6/dist/index.css">
+    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
+    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/theme/toastui-editor-dark.min.css">
     <style>
     html, body {
         margin: 0;
@@ -125,113 +126,147 @@ struct MarkdownWebEditor: NSViewRepresentable {
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui;
         -webkit-font-smoothing: antialiased;
     }
-    #editor {
-        height: 100vh;
-        background: transparent;
-    }
-    .vditor {
-        border: none !important;
+    #editor { height: 100vh; }
+
+    /* Toast UI dark theme overrides — strip chrome, match dayflow palette. */
+    .toastui-editor-defaultUI {
         background: transparent !important;
+        border: none !important;
     }
-    .vditor-reset {
+    .toastui-editor-toolbar { display: none !important; }
+    .toastui-editor-mode-switch { display: none !important; }
+    .toastui-editor-md-tab-container { display: none !important; }
+    .toastui-editor-main { background: transparent !important; }
+    .toastui-editor-main-container { background: transparent !important; }
+    .toastui-editor-ww-container { background: transparent !important; }
+    .toastui-editor-md-container { background: transparent !important; }
+    .toastui-editor .ProseMirror {
         background: transparent !important;
         color: rgba(255,255,255,0.92) !important;
+        padding: 28px 32px !important;
         font-size: 15px !important;
-        line-height: 1.7 !important;
-        padding: 24px 28px !important;
+        line-height: 1.75 !important;
+        outline: none !important;
+        min-height: 100vh !important;
     }
-    .vditor-ir {
-        background: transparent !important;
+    /* Headings */
+    .toastui-editor .ProseMirror h1 { font-size: 28px !important; font-weight: 700 !important; margin: 0.7em 0 0.3em !important; letter-spacing: -0.5px; color: #fff !important; border: none !important; }
+    .toastui-editor .ProseMirror h2 { font-size: 22px !important; font-weight: 600 !important; margin: 0.6em 0 0.3em !important; color: #fff !important; border: none !important; }
+    .toastui-editor .ProseMirror h3 { font-size: 18px !important; font-weight: 600 !important; margin: 0.5em 0 0.2em !important; color: rgba(255,255,255,0.9) !important; border: none !important; }
+    .toastui-editor .ProseMirror h4, .toastui-editor .ProseMirror h5, .toastui-editor .ProseMirror h6 { font-size: 15px !important; font-weight: 600 !important; color: rgba(255,255,255,0.8) !important; }
+    /* Paragraphs */
+    .toastui-editor .ProseMirror p { margin: 0.35em 0 !important; }
+    /* Lists */
+    .toastui-editor .ProseMirror ul, .toastui-editor .ProseMirror ol { padding-left: 1.4em !important; }
+    .toastui-editor .ProseMirror li { margin: 0.2em 0 !important; }
+    .toastui-editor .ProseMirror ul > li::marker { color: rgba(255,255,255,0.45); }
+    /* Task list (checkbox) */
+    .toastui-editor .ProseMirror .task-list-item { padding-left: 24px !important; position: relative; list-style: none; }
+    .toastui-editor .ProseMirror .task-list-item::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 5px;
+        width: 16px;
+        height: 16px;
+        border: 1.5px solid rgba(140, 148, 160, 0.9);
+        border-radius: 4px;
+        background: transparent;
+        cursor: pointer;
     }
-    .vditor-ir pre.vditor-reset {
-        background: transparent !important;
+    .toastui-editor .ProseMirror .task-list-item.checked::before {
+        background: #4cc66e;
+        border-color: #4cc66e;
     }
-    /* hide toolbar — we want a clean writing surface */
-    .vditor-toolbar { display: none !important; }
-    .vditor-content { background: transparent !important; }
-    .vditor-ir__node, .vditor-ir__marker {
-        color: rgba(247, 158, 51, 0.7) !important;
+    .toastui-editor .ProseMirror .task-list-item.checked::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 8px;
+        width: 8px;
+        height: 5px;
+        border-left: 2px solid white;
+        border-bottom: 2px solid white;
+        transform: rotate(-45deg);
     }
-    /* headings */
-    .vditor-reset h1 { font-size: 28px !important; font-weight: 700 !important; margin: 0.6em 0 0.3em !important; letter-spacing: -0.5px; color: #fff !important; }
-    .vditor-reset h2 { font-size: 21px !important; font-weight: 600 !important; margin: 0.5em 0 0.3em !important; color: #fff !important; }
-    .vditor-reset h3 { font-size: 17px !important; font-weight: 600 !important; margin: 0.4em 0 0.2em !important; color: rgba(255,255,255,0.85) !important; }
-    .vditor-reset h4, .vditor-reset h5, .vditor-reset h6 { font-size: 14px !important; font-weight: 600 !important; color: rgba(255,255,255,0.8) !important; }
-    /* lists */
-    .vditor-reset ul, .vditor-reset ol { padding-left: 1.2em !important; }
-    .vditor-reset li { margin: 0.18em 0 !important; }
-    .vditor-reset li > input[type="checkbox"] {
-        width: 16px !important;
-        height: 16px !important;
-        margin-right: 6px !important;
-        accent-color: #4cc66e;
-    }
-    .vditor-reset ul > li::marker {
+    .toastui-editor .ProseMirror .task-list-item.checked {
         color: rgba(255,255,255,0.45);
+        text-decoration: line-through;
     }
-    /* paragraphs */
-    .vditor-reset p { margin: 0.3em 0 !important; }
-    /* code */
-    .vditor-reset code, .vditor-reset pre {
-        background: rgba(255,255,255,0.06) !important;
+    /* Inline code & blocks */
+    .toastui-editor .ProseMirror code {
+        background: rgba(255,255,255,0.07) !important;
         color: #f79e33 !important;
         border-radius: 4px;
-        padding: 1px 4px;
+        padding: 1px 5px;
+        font-family: ui-monospace, "SF Mono", monospace;
+        font-size: 13px;
     }
-    /* selection */
-    .vditor-reset ::selection { background: rgba(247, 158, 51, 0.30); }
-    /* hide vditor's own styling that conflicts */
-    .vditor-counter { display: none !important; }
-    .vditor-resize { display: none !important; }
+    .toastui-editor .ProseMirror pre {
+        background: rgba(255,255,255,0.05) !important;
+        border-radius: 6px;
+        padding: 10px 12px !important;
+    }
+    /* Blockquote */
+    .toastui-editor .ProseMirror blockquote {
+        border-left: 3px solid rgba(247, 158, 51, 0.6) !important;
+        background: rgba(255,255,255,0.03) !important;
+        color: rgba(255,255,255,0.75) !important;
+        padding: 4px 14px !important;
+        margin: 0.6em 0 !important;
+    }
+    /* Selection */
+    .toastui-editor .ProseMirror ::selection {
+        background: rgba(247, 158, 51, 0.32);
+    }
+    /* Placeholder */
+    .toastui-editor .ProseMirror p.placeholder::before {
+        color: rgba(255,255,255,0.25) !important;
+    }
     </style>
     </head>
     <body>
     <div id="editor"></div>
-    <script src="https://cdn.jsdelivr.net/npm/vditor@3.10.6/dist/index.min.js"></script>
+    <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
     <script>
-    let vditor = null;
+    let editor = null;
     let lastEmitted = "";
 
     function postReady() {
-        try {
-            window.webkit.messageHandlers.dayflow.postMessage({ type: "ready" });
-        } catch (e) {}
+        try { window.webkit.messageHandlers.dayflow.postMessage({ type: "ready" }); } catch (e) {}
     }
-
-    function postChange(value) {
-        if (value === lastEmitted) return;
-        lastEmitted = value;
-        try {
-            window.webkit.messageHandlers.dayflow.postMessage({ type: "change", value: value });
-        } catch (e) {}
+    function postChange(md) {
+        if (md === lastEmitted) return;
+        lastEmitted = md;
+        try { window.webkit.messageHandlers.dayflow.postMessage({ type: "change", value: md }); } catch (e) {}
     }
 
     window.dayflowSetMarkdown = function(md) {
-        if (!vditor) return;
-        if (vditor.getValue() === md) return;
+        if (!editor) return;
+        if (editor.getMarkdown() === md) return;
         lastEmitted = md;
-        vditor.setValue(md, false);
+        editor.setMarkdown(md);
     };
 
     window.addEventListener("DOMContentLoaded", () => {
-        vditor = new Vditor("editor", {
-            mode: "ir",          // instant rendering — Notion-style
-            theme: "dark",
-            cdn: "https://cdn.jsdelivr.net/npm/vditor@3.10.6",
+        editor = new toastui.Editor({
+            el: document.querySelector("#editor"),
             height: "100%",
-            placeholder: "## 오늘\\n- [ ] 첫 할 일을 적어봐",
-            cache: { enable: false },
-            toolbar: [],
-            counter: { enable: false },
-            outline: { enable: false },
-            preview: { hljs: { enable: false } },
-            input: function(value) {
-                postChange(value);
-            },
-            after: function() {
-                postReady();
-            },
+            theme: "dark",
+            initialEditType: "wysiwyg",     // Notion-style: `-` instantly becomes a bullet,
+                                            // `## ` instantly becomes a heading.
+            previewStyle: "tab",
+            hideModeSwitch: true,
+            toolbarItems: [],
+            usageStatistics: false,
+            placeholder: "오늘 할 일을 markdown 으로 적어봐",
+            events: {
+                change: () => {
+                    postChange(editor.getMarkdown());
+                }
+            }
         });
+        postReady();
     });
     </script>
     </body>
