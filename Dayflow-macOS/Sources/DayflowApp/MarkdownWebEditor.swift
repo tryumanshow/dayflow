@@ -113,12 +113,11 @@ struct MarkdownWebEditor: NSViewRepresentable {
             case "ready":
                 ready = true
                 flushIfReady()
-                // NOTE: dayflowSelfTest() exists in JS but is intentionally
-                // NOT auto-invoked. Calling it overwrites the editor content
-                // with the test sequences and clobbers the user's data.
-                // To run it manually: open Safari Web Inspector
-                // (Develop → Dayflow → editor) and call window.dayflowSelfTest()
-                // in the console after backing up your day.
+                // PERMANENTLY DO NOT auto-invoke dayflowSelfTest(). Even with
+                // backup/restore the test sequences leak through onUpdate
+                // before restore can run, and the DB ends up containing the
+                // last test sequence. Manually call window.dayflowSelfTest()
+                // from Safari Web Inspector if you really need to verify rules.
             case "change":
                 if let value = body["value"] as? String {
                     lastEmittedMarkdown = value
@@ -266,19 +265,69 @@ struct MarkdownWebEditor: NSViewRepresentable {
     // `[ ] ` or `[x] ` *inside* the bullet item, and we transform the bullet
     // into a task. The first pattern (`^- [ ] `) is kept as a fallback for
     // direct paragraph input (e.g. paste).
-    const taskListMatchHandler = ({ chain, range, match }) => {
+    const taskListMatchHandler = ({ chain, range, match, state }) => {
         const checked = match[1] === 'x' || match[1] === 'X';
-        // toggleList handles all cases TipTap supports here:
-        //  - root paragraph → wraps in a fresh task list
-        //  - inside a bullet list → setNodeMarkup converts the surrounding
-        //    list (every sibling becomes a task too — acceptable for the
-        //    `- [ ] foo` shortcut: the user typed `-` so it's a bullet first,
-        //    then they re-typed it as a task, so flipping the whole list
-        //    matches Notion's behaviour for that exact keystroke sequence).
-        chain()
+
+        // Try the simple TipTap path first.
+        const okToggle = chain()
             .deleteRange(range)
             .toggleList('taskList', 'taskItem')
             .updateAttributes('taskItem', { checked })
+            .run();
+        if (okToggle) return;
+
+        // Fallback 1: wrapInList. Helpful when we're inside a same-depth list.
+        const okWrap = chain()
+            .wrapInList('taskList')
+            .updateAttributes('taskItem', { checked })
+            .run();
+        if (okWrap) return;
+
+        // Fallback 2: manual node manipulation. Walk up to the nearest
+        // list item, replace it (and its parent list) with the task
+        // equivalents. This is the path that fires inside a *nested*
+        // bulletList, where toggleList fails because the parent's
+        // children (listItem) don't satisfy taskList's content schema.
+        chain()
+            .deleteRange(range)
+            .command(({ tr, state, dispatch }) => {
+                const schema = state.schema;
+                const taskListType = schema.nodes.taskList;
+                const taskItemType = schema.nodes.taskItem;
+                if (!taskListType || !taskItemType) return false;
+
+                const $from = tr.selection.$from;
+                let itemDepth = -1;
+                let listDepth = -1;
+                for (let d = $from.depth; d > 0; d--) {
+                    const t = $from.node(d).type.name;
+                    if (itemDepth === -1 && (t === 'listItem' || t === 'taskItem')) {
+                        itemDepth = d;
+                    }
+                    if (t === 'bulletList' || t === 'orderedList' || t === 'taskList') {
+                        listDepth = d;
+                        break;
+                    }
+                }
+                if (itemDepth < 0 || listDepth < 0) return false;
+
+                const itemNode = $from.node(itemDepth);
+                const listNode = $from.node(listDepth);
+                const listPos = $from.before(listDepth);
+                const itemPos = $from.before(itemDepth);
+
+                if (dispatch) {
+                    // Set the item type to taskItem with the checked attr.
+                    tr.setNodeMarkup(itemPos, taskItemType, { checked });
+                    // Set the surrounding list type to taskList. This may
+                    // convert sibling items too — that's acceptable for
+                    // the nested-bullet case where the user explicitly
+                    // typed a task shortcut.
+                    tr.setNodeMarkup(listPos, taskListType);
+                    dispatch(tr);
+                }
+                return true;
+            })
             .run();
     };
     const TaskListMarkdownShortcut = Extension.create({
@@ -329,10 +378,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
         if (!editor) return JSON.stringify({ error: 'no editor' });
         const view = editor.view;
 
+        // Backup current document so we don't destroy user data.
+        const backup = editor.getJSON();
+
         function typeChar(ch) {
-            // Use the same path ProseMirror takes for real DOM textInput so
-            // input rules actually fire. Falls back to a plain insertText
-            // transaction if the prop isn't handled.
             const { from, to } = view.state.selection;
             const handled = view.someProp('handleTextInput', f => f(view, from, to, ch));
             if (!handled) {
@@ -345,19 +394,33 @@ struct MarkdownWebEditor: NSViewRepresentable {
             editor.commands.focus();
         }
 
+        function describe() {
+            const md = editor.storage.markdown.getMarkdown();
+            const json = editor.getJSON();
+            const top = (json.content && json.content[0] && json.content[0].type) || 'empty';
+            let inner = null;
+            const c0 = json.content && json.content[0];
+            if (c0 && c0.content && c0.content[0]) inner = c0.content[0].type;
+            return { md, top, inner };
+        }
+
         function runSequence(seq) {
             reset();
             for (const ch of seq) typeChar(ch);
-            const md = editor.storage.markdown.getMarkdown();
-            const json = editor.getJSON();
-            const firstType = (json.content && json.content[0] && json.content[0].type) || 'empty';
-            // dive one level for nested first item
-            let secondType = null;
-            const c0 = json.content && json.content[0];
-            if (c0 && c0.content && c0.content[0]) {
-                secondType = c0.content[0].type;
-            }
-            return { md, top: firstType, inner: secondType };
+            return describe();
+        }
+
+        function runNestedTask() {
+            reset();
+            // type "- a"
+            typeChar('-'); typeChar(' '); typeChar('a');
+            // enter — splitListItem
+            editor.commands.splitListItem('listItem');
+            // tab — sinkListItem
+            editor.commands.sinkListItem('listItem');
+            // type "[ ] b"
+            typeChar('['); typeChar(' '); typeChar(']'); typeChar(' '); typeChar('b');
+            return describe();
         }
 
         const results = {
@@ -367,7 +430,12 @@ struct MarkdownWebEditor: NSViewRepresentable {
             'bullet':   runSequence('- foo'),
             'task':     runSequence('- [ ] task'),
             'checked':  runSequence('- [x] done'),
+            'nested':   runNestedTask(),
         };
+
+        // Restore the user's content.
+        editor.commands.setContent(backup);
+
         return JSON.stringify(results, null, 2);
     };
 
