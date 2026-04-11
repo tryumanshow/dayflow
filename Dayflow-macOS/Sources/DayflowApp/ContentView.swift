@@ -18,6 +18,7 @@ struct ContentView: View {
     // via AppStorage. Shared keys/defaults in `AppStorageKeys`.
     @AppStorage(AppStorageKeys.dayEditorFontSize) private var dayEditorFontSize: Double = AppStorageKeys.dayEditorFontSizeDefault
     @AppStorage(AppStorageKeys.monthPlanEditorFontSize) private var monthPlanEditorFontSize: Double = AppStorageKeys.monthPlanEditorFontSizeDefault
+    @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
 
     var body: some View {
         VStack(spacing: 0) {
@@ -114,7 +115,9 @@ struct ContentView: View {
     private var headerLabel: String {
         switch store.viewMode {
         case .day:
-            return DF.fullDate.string(from: store.selectedDate)
+            let base = DF.fullDate.string(from: store.selectedDate)
+            guard let name = HolidayStore.holidayName(on: store.selectedDate, mode: holidaysMode) else { return base }
+            return "\(base) · \(name)"
         case .week:
             let start = store.startOfWeek(store.selectedDate)
             let end = Calendar.current.date(byAdding: .day, value: 6, to: start) ?? start
@@ -394,6 +397,12 @@ struct ContentView: View {
                 Text(DF.dayNumber.string(from: day))
                     .font(.system(size: 24, weight: .semibold).monospacedDigit())
                     .foregroundColor(isToday ? Color.dfAccent : .primary)
+                if let holidayName = HolidayStore.holidayName(on: day, mode: holidaysMode) {
+                    Text(holidayName)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.dfHoliday)
+                        .lineLimit(1)
+                }
                 if total > 0 {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
@@ -893,16 +902,26 @@ struct ContentView: View {
         let open = stats.openByDay[key] ?? 0
         let total = done + open
         let appointments = store.appointments(for: day)
+        let holidayName = inMonth ? HolidayStore.holidayName(on: day, mode: holidaysMode) : nil
 
         return Button {
             store.selectDate(day)
         } label: {
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(cal.component(.day, from: day))")
-                    .font(.system(size: 14, weight: isToday ? .bold : .medium).monospacedDigit())
-                    .foregroundColor(inMonth
-                                     ? (isToday ? Color.dfAccent : Color.primary)
-                                     : Color.secondary.opacity(0.4))
+                HStack(spacing: 4) {
+                    Text("\(cal.component(.day, from: day))")
+                        .font(.system(size: 14, weight: isToday ? .bold : .medium).monospacedDigit())
+                        .foregroundColor(inMonth
+                                         ? (isToday ? Color.dfAccent : (holidayName != nil ? Color.dfHoliday : Color.primary))
+                                         : Color.secondary.opacity(0.4))
+                    if let holidayName {
+                        Text(holidayName)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color.dfHoliday)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
                 // Show up to 3 appointment chips under the day number.
                 // On overflow, last row becomes a "+N" counter. Only
                 // for in-month cells — leading/trailing padding cells

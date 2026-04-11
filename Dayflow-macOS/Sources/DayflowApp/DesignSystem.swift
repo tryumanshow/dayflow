@@ -182,6 +182,9 @@ extension Color {
     static let dfAccent = Color(red: 0.97, green: 0.55, blue: 0.20)
     static let dfDone   = Color(red: 0.30, green: 0.78, blue: 0.46)
     static let dfTodo   = Color(red: 0.55, green: 0.58, blue: 0.65)
+    /// Public holiday highlight — muted red, distinct from the
+    /// warm orange accent so the two signals don't collide.
+    static let dfHoliday = Color(red: 0.90, green: 0.40, blue: 0.40)
 
     /// Off-black canvas, never #000.
     static let dfCanvas = Color(red: 0.06, green: 0.07, blue: 0.085)
