@@ -343,16 +343,6 @@ struct MarkdownWebEditor: NSViewRepresentable {
         display: flex;
         flex-direction: column;
     }
-    #dayflow-slash-menu .sm-input {
-        all: unset;
-        padding: 6px 10px;
-        color: rgba(255, 255, 255, 0.9);
-        font-size: 13px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-    #dayflow-slash-menu .sm-input::placeholder {
-        color: rgba(255, 255, 255, 0.35);
-    }
     #dayflow-slash-menu .sm-list {
         overflow-y: auto;
         padding: 4px 0;
@@ -641,35 +631,38 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }
     }
 
-    // ------------------------------------------------------------
-    // Slash command menu — custom vanilla JS implementation.
-    //
-    // @blocknote/core alone doesn't render a slash menu (that lives
-    // in @blocknote/react). We intercept the `/` keydown, show a
-    // floating popover anchored to the caret, filter commands as
-    // the user types, and commit the selected command via
-    // `editor.updateBlock` on the current block.
-    // ------------------------------------------------------------
+    // Slash command menu — custom vanilla implementation since
+    // @blocknote/core on its own doesn't ship a slash menu UI (that
+    // piece lives in @blocknote/react). labelLower is precomputed so
+    // filter keystrokes don't re-lowercase 7 strings per render.
+    const SLASH_COMMANDS = (() => {
+        const defs = [
+            { key: 'h1',   icon: 'H1', label: 'Heading 1',     block: { type: 'heading', props: { level: 1 } } },
+            { key: 'h2',   icon: 'H2', label: 'Heading 2',     block: { type: 'heading', props: { level: 2 } } },
+            { key: 'h3',   icon: 'H3', label: 'Heading 3',     block: { type: 'heading', props: { level: 3 } } },
+            { key: 'todo', icon: '☐',  label: 'To-do list',    block: { type: 'checkListItem', props: { checked: false } } },
+            { key: 'ul',   icon: '•',  label: 'Bullet list',   block: { type: 'bulletListItem' } },
+            { key: 'ol',   icon: '1.', label: 'Numbered list', block: { type: 'numberedListItem' } },
+            { key: 'p',    icon: '¶',  label: 'Paragraph',     block: { type: 'paragraph' } },
+        ];
+        return defs.map(d => ({ ...d, labelLower: d.label.toLowerCase() }));
+    })();
 
-    const SLASH_COMMANDS = [
-        { key: 'h1',   icon: 'H1', label: 'Heading 1',   apply: () => applyBlockType({ type: 'heading', props: { level: 1 } }) },
-        { key: 'h2',   icon: 'H2', label: 'Heading 2',   apply: () => applyBlockType({ type: 'heading', props: { level: 2 } }) },
-        { key: 'h3',   icon: 'H3', label: 'Heading 3',   apply: () => applyBlockType({ type: 'heading', props: { level: 3 } }) },
-        { key: 'todo', icon: '☐',  label: 'To-do list',  apply: () => applyBlockType({ type: 'checkListItem', props: { checked: false } }) },
-        { key: 'ul',   icon: '•',  label: 'Bullet list', apply: () => applyBlockType({ type: 'bulletListItem' }) },
-        { key: 'ol',   icon: '1.', label: 'Numbered list', apply: () => applyBlockType({ type: 'numberedListItem' }) },
-        { key: 'p',    icon: '¶',  label: 'Paragraph',   apply: () => applyBlockType({ type: 'paragraph' }) },
-    ];
-
+    // Menu singleton. Items are built once in `openSlashMenu` and
+    // reused; filter keystrokes toggle `.style.display` on the
+    // cached nodes instead of rebuilding innerHTML.
     let slashMenuEl = null;
+    let slashItemNodes = [];        // [{ el, cmd }] — one per SLASH_COMMANDS entry
+    let slashVisibleItems = [];     // subset currently shown, in display order
     let slashQuery = '';
     let slashSelectedIndex = 0;
 
-    function applyBlockType(partial) {
+    function applyBlockType(block) {
+        if (!editor) return;
         try {
             const cursor = editor.getTextCursorPosition();
             if (!cursor || !cursor.block) return;
-            editor.updateBlock(cursor.block, partial);
+            editor.updateBlock(cursor.block, block);
             scheduleEmit();
         } catch (e) {
             console.log('applyBlockType error: ' + e.message);
@@ -677,27 +670,41 @@ struct MarkdownWebEditor: NSViewRepresentable {
     }
 
     function isCurrentBlockEmpty() {
+        if (!editor) return false;
         try {
             const cursor = editor.getTextCursorPosition();
             if (!cursor || !cursor.block) return false;
             const content = cursor.block.content;
             if (!Array.isArray(content)) return true;
-            const joined = content.map(c => (c && typeof c.text === 'string') ? c.text : '').join('');
-            return joined.length === 0;
+            for (const c of content) {
+                if (c && typeof c.text === 'string' && c.text.length > 0) return false;
+            }
+            return true;
         } catch (e) { return false; }
-    }
-
-    function filteredCommands() {
-        const q = slashQuery.trim().toLowerCase();
-        if (!q) return SLASH_COMMANDS;
-        return SLASH_COMMANDS.filter(c => c.label.toLowerCase().includes(q) || c.key.includes(q));
     }
 
     function openSlashMenu() {
         if (slashMenuEl) return;
         slashMenuEl = document.createElement('div');
         slashMenuEl.id = 'dayflow-slash-menu';
-        slashMenuEl.innerHTML = '<div class="sm-list"></div>';
+        const list = document.createElement('div');
+        list.className = 'sm-list';
+        slashMenuEl.appendChild(list);
+        slashItemNodes = [];
+        for (const cmd of SLASH_COMMANDS) {
+            const el = document.createElement('div');
+            el.className = 'sm-item';
+            el.innerHTML =
+                '<span class="sm-icon">' + cmd.icon + '</span>' +
+                '<span class="sm-label">' + cmd.label + '</span>' +
+                '<span class="sm-sub">/' + cmd.key + '</span>';
+            el.addEventListener('mousedown', (ev) => {
+                ev.preventDefault();
+                commitSlashCommand(cmd);
+            });
+            list.appendChild(el);
+            slashItemNodes.push({ el, cmd });
+        }
         document.body.appendChild(slashMenuEl);
         slashQuery = '';
         slashSelectedIndex = 0;
@@ -709,6 +716,8 @@ struct MarkdownWebEditor: NSViewRepresentable {
         if (!slashMenuEl) return;
         slashMenuEl.remove();
         slashMenuEl = null;
+        slashItemNodes = [];
+        slashVisibleItems = [];
         slashQuery = '';
         slashSelectedIndex = 0;
     }
@@ -718,11 +727,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
         const sel = window.getSelection();
         if (!sel || sel.rangeCount === 0) return;
         let rect = sel.getRangeAt(0).getBoundingClientRect();
-        // Collapsed selection sometimes has a zero rect — fall back
-        // to the focused block's rect.
+        // Collapsed selection sometimes has a zero rect on empty
+        // blocks — fall back to the empty-and-focused block rect.
         if (rect.width === 0 && rect.height === 0) {
-            const focusedBlock = document.querySelector('.bn-block-content[data-is-empty-and-focused="true"]')
-                                 || document.querySelector('.ProseMirror-focused');
+            const focusedBlock = document.querySelector('.bn-block-content[data-is-empty-and-focused="true"]');
             if (focusedBlock) rect = focusedBlock.getBoundingClientRect();
         }
         const top = Math.min(window.innerHeight - 380, rect.bottom + 6);
@@ -733,57 +741,61 @@ struct MarkdownWebEditor: NSViewRepresentable {
 
     function renderSlashMenu() {
         if (!slashMenuEl) return;
-        const list = slashMenuEl.querySelector('.sm-list');
-        const items = filteredCommands();
-        if (items.length === 0) {
-            list.innerHTML = '<div class="sm-empty">No commands</div>';
-            slashSelectedIndex = 0;
-            return;
+        const q = slashQuery.trim().toLowerCase();
+        slashVisibleItems = [];
+        for (const item of slashItemNodes) {
+            const match = !q || item.cmd.labelLower.includes(q) || item.cmd.key.includes(q);
+            item.el.style.display = match ? 'flex' : 'none';
+            if (match) slashVisibleItems.push(item);
         }
-        if (slashSelectedIndex >= items.length) slashSelectedIndex = items.length - 1;
-        if (slashSelectedIndex < 0) slashSelectedIndex = 0;
-        list.innerHTML = '';
-        items.forEach((cmd, i) => {
-            const el = document.createElement('div');
-            el.className = 'sm-item' + (i === slashSelectedIndex ? ' selected' : '');
-            el.innerHTML =
-                '<span class="sm-icon">' + cmd.icon + '</span>' +
-                '<span class="sm-label">' + cmd.label + '</span>' +
-                '<span class="sm-sub">/' + cmd.key + '</span>';
-            el.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                commitSlashCommand(cmd);
-            });
-            list.appendChild(el);
-        });
+        if (slashSelectedIndex >= slashVisibleItems.length) {
+            slashSelectedIndex = Math.max(0, slashVisibleItems.length - 1);
+        }
+        for (let i = 0; i < slashVisibleItems.length; i++) {
+            slashVisibleItems[i].el.classList.toggle('selected', i === slashSelectedIndex);
+        }
+        // Empty-state row — created lazily, reused across filters.
+        let empty = slashMenuEl.querySelector('.sm-empty');
+        if (slashVisibleItems.length === 0) {
+            if (!empty) {
+                empty = document.createElement('div');
+                empty.className = 'sm-empty';
+                empty.textContent = 'No commands';
+                slashMenuEl.querySelector('.sm-list').appendChild(empty);
+            }
+        } else if (empty) {
+            empty.remove();
+        }
     }
 
     function commitSlashCommand(cmd) {
         if (!cmd) return;
         closeSlashMenu();
-        cmd.apply();
+        applyBlockType(cmd.block);
     }
 
-    // Global keydown handler. Opens on `/`, hijacks arrow/enter/esc
-    // while open, lets everything else fall through so the user can
-    // type to filter.
+    // Capture-phase keydown so we intercept `/`, arrows, Enter, etc.
+    // before ProseMirror sees them.
     document.addEventListener('keydown', (e) => {
+        // IME composition guard — Korean/Japanese/Chinese input
+        // pre-commit keys fire with `key: "Process"` / isComposing
+        // true and keyCode 229. Ignore so ProseMirror handles the
+        // composition cleanly.
+        if (e.isComposing || e.keyCode === 229) return;
+
         if (!slashMenuEl) {
-            if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                if (!isCurrentBlockEmpty()) return;
+            if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && isCurrentBlockEmpty()) {
                 e.preventDefault();
                 openSlashMenu();
             }
             return;
         }
-        // Menu is open.
-        const items = filteredCommands();
         if (e.key === 'Escape') {
             e.preventDefault();
             closeSlashMenu();
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
-            slashSelectedIndex = Math.min(items.length - 1, slashSelectedIndex + 1);
+            slashSelectedIndex = Math.min(slashVisibleItems.length - 1, slashSelectedIndex + 1);
             renderSlashMenu();
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
@@ -791,28 +803,30 @@ struct MarkdownWebEditor: NSViewRepresentable {
             renderSlashMenu();
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            commitSlashCommand(items[slashSelectedIndex]);
+            const picked = slashVisibleItems[slashSelectedIndex];
+            if (picked) commitSlashCommand(picked.cmd);
         } else if (e.key === 'Backspace') {
+            e.preventDefault();
             if (slashQuery.length === 0) {
-                // Empty query + backspace closes the menu.
-                e.preventDefault();
                 closeSlashMenu();
             } else {
-                e.preventDefault();
-                slashQuery = slashQuery.slice(0, -1);
+                // Surrogate-safe: slice by grapheme-ish (Array.from
+                // splits by code point) so supplementary chars
+                // aren't cut mid-pair.
+                const chars = Array.from(slashQuery);
+                chars.pop();
+                slashQuery = chars.join('');
                 slashSelectedIndex = 0;
                 renderSlashMenu();
             }
         } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            // Filter character. Don't let it reach ProseMirror.
             e.preventDefault();
             slashQuery += e.key;
             slashSelectedIndex = 0;
             renderSlashMenu();
         }
-    }, true);  // capture phase — beats ProseMirror to the event.
+    }, true);
 
-    // Click anywhere outside the menu closes it.
     document.addEventListener('mousedown', (e) => {
         if (!slashMenuEl) return;
         if (slashMenuEl.contains(e.target)) return;
