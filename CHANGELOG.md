@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.7](https://github.com/tryumanshow/dayflow/compare/v0.1.6...v0.1.7) (2026-04-11)
+
+
+### Features
+
+* **calendar:** KR + US public holidays on Week/Month/Day ([#19](https://github.com/tryumanshow/dayflow/issues/19)) ([7be5691](https://github.com/tryumanshow/dayflow/commit/7be5691f0b0008a5ea357ad29890f0fb8f2df39d))
+
+
+### Bug Fixes
+
+* **settings:** widen editor font size slider range to 9-20 ([#17](https://github.com/tryumanshow/dayflow/issues/17)) ([3adaace](https://github.com/tryumanshow/dayflow/commit/3adaacee7d4a39ba57188448120125f623e2ef04))
+
 ## [0.1.6](https://github.com/tryumanshow/dayflow/compare/v0.1.5...v0.1.6) (2026-04-11)
 
 
