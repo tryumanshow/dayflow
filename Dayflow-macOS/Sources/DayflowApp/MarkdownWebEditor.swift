@@ -233,11 +233,26 @@ struct MarkdownWebEditor: NSViewRepresentable {
     /* Narrow containers (Month plan rail ~440px and below): force
        every logical group onto its own row so [B I U S] sits
        alone, and the two color rows stack with their labels
-       aligned at the same left margin. Above the breakpoint the
-       original single-row layout still applies. */
+       aligned at the same left margin. Also shrink the editor
+       body font — the Month plan is a compact side panel, not a
+       full-width writing surface, so 15px reads too loud. Day
+       view stays at the larger size above the breakpoint. */
     @media (max-width: 540px) {
         #dayflow-toolbar .tb-group {
             flex-basis: 100%;
+        }
+        .bn-container, .bn-editor, .ProseMirror {
+            font-size: 13px !important;
+            line-height: 1.55 !important;
+        }
+        .bn-block-content[data-content-type="heading"][data-level="1"] {
+            font-size: 20px !important;
+        }
+        .bn-block-content[data-content-type="heading"][data-level="2"] {
+            font-size: 16px !important;
+        }
+        .bn-block-content[data-content-type="heading"][data-level="3"] {
+            font-size: 14px !important;
         }
     }
     #dayflow-toolbar button {
