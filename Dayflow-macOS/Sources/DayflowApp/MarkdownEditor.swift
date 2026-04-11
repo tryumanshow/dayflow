@@ -175,6 +175,11 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         // MARK: - click toggle on the overlay glyph
+        //
+        // Character-index based: if the click lands inside the 5-character
+        // bracket prefix of a checkbox line, toggle. The hidden glyphs still
+        // occupy a normal layout slot, so characterIndex(for:in:) returns the
+        // correct index even though the foreground colour is clear.
 
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
             guard let tv = textView else { return }
@@ -192,15 +197,19 @@ struct MarkdownEditor: NSViewRepresentable {
             let line = ns.substring(with: lineRange)
             let indent = line.prefix(while: { $0 == " " }).count
             let body = line.dropFirst(indent)
-            guard body.hasPrefix("- [") else { return }
-            let bracketRangeChar = NSRange(location: lineRange.location + indent, length: 5)
-            guard NSMaxRange(bracketRangeChar) <= ns.length else { return }
-            // bounding rect of the entire 5-char bracket sequence
-            let bracketGlyphRange = lm.glyphRange(forCharacterRange: bracketRangeChar, actualCharacterRange: nil)
-            let bracketRect = lm.boundingRect(forGlyphRange: bracketGlyphRange, in: container)
-            if !bracketRect.insetBy(dx: -6, dy: -3).contains(glyphPoint) { return }
+            let prefixStart = lineRange.location + indent
+            let prefixEnd = prefixStart + 5
 
-            let innerRange = NSRange(location: lineRange.location + indent + 3, length: 1)
+            // Only checkbox lines toggle.
+            let isCheckbox = body.hasPrefix("- [ ]") || body.hasPrefix("- [x]") || body.hasPrefix("- [X]")
+            guard isCheckbox else { return }
+            // Click must land within the bracket prefix slot (or just past it
+            // — we accept up to 1 char after, so the gap between glyph and
+            // text isn't a dead zone).
+            guard index >= prefixStart && index <= prefixEnd else { return }
+
+            let innerRange = NSRange(location: prefixStart + 3, length: 1)
+            guard NSMaxRange(innerRange) <= ns.length else { return }
             let inner = ns.substring(with: innerRange)
             guard inner == " " || inner == "x" || inner == "X" else { return }
             let toggled = (inner == " ") ? "x" : " "
@@ -274,11 +283,11 @@ struct MarkdownEditor: NSViewRepresentable {
                     return
                 }
 
-                // bullets — soft tertiary
+                // plain bullet — hide the dash/star/plus, overlay paints `•`
                 if body.hasPrefix("- ") || body.hasPrefix("* ") || body.hasPrefix("+ ") {
                     let bulletRange = NSRange(location: lineRange.location + indent, length: 1)
                     storage.addAttributes([
-                        .foregroundColor: NSColor.tertiaryLabelColor,
+                        .foregroundColor: NSColor.clear,
                     ], range: bulletRange)
                 }
             }
@@ -314,35 +323,33 @@ final class CheckboxOverlayLayoutManager: NSLayoutManager {
             let indent = line.prefix(while: { $0 == " " }).count
             let body = line.dropFirst(indent)
 
-            let glyph: String
-            let color: NSColor
+            // (glyph, font, color, hidden-prefix length in characters)
+            let payload: (glyph: String, font: NSFont, color: NSColor, length: Int)?
             if body.hasPrefix("- [ ]") {
-                glyph = "\u{2610}" // ☐
-                color = NSColor.systemOrange
+                payload = ("\u{2610}", NSFont.systemFont(ofSize: 16, weight: .semibold), NSColor.systemOrange, 5)
             } else if body.hasPrefix("- [x]") || body.hasPrefix("- [X]") {
-                glyph = "\u{2611}" // ☑
-                color = NSColor.systemGreen
+                payload = ("\u{2611}", NSFont.systemFont(ofSize: 16, weight: .semibold), NSColor.systemGreen, 5)
+            } else if body.hasPrefix("- ") || body.hasPrefix("* ") || body.hasPrefix("+ ") {
+                payload = ("\u{2022}", NSFont.systemFont(ofSize: 14, weight: .bold), NSColor.tertiaryLabelColor, 1)
             } else {
-                return
+                payload = nil
             }
+            guard let (glyph, font, color, prefixLen) = payload else { return }
 
-            // 5-character bracket prefix range in the backing store
-            let bracketCharRange = NSRange(location: lineRange.location + indent, length: 5)
-            guard NSMaxRange(bracketCharRange) <= ns.length else { return }
-            let bracketGlyphRange = self.glyphRange(forCharacterRange: bracketCharRange, actualCharacterRange: nil)
-            let bracketRect = self.boundingRect(forGlyphRange: bracketGlyphRange, in: container)
+            let prefixCharRange = NSRange(location: lineRange.location + indent, length: prefixLen)
+            guard NSMaxRange(prefixCharRange) <= ns.length else { return }
+            let prefixGlyphRange = self.glyphRange(forCharacterRange: prefixCharRange, actualCharacterRange: nil)
+            let prefixRect = self.boundingRect(forGlyphRange: prefixGlyphRange, in: container)
 
-            // draw the overlay glyph anchored to the bracket's leading edge,
-            // vertically baseline-aligned
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 16, weight: .semibold),
+                .font: font,
                 .foregroundColor: color,
             ]
             let attrStr = NSAttributedString(string: glyph, attributes: attrs)
             let glyphSize = attrStr.size()
             let drawPoint = NSPoint(
-                x: origin.x + bracketRect.minX,
-                y: origin.y + bracketRect.minY + (bracketRect.height - glyphSize.height) / 2
+                x: origin.x + prefixRect.minX,
+                y: origin.y + prefixRect.minY + (prefixRect.height - glyphSize.height) / 2
             )
             attrStr.draw(at: drawPoint)
         }
