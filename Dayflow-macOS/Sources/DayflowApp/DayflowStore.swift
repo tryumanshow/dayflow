@@ -272,6 +272,20 @@ final class DayflowStore {
         reloadAppointments()
     }
 
+    /// In-place edit of an existing appointment. Same parsing rules
+    /// as `addAppointment` — empty title or bad time → returns false,
+    /// no mutation.
+    @discardableResult
+    func updateAppointment(_ id: Int64, on day: Date, hhmm: String, title: String) -> Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return false }
+        guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
+        db.updateAppointment(id: id, startAt: startAt, endAt: nil, title: trimmedTitle, note: nil)
+        reloadAppointments()
+        return true
+    }
+
     /// Parse an `HH:mm` / `H:m` / `HHmm` string and attach it to
     /// `day`'s calendar date. Returns nil on malformed input.
     private static func combine(day: Date, hhmm: String) -> Date? {
