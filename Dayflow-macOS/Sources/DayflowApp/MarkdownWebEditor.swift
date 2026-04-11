@@ -209,12 +209,33 @@ struct MarkdownWebEditor: NSViewRepresentable {
     <body>
     <div id="editor"></div>
     <script type="module">
-    import { Editor } from 'https://esm.sh/@tiptap/core@2.10.3';
+    import { Editor, Extension, InputRule } from 'https://esm.sh/@tiptap/core@2.10.3';
     import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.10.3';
     import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2.10.3';
     import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2.10.3';
     import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.10.3';
     import { Markdown } from 'https://esm.sh/tiptap-markdown@0.8.10';
+
+    // TipTap doesn't ship a markdown input rule for task lists, so we add one.
+    // Triggers when the user types `- [ ] ` or `- [x] ` at the start of a line.
+    const TaskListMarkdownShortcut = Extension.create({
+        name: 'taskListMarkdownShortcut',
+        addInputRules() {
+            return [
+                new InputRule({
+                    find: /^\\s*[-+*]\\s\\[([ xX])\\]\\s$/,
+                    handler: ({ chain, range, match }) => {
+                        const checked = match[1] === 'x' || match[1] === 'X';
+                        chain()
+                            .deleteRange(range)
+                            .toggleTaskList()
+                            .updateAttributes('taskItem', { checked })
+                            .run();
+                    }
+                })
+            ];
+        }
+    });
 
     let editor = null;
     let lastEmitted = "";
@@ -242,6 +263,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             StarterKit,
             TaskList,
             TaskItem.configure({ nested: true }),
+            TaskListMarkdownShortcut,
             Placeholder.configure({
                 placeholder: '## 오늘\\n- [ ] 첫 할 일을 적어봐\\n\\n# / ## 헤더, - 리스트, [ ] 체크박스 — 입력 즉시 변환'
             }),
