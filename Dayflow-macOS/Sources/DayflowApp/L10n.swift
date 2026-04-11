@@ -24,6 +24,17 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+/// `UserDefaults` / `@AppStorage` keys that are referenced from
+/// more than one file. Co-located with their defaults so a typo in
+/// either consumer can't silently split state into two buckets.
+enum AppStorageKeys {
+    static let dayEditorFontSize       = "dayflow.editor.fontSize"
+    static let monthPlanEditorFontSize = "dayflow.editor.fontSize.monthPlan"
+
+    static let dayEditorFontSizeDefault: Double       = 15
+    static let monthPlanEditorFontSizeDefault: Double = 13
+}
+
 enum LanguagePreference {
     private static let key = "dayflow.language"
 

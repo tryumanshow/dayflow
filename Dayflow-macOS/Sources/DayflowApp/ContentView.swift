@@ -14,12 +14,10 @@ struct ContentView: View {
     @State private var editingAppointmentId: Int64? = nil
     @FocusState private var aptTitleFocused: Bool
 
-    // Editor body font sizes. Day view and Month plan editor are
-    // separate — the Month plan is a narrow 440px side panel that
-    // reads better at a smaller default, and users may want the
-    // Day view to stay large. Both live-update via AppStorage.
-    @AppStorage("dayflow.editor.fontSize")            private var dayEditorFontSize: Double = 15
-    @AppStorage("dayflow.editor.fontSize.monthPlan")  private var monthPlanEditorFontSize: Double = 13
+    // Day view and Month plan editor sizes live-update independently
+    // via AppStorage. Shared keys/defaults in `AppStorageKeys`.
+    @AppStorage(AppStorageKeys.dayEditorFontSize) private var dayEditorFontSize: Double = AppStorageKeys.dayEditorFontSizeDefault
+    @AppStorage(AppStorageKeys.monthPlanEditorFontSize) private var monthPlanEditorFontSize: Double = AppStorageKeys.monthPlanEditorFontSizeDefault
 
     var body: some View {
         VStack(spacing: 0) {
@@ -261,6 +259,11 @@ struct ContentView: View {
                                     .font(.system(size: 11, weight: .medium).monospacedDigit())
                                     .foregroundStyle(.tertiary)
                                     .frame(width: 44, alignment: .leading)
+                            } else {
+                                // Placeholder so titles line up across
+                                // rows regardless of whether each row
+                                // has an end time.
+                                Color.clear.frame(width: 44)
                             }
                             Text(apt.title)
                                 .font(DS.FontStyle.body)
@@ -660,39 +663,11 @@ struct ContentView: View {
                 DatePicker("", selection: $aptDateInput, displayedComponents: [.date])
                     .datePickerStyle(.compact)
                     .labelsHidden()
-                TextField(L("appointments.time_placeholder"), text: $aptTimeInput)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .medium).monospacedDigit())
-                    .frame(width: 52)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.white.opacity(0.04))
-                    )
-                    .onChange(of: aptTimeInput) { _, new in
-                        let masked = Self.maskHHMM(new)
-                        if masked != new { aptTimeInput = masked }
-                    }
-                    .onSubmit { submitMonthAppointment() }
+                timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
                 Text("–")
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
-                TextField(L("appointments.end_time_placeholder"), text: $aptEndTimeInput)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .medium).monospacedDigit())
-                    .frame(width: 52)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.white.opacity(0.04))
-                    )
-                    .onChange(of: aptEndTimeInput) { _, new in
-                        let masked = Self.maskHHMM(new)
-                        if masked != new { aptEndTimeInput = masked }
-                    }
-                    .onSubmit { submitMonthAppointment() }
+                timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
                 TextField(L("appointments.title_placeholder"), text: $aptTitleInput)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
@@ -799,11 +774,31 @@ struct ContentView: View {
         )
     }
 
-    /// Input mask for the HH:MM time field. Strips non-digits, caps
-    /// at 4 digits, auto-inserts `:` after the second digit. Paste
-    /// of "1400" / "14:00" / "14.00" all normalize to "14:00".
-    /// Validation of hours/minutes > 23/59 is left to the parse
-    /// step inside `DayflowStore.combine`.
+    /// Compact mono-digit `HH:MM` text field backed by the mask
+    /// sanitizer — shared between the start and end time inputs in
+    /// the Month rail appointment form. The `if masked != new`
+    /// guard short-circuits the second `onChange` pass so the
+    /// re-assignment doesn't loop.
+    private func timeField(_ binding: Binding<String>, placeholder: String) -> some View {
+        TextField(placeholder, text: binding)
+            .textFieldStyle(.plain)
+            .font(.system(size: 12, weight: .medium).monospacedDigit())
+            .frame(width: 52)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(0.04))
+            )
+            .onChange(of: binding.wrappedValue) { _, new in
+                let masked = Self.maskHHMM(new)
+                if masked != new { binding.wrappedValue = masked }
+            }
+            .onSubmit { submitMonthAppointment() }
+    }
+
+    /// Validation of hours/minutes > 23/59 is left to
+    /// `DayflowStore.combine`; this helper only enforces shape.
     static func maskHHMM(_ raw: String) -> String {
         let digits = raw.filter(\.isNumber).prefix(4)
         if digits.count <= 2 { return String(digits) }
@@ -812,11 +807,9 @@ struct ContentView: View {
         return "\(h):\(m)"
     }
 
-    /// Compact duration label for `start → end`. Nil when `end` is
-    /// absent or not after start. Formats as `30m`, `1h`, `1h 30m`.
-    /// Rendered alongside start time in every appointment surface
-    /// so users see how long each item runs without an end-time
-    /// chip eating chip width.
+    /// Rendered alongside start time instead of a second time chip
+    /// so rows stay single-line. Returns nil when no end, or end
+    /// not strictly after start.
     static func durationPill(from start: Date, to end: Date?) -> String? {
         guard let end, end > start else { return nil }
         let minutes = Int(end.timeIntervalSince(start) / 60)

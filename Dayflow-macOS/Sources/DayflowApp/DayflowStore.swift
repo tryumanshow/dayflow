@@ -290,10 +290,9 @@ final class DayflowStore {
         return true
     }
 
-    /// Parse the optional end-time field. Empty / nil / bad input
-    /// all resolve to `nil` (no end). If the parsed end is at or
-    /// before the start we also drop it — a zero-duration or
-    /// negative range is almost certainly a typo, not an intent.
+    /// A zero-duration or negative range is almost certainly a
+    /// typo, not an intent — drop it silently so the user just
+    /// sees the appointment as "no end".
     private static func parseOptionalEnd(day: Date, hhmm: String?, startAt: Date) -> Date? {
         guard let raw = hhmm?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
         guard let end = combine(day: day, hhmm: raw) else { return nil }
