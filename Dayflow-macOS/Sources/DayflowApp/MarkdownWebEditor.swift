@@ -223,20 +223,37 @@ struct MarkdownWebEditor: NSViewRepresentable {
     // `[ ] ` or `[x] ` *inside* the bullet item, and we transform the bullet
     // into a task. The first pattern (`^- [ ] `) is kept as a fallback for
     // direct paragraph input (e.g. paste).
-    const taskListMatchHandler = ({ chain, range, match }) => {
+    const taskListMatchHandler = ({ chain, range, match, state }) => {
         const checked = match[1] === 'x' || match[1] === 'X';
-        // IMPORTANT: don't use toggleTaskList() — it calls toggleList(),
-        // which when invoked inside an existing list of a different type
-        // (e.g. inside a bullet list) does setNodeMarkup on the *parent
-        // list*, converting every bullet into a task. We want to NEST a
-        // task list inside the current bullet item instead, so we use
-        // wrapInList() which always wraps the current block in a fresh
-        // list rather than rewriting the surrounding one.
-        chain()
-            .deleteRange(range)
-            .wrapInList('taskList')
-            .updateAttributes('taskItem', { checked })
-            .run();
+        // Two cases:
+        // - Inside an existing list (nesting) → wrapInList puts a fresh
+        //   taskList inside the current item instead of mutating the
+        //   surrounding list type.
+        // - Root paragraph → toggleList works correctly.
+        // We pick which based on whether the current selection is inside
+        // a list ancestor.
+        const $from = state.doc.resolve(range.from);
+        let inList = false;
+        for (let d = $from.depth; d > 0; d--) {
+            const name = $from.node(d).type.name;
+            if (name === 'bulletList' || name === 'orderedList' || name === 'taskList') {
+                inList = true;
+                break;
+            }
+        }
+        if (inList) {
+            chain()
+                .deleteRange(range)
+                .wrapInList('taskList')
+                .updateAttributes('taskItem', { checked })
+                .run();
+        } else {
+            chain()
+                .deleteRange(range)
+                .toggleList('taskList', 'taskItem')
+                .updateAttributes('taskItem', { checked })
+                .run();
+        }
     };
     const TaskListMarkdownShortcut = Extension.create({
         name: 'taskListMarkdownShortcut',
