@@ -79,10 +79,28 @@ final class DayflowDB: @unchecked Sendable {
         );
         """
         sqlite3_exec(db, ddl, nil, nil, nil)
-        // Migration for DBs created before `body_json` existed. `ADD COLUMN`
-        // errors if the column already exists — we swallow that, the column
-        // is the only thing we need and ensureSchema runs on every open.
-        sqlite3_exec(db, "ALTER TABLE day_notes ADD COLUMN body_json TEXT", nil, nil, nil)
+        migrate()
+    }
+
+    /// SQLite `user_version` based migration. Keeps per-open work to a
+    /// single PRAGMA read instead of an unconditional `ALTER TABLE` that
+    /// errors-and-recovers on every launch.
+    private func migrate() {
+        var current: Int32 = 0
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, nil) == SQLITE_OK,
+           sqlite3_step(stmt) == SQLITE_ROW {
+            current = sqlite3_column_int(stmt, 0)
+        }
+        sqlite3_finalize(stmt)
+
+        if current < 1 {
+            // v1: add body_json to day_notes for DBs created before the
+            // rich-text sidecar existed. New installs already have the
+            // column via the CREATE TABLE above, so the ALTER no-ops.
+            sqlite3_exec(db, "ALTER TABLE day_notes ADD COLUMN body_json TEXT", nil, nil, nil)
+            sqlite3_exec(db, "PRAGMA user_version = 1", nil, nil, nil)
+        }
     }
 
     // MARK: - format helpers
@@ -108,25 +126,40 @@ final class DayflowDB: @unchecked Sendable {
         sqlite3_bind_text(stmt, idx, value, -1, Self.TRANSIENT)
     }
 
-    // MARK: - day notes (markdown body per day)
-
-    func getDayNote(date: Date) -> String {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "SELECT body_md FROM day_notes WHERE note_date = ?", -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, Self.ymd(date))
-        if sqlite3_step(stmt) == SQLITE_ROW {
-            return textCol(stmt, 0)
+    private func bindTextOrNull(_ stmt: OpaquePointer?, _ idx: Int32, _ value: String?) {
+        if let value {
+            sqlite3_bind_text(stmt, idx, value, -1, Self.TRANSIENT)
+        } else {
+            sqlite3_bind_null(stmt, idx)
         }
-        return ""
     }
 
-    /// Markdown is always present; `bodyJSON` is the BlockNote-native
-    /// document tree as JSON. JSON carries styles that markdown can't
-    /// represent (text/background color, underline) and is preferred on
-    /// load when available. Passing `nil` explicitly nulls the JSON slot
-    /// so callers who only have markdown (QuickThrow, Week checkbox
-    /// toggle) force the editor to re-derive blocks from markdown.
+    // MARK: - day notes (markdown body + optional BlockNote JSON per day)
+
+    /// Markdown-only read path — used by Week/Month aggregators, QuickThrow,
+    /// and the review generator, none of which care about rich styles.
+    func getDayNote(date: Date) -> String {
+        getDayNoteFull(date: date).body
+    }
+
+    /// Single-row read returning both representations. `body_json` carries
+    /// text/background color and underline that `body_md` can't express;
+    /// it's preferred on load when non-nil.
+    func getDayNoteFull(date: Date) -> (body: String, bodyJSON: String?) {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "SELECT body_md, body_json FROM day_notes WHERE note_date = ?", -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, Self.ymd(date))
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return ("", nil) }
+        let md = textCol(stmt, 0)
+        let json = textCol(stmt, 1)
+        return (md, json.isEmpty ? nil : json)
+    }
+
+    /// Passing `bodyJSON: nil` nulls the JSON slot so markdown-only
+    /// callers (QuickThrow, Week checkbox toggle) force the editor to
+    /// re-derive blocks from markdown — accepting that rich styles on the
+    /// affected day are dropped.
     func saveDayNote(date: Date, body: String, bodyJSON: String? = nil) {
         let now = nowISO()
         var stmt: OpaquePointer?
@@ -139,27 +172,10 @@ final class DayflowDB: @unchecked Sendable {
         """, -1, &stmt, nil)
         bindText(stmt, 1, Self.ymd(date))
         bindText(stmt, 2, body)
-        if let json = bodyJSON {
-            bindText(stmt, 3, json)
-        } else {
-            sqlite3_bind_null(stmt, 3)
-        }
+        bindTextOrNull(stmt, 3, bodyJSON)
         bindText(stmt, 4, now)
         sqlite3_step(stmt)
         sqlite3_finalize(stmt)
-    }
-
-    func getDayNoteJSON(date: Date) -> String? {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "SELECT body_json FROM day_notes WHERE note_date = ?", -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, Self.ymd(date))
-        if sqlite3_step(stmt) == SQLITE_ROW {
-            if sqlite3_column_type(stmt, 0) == SQLITE_NULL { return nil }
-            let s = textCol(stmt, 0)
-            return s.isEmpty ? nil : s
-        }
-        return nil
     }
 
     /// Bulk loader — pull every day note in [start, end] (inclusive) so the

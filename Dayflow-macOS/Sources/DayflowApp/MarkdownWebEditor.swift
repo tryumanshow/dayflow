@@ -92,7 +92,8 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 let json = body["json"] as? String
                 lastEmittedMarkdown = md
                 lastEmittedJSON = json ?? ""
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
                     if self.parent.markdown != md {
                         self.parent.markdown = md
                     }
@@ -107,29 +108,34 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }
 
         func flushIfReady() {
-            guard ready else { return }
-            guard let md = pendingMarkdown else { return }
+            guard ready, let md = pendingMarkdown else { return }
             let json = pendingJSON
             pendingMarkdown = nil
             pendingJSON = nil
             lastEmittedMarkdown = md
             lastEmittedJSON = json ?? ""
-            // JSON-encode both string args so quotes, backslashes, newlines,
-            // and multi-byte unicode (e.g. Korean) come through cleanly.
-            // Naïve base64 + atob() corrupts UTF-8 because atob returns a
-            // binary string of single bytes.
-            guard let mdData = try? JSONEncoder().encode(md),
-                  let mdLiteral = String(data: mdData, encoding: .utf8) else { return }
-            let jsonLiteral: String
-            if let json = json,
-               let jdata = try? JSONEncoder().encode(json),
-               let s = String(data: jdata, encoding: .utf8) {
-                jsonLiteral = s
-            } else {
-                jsonLiteral = "null"
-            }
+            // `md` is a plain string → encode it as a JS string literal
+            // so quotes, backslashes, newlines, and multi-byte unicode
+            // come through cleanly. `json` is already a valid JSON text
+            // (a subset of JS expression grammar since ES2019), so it
+            // can be spliced in as a JS object literal directly without
+            // the extra encode/parse round-trip.
+            let mdLiteral = Self.jsStringLiteral(md)
+            let jsonLiteral = json ?? "null"
             let js = "window.dayflowSetContent(\(mdLiteral), \(jsonLiteral))"
             webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        /// JSON-encode a Swift string into a JS/JSON string literal
+        /// (including the surrounding double quotes). Falls back to an
+        /// empty-string literal if encoding somehow fails — keeps the
+        /// callsite total rather than dropping the whole flush.
+        private static func jsStringLiteral(_ s: String) -> String {
+            if let data = try? JSONEncoder().encode(s),
+               let literal = String(data: data, encoding: .utf8) {
+                return literal
+            }
+            return "\"\""
         }
     }
 
@@ -313,22 +319,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
       <button data-cmd="strike" class="strike" title="Strikethrough">S</button>
       <div class="sep"></div>
       <span class="label">A</span>
-      <button class="swatch clear" data-text="default" title="Default text color">×</button>
-      <button class="swatch" data-text="red"    style="background:#ef4444" title="Red"></button>
-      <button class="swatch" data-text="orange" style="background:#f59e0b" title="Orange"></button>
-      <button class="swatch" data-text="yellow" style="background:#eab308" title="Yellow"></button>
-      <button class="swatch" data-text="green"  style="background:#22c55e" title="Green"></button>
-      <button class="swatch" data-text="blue"   style="background:#3b82f6" title="Blue"></button>
-      <button class="swatch" data-text="purple" style="background:#a855f7" title="Purple"></button>
+      <span data-row="textColor"></span>
       <div class="sep"></div>
       <span class="label">▨</span>
-      <button class="swatch clear" data-bg="default" title="Default background">×</button>
-      <button class="swatch" data-bg="red"    style="background:#ef4444" title="Red highlight"></button>
-      <button class="swatch" data-bg="orange" style="background:#f59e0b" title="Orange highlight"></button>
-      <button class="swatch" data-bg="yellow" style="background:#eab308" title="Yellow highlight"></button>
-      <button class="swatch" data-bg="green"  style="background:#22c55e" title="Green highlight"></button>
-      <button class="swatch" data-bg="blue"   style="background:#3b82f6" title="Blue highlight"></button>
-      <button class="swatch" data-bg="purple" style="background:#a855f7" title="Purple highlight"></button>
+      <span data-row="backgroundColor"></span>
     </div>
     <div id="editor"></div>
     <script type="module">
@@ -413,42 +407,28 @@ struct MarkdownWebEditor: NSViewRepresentable {
         return root.children;
     }
 
-    // Prefer the JSON tree when present — it's the lossless representation
-    // that preserves text color / background color / underline that
-    // `blocksToMarkdownLossy` would strip. Fall back to parsing the
-    // markdown for notes written before JSON side-storage existed, or for
-    // any day whose JSON was intentionally nulled (QuickThrow, Week
-    // checkbox toggle).
-    window.dayflowSetContent = async function(md, json) {
+    // `jsonTree` arrives as an already-parsed array (Swift inlines the
+    // raw JSON as a JS object literal), or `null` for markdown-only
+    // rows. Markdown is only re-parsed when the JSON sidecar is absent.
+    window.dayflowSetContent = async function(md, jsonTree) {
         if (!editor) return;
         try {
             suppressEmit = true;
-            let blocks = null;
-            if (json) {
-                try {
-                    const parsed = JSON.parse(json);
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        blocks = parsed;
-                    }
-                } catch (e) {
-                    console.log('json parse error: ' + e.message);
-                }
-            }
+            let blocks = (Array.isArray(jsonTree) && jsonTree.length > 0) ? jsonTree : null;
             if (!blocks) {
                 blocks = mdToBlocks(md || '');
             }
             if (blocks.length === 0) {
-                // BlockNote requires at least one block — insert an empty paragraph.
+                // BlockNote requires at least one block.
                 blocks.push({ type: 'paragraph', props: {}, content: [], children: [] });
             }
             editor.replaceBlocks(editor.document, blocks);
             lastEmitted = md;
-            lastEmittedJSON = json || "";
+            lastEmittedJSON = jsonTree ? JSON.stringify(jsonTree) : "";
         } catch (e) {
             console.log('setContent error: ' + e.message + ' :: ' + (e.stack || ''));
         } finally {
-            // small delay so the post-replace onChange that fires synchronously
-            // is also suppressed.
+            // Swallow the post-replace synchronous onChange.
             setTimeout(() => { suppressEmit = false; }, 50);
         }
     };
@@ -462,23 +442,63 @@ struct MarkdownWebEditor: NSViewRepresentable {
         } catch (e) {}
     }
 
-    // Trailing debounce so that per-keystroke blocksToMarkdownLossy +
-    // JSON.stringify + JS↔Swift bridge + binding write only fires after
-    // the user pauses.
+    // 200ms trailing debounce so typing doesn't thrash the bridge.
     let emitTimer = null;
     function scheduleEmit() {
         if (emitTimer) clearTimeout(emitTimer);
         emitTimer = setTimeout(() => { emitTimer = null; emitCurrentContent(); }, 200);
     }
 
-    // Wire the Dayflow formatting toolbar. mousedown + preventDefault()
-    // keeps the editor's text selection intact — plain click would
-    // steal focus and collapse the selection before the style call
-    // lands. BlockNote's style API:
-    //   editor.toggleStyles({ bold: true })
-    //   editor.addStyles({ textColor: 'red' })
-    //   editor.removeStyles({ textColor: 'red' })
-    //   editor.getActiveStyles() → { bold?, italic?, underline?, strike?, textColor?, backgroundColor? }
+    // BlockNote default-schema color palette. Names are the public
+    // `textColor`/`backgroundColor` values accepted by addStyles; the
+    // hex is the swatch background.
+    const COLORS = [
+        ['red',    '#ef4444'],
+        ['orange', '#f59e0b'],
+        ['yellow', '#eab308'],
+        ['green',  '#22c55e'],
+        ['blue',   '#3b82f6'],
+        ['purple', '#a855f7'],
+    ];
+
+    // Cached NodeLists populated by buildSwatches — refreshToolbarState
+    // is called on every selection change, so querySelectorAll per call
+    // would burn DOM work.
+    let cmdButtons = [];
+    let colorButtons = { textColor: [], backgroundColor: [] };
+    let lastActiveSig = "";
+
+    function buildSwatches() {
+        const bar = document.getElementById('dayflow-toolbar');
+        if (!bar) return;
+        for (const prop of ['textColor', 'backgroundColor']) {
+            const row = bar.querySelector('[data-row="' + prop + '"]');
+            if (!row) continue;
+            const label = prop === 'textColor' ? 'Default text color' : 'Default background';
+            const clear = document.createElement('button');
+            clear.className = 'swatch clear';
+            clear.dataset.prop = prop;
+            clear.dataset.color = 'default';
+            clear.title = label;
+            clear.textContent = '×';
+            row.appendChild(clear);
+            for (const [name, hex] of COLORS) {
+                const b = document.createElement('button');
+                b.className = 'swatch';
+                b.dataset.prop = prop;
+                b.dataset.color = name;
+                b.style.background = hex;
+                b.title = name;
+                row.appendChild(b);
+            }
+            colorButtons[prop] = Array.from(row.querySelectorAll('button'));
+        }
+        cmdButtons = Array.from(bar.querySelectorAll('button[data-cmd]'));
+    }
+
+    // mousedown + preventDefault keeps the editor's text selection
+    // intact — plain click would steal focus and collapse the selection
+    // before the style call lands.
     function bindToolbar() {
         const bar = document.getElementById('dayflow-toolbar');
         if (!bar) return;
@@ -487,25 +507,18 @@ struct MarkdownWebEditor: NSViewRepresentable {
             if (!btn) return;
             e.preventDefault();
             if (!editor) return;
-            const cmd = btn.getAttribute('data-cmd');
-            const text = btn.getAttribute('data-text');
-            const bg = btn.getAttribute('data-bg');
             try {
+                const cmd = btn.dataset.cmd;
                 if (cmd) {
                     editor.toggleStyles({ [cmd]: true });
-                } else if (text != null) {
-                    if (text === 'default') {
+                } else if (btn.dataset.prop) {
+                    const prop = btn.dataset.prop;
+                    const color = btn.dataset.color;
+                    if (color === 'default') {
                         const active = editor.getActiveStyles() || {};
-                        if (active.textColor) editor.removeStyles({ textColor: active.textColor });
+                        if (active[prop]) editor.removeStyles({ [prop]: active[prop] });
                     } else {
-                        editor.addStyles({ textColor: text });
-                    }
-                } else if (bg != null) {
-                    if (bg === 'default') {
-                        const active = editor.getActiveStyles() || {};
-                        if (active.backgroundColor) editor.removeStyles({ backgroundColor: active.backgroundColor });
-                    } else {
-                        editor.addStyles({ backgroundColor: bg });
+                        editor.addStyles({ [prop]: color });
                     }
                 }
             } catch (err) {
@@ -520,22 +533,23 @@ struct MarkdownWebEditor: NSViewRepresentable {
         if (!editor) return;
         let active = {};
         try { active = editor.getActiveStyles() || {}; } catch (e) {}
-        const bar = document.getElementById('dayflow-toolbar');
-        if (!bar) return;
-        bar.querySelectorAll('button[data-cmd]').forEach((b) => {
-            const cmd = b.getAttribute('data-cmd');
-            b.classList.toggle('active', !!active[cmd]);
-        });
-        bar.querySelectorAll('button[data-text]').forEach((b) => {
-            const val = b.getAttribute('data-text');
-            const current = active.textColor || 'default';
-            b.classList.toggle('active', val === current);
-        });
-        bar.querySelectorAll('button[data-bg]').forEach((b) => {
-            const val = b.getAttribute('data-bg');
-            const current = active.backgroundColor || 'default';
-            b.classList.toggle('active', val === current);
-        });
+        // Dirty-check: selection changes fire on every caret move, but
+        // the active-style signature usually hasn't changed.
+        const sig = (active.bold?1:0) + '|' + (active.italic?1:0) + '|' +
+                    (active.underline?1:0) + '|' + (active.strike?1:0) + '|' +
+                    (active.textColor || 'default') + '|' +
+                    (active.backgroundColor || 'default');
+        if (sig === lastActiveSig) return;
+        lastActiveSig = sig;
+        for (const b of cmdButtons) {
+            b.classList.toggle('active', !!active[b.dataset.cmd]);
+        }
+        for (const prop of ['textColor', 'backgroundColor']) {
+            const current = active[prop] || 'default';
+            for (const b of colorButtons[prop]) {
+                b.classList.toggle('active', b.dataset.color === current);
+            }
+        }
     }
 
     (async () => {
@@ -549,6 +563,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             if (editor.onEditorSelectionChange) {
                 editor.onEditorSelectionChange(refreshToolbarState);
             }
+            buildSwatches();
             bindToolbar();
             refreshToolbarState();
             postReady();

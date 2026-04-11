@@ -96,15 +96,25 @@ final class DayflowStore {
         let dayKey = DayflowDB.ymd(selectedDate)
 
         if force || dayKey != dayBodyLoadedFor {
-            dayBody = db.getDayNote(date: selectedDate)
-            dayBodyJSON = db.getDayNoteJSON(date: selectedDate)
-            dayBodyLoadedFor = dayKey
+            let full = db.getDayNoteFull(date: selectedDate)
+            setDayBuffers(md: full.body, json: full.bodyJSON, cacheKey: dayKey)
         }
 
         let (monthStart, monthEnd) = monthGridRange(selectedDate)
         bodies = db.loadDayNoteRange(start: monthStart, end: monthEnd)
 
         loadReview()
+    }
+
+    /// Single point of assignment for the three buffers that always move
+    /// together: the in-memory markdown, the in-memory JSON sidecar, and
+    /// the "which day is the editor showing" key. Callers that have JSON
+    /// pass it; markdown-only paths (QuickThrow, Week toggle) pass nil to
+    /// invalidate rich styles for that day.
+    private func setDayBuffers(md: String, json: String?, cacheKey: String) {
+        dayBody = md
+        dayBodyJSON = json
+        dayBodyLoadedFor = cacheKey
     }
 
     func startOfWeek(_ date: Date) -> Date {
@@ -133,33 +143,25 @@ final class DayflowStore {
     // MARK: - day body editing
 
     /// Called from the editor on every change (post 200ms JS-side debounce).
-    /// Persists immediately — `saveDayNote` is a single INSERT. `bodyJSON`
-    /// is the BlockNote-native tree carrying rich styles that markdown
-    /// can't express; `body` is the lossy markdown used by Week/Month
-    /// parsers.
+    /// `bodyJSON` is the BlockNote-native tree carrying rich styles; `body`
+    /// is the lossy markdown used by Week/Month parsers.
     func updateDayBody(_ newValue: String, bodyJSON: String? = nil) {
-        dayBody = newValue
-        dayBodyJSON = bodyJSON
+        let key = dayBodyLoadedFor  // already == ymd(selectedDate) on the edit hot path
+        setDayBuffers(md: newValue, json: bodyJSON, cacheKey: key)
         db.saveDayNote(date: selectedDate, body: newValue, bodyJSON: bodyJSON)
-        bodies[DayflowDB.ymd(selectedDate)] = newValue
+        bodies[key] = newValue
     }
 
-    /// Fast path for external edits (Quick Throw, Week checkbox toggles
-    /// for days other than the current one, etc). Updates the in-memory
-    /// cache without re-running the month-range SQL query — which a full
-    /// `refresh(force:)` would do on every call.
+    /// Fast path for external markdown-only edits (QuickThrow, Week
+    /// checkbox toggles). Updates the in-memory cache without the
+    /// month-range SQL round-trip that `refresh(force:)` would cost.
     func applyExternalEdit(date: Date, body: String) {
         let key = DayflowDB.ymd(date)
         if bodies[key] != nil {
             bodies[key] = body
         }
         if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-            dayBody = body
-            // Markdown-only edit path invalidates any stored JSON tree for
-            // this day. The editor will re-derive blocks from `dayBody` on
-            // next load.
-            dayBodyJSON = nil
-            dayBodyLoadedFor = key
+            setDayBuffers(md: body, json: nil, cacheKey: key)
         }
     }
 
@@ -201,20 +203,14 @@ final class DayflowStore {
         lines[lineIdx] = toggled
 
         let newBody = lines.joined(separator: "\n")
-        // Pass `bodyJSON: nil` so the stored JSON tree is cleared — the
-        // markdown path is authoritative here, and keeping a stale JSON
-        // tree would diverge from the freshly-toggled checkbox state. The
-        // tradeoff is that any text color / background color / underline
-        // set on that day is dropped. Acceptable for a convenience toggle
-        // that happens from the Week preview, not the primary edit path.
+        // Markdown-only path — stored JSON tree is cleared so the editor
+        // re-derives blocks on next load. Rich styles on the affected day
+        // are dropped; acceptable for a Week-preview convenience toggle.
         db.saveDayNote(date: day, body: newBody, bodyJSON: nil)
         bodies[key] = newBody
 
-        // If we just toggled today's own note, mirror into `dayBody` so the
-        // Day view will show the flipped state next time it becomes active.
         if Calendar.current.isDate(day, inSameDayAs: selectedDate) {
-            dayBody = newBody
-            dayBodyJSON = nil
+            setDayBuffers(md: newBody, json: nil, cacheKey: key)
         }
     }
 
