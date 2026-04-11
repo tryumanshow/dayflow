@@ -169,7 +169,7 @@ struct ContentView: View {
                 .padding(.top, DS.Space.xl)
                 .padding(.bottom, DS.Space.sm)
 
-                BlockEditor(markdown: $store.dayBody, onChange: { newValue in
+                MarkdownWebEditor(markdown: $store.dayBody, onChange: { newValue in
                     store.updateDayBody(newValue)
                 })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -319,7 +319,7 @@ struct ContentView: View {
                 Rectangle().fill(Color.dfHairline).frame(height: 0.7)
 
                 // selected day editor
-                BlockEditor(markdown: $store.dayBody, onChange: { newValue in
+                MarkdownWebEditor(markdown: $store.dayBody, onChange: { newValue in
                     store.updateDayBody(newValue)
                 })
                 .padding(DS.Space.lg)
@@ -530,7 +530,7 @@ struct ContentView: View {
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 6)
             } else {
-                Text(MarkdownEditor.markdownToDisplay(body))
+                Text(body)
                     .font(DS.FontStyle.body)
                     .lineLimit(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
