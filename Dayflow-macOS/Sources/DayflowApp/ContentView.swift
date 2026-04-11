@@ -362,7 +362,8 @@ struct ContentView: View {
 
     /// One group in a week column: optional heading + its open tasks.
     /// Each task has a tappable checkbox that flips in place without
-    /// leaving the Week view.
+    /// leaving the Week view. Sub-tasks get a padding-left offset per
+    /// indent level so the Day view's nesting carries over.
     private func weekGroupView(_ group: DayflowStore.WeekGroup, day: Date) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             if let heading = group.heading {
@@ -385,6 +386,7 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
+                    .padding(.leading, CGFloat(min(task.depth, 3)) * 10)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

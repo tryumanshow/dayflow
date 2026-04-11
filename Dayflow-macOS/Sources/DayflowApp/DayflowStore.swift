@@ -236,18 +236,25 @@ final class DayflowStore {
         /// Source line index inside the day body — used by
         /// `toggleWeekTask` to flip the checkbox in place.
         let sourceLineIndex: Int
+        /// 0 for top-level, 1 for one level of indent, etc. Week
+        /// preview uses this to render a padding offset so the Day
+        /// view's nesting is visible at a glance.
+        let depth: Int
     }
 
-    func weekGroups(for date: Date, maxGroups: Int = 2, maxTasksPerGroup: Int = 3) -> [WeekGroup] {
+    func weekGroups(for date: Date, maxGroups: Int = 2, maxTasksPerGroup: Int = 5) -> [WeekGroup] {
         let body = dayBody(for: date)
         guard !body.isEmpty else { return [] }
 
         // Walk the body line-by-line tracking the current heading + the
-        // bucket of open tasks under it.
+        // bucket of open tasks under it. Indent depth is computed from
+        // the RAW line (before `MarkdownLine.parse` trims whitespace)
+        // so subtasks show up under their parents in the preview.
         var groups: [(heading: String?, tasks: [OpenTask])] = [(nil, [])]
         let lines = body.components(separatedBy: "\n")
         var nextTaskID = 0
         for (idx, raw) in lines.enumerated() {
+            let depth = Self.indentDepth(of: raw)
             guard let parsed = MarkdownLine.parse(raw) else { continue }
             switch parsed {
             case .heading(_, let text):
@@ -256,7 +263,8 @@ final class DayflowStore {
                 guard !checked else { continue }
                 var current = groups[groups.count - 1]
                 if current.tasks.count < maxTasksPerGroup {
-                    current.tasks.append(OpenTask(id: nextTaskID, text: text, sourceLineIndex: idx))
+                    current.tasks.append(OpenTask(
+                        id: nextTaskID, text: text, sourceLineIndex: idx, depth: depth))
                     nextTaskID += 1
                 }
                 groups[groups.count - 1] = current
@@ -271,6 +279,20 @@ final class DayflowStore {
         return capped.enumerated().map { i, g in
             WeekGroup(id: i, heading: g.heading, tasks: g.tasks)
         }
+    }
+
+    /// Indent depth for a raw markdown line. `blocksToMarkdownLossy`
+    /// emits 4-space indents per nesting level (CommonMark list
+    /// continuation), verified against actual DB output, so 4 spaces =
+    /// depth 1. Tabs count as 4 spaces.
+    private static func indentDepth(of raw: String) -> Int {
+        var leading = 0
+        for ch in raw {
+            if ch == " " { leading += 1 }
+            else if ch == "\t" { leading += 4 }
+            else { break }
+        }
+        return leading / 4
     }
 
     /// Toggle an open task found in the week preview by its source line
