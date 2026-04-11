@@ -220,9 +220,25 @@ struct MarkdownWebEditor: NSViewRepresentable {
         gap: 7px;
     }
     #dayflow-toolbar .label {
+        /* Fixed width so the `A` and `▨` labels stack vertically
+           with their color swatches lining up perfectly when the
+           narrow-width layout wraps each color group onto its own
+           row. Without this the glyphs have different widths and
+           the swatch rows visually drift. */
         font-size: 11px;
+        width: 14px;
+        text-align: center;
         color: rgba(255, 255, 255, 0.45);
-        margin-right: 2px;
+    }
+    /* Narrow containers (Month plan rail ~440px and below): force
+       every logical group onto its own row so [B I U S] sits
+       alone, and the two color rows stack with their labels
+       aligned at the same left margin. Above the breakpoint the
+       original single-row layout still applies. */
+    @media (max-width: 540px) {
+        #dayflow-toolbar .tb-group {
+            flex-basis: 100%;
+        }
     }
     #dayflow-toolbar button {
         all: unset;
