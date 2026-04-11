@@ -178,7 +178,9 @@ struct SettingsView: View {
     private func fontSizeSlider(label: String, hint: String?, value: Binding<Double>) -> some View {
         field(label: label, hint: hint) {
             HStack(spacing: 10) {
-                Slider(value: value, in: 11...20, step: 1)
+                // 9px is the tightest we go — below that BlockNote's
+                // heading `em` multipliers collapse headings into body.
+                Slider(value: value, in: 9...20, step: 1)
                     .frame(maxWidth: 260)
                 Text("\(Int(value.wrappedValue)) px")
                     .font(.system(size: 12, weight: .medium).monospacedDigit())
