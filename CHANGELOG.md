@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/tryumanshow/dayflow/compare/v0.1.4...v0.1.5) (2026-04-11)
+
+
+### Features
+
+* **appointments:** inline edit from the Month rail ([#13](https://github.com/tryumanshow/dayflow/issues/13)) ([6c25850](https://github.com/tryumanshow/dayflow/commit/6c25850eeb596cdfe000204d51921885f46cb3c4))
+
+
+### Bug Fixes
+
+* **editor-toolbar:** clean stacked layout under narrow containers ([#11](https://github.com/tryumanshow/dayflow/issues/11)) ([02c10f9](https://github.com/tryumanshow/dayflow/commit/02c10f9129d2065bd5258c9fff683913cabb771c))
+
 ## [0.1.4](https://github.com/tryumanshow/dayflow/compare/v0.1.3...v0.1.4) (2026-04-11)
 
 
