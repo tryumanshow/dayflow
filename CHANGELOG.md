@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/tryumanshow/dayflow/compare/v0.1.5...v0.1.6) (2026-04-11)
+
+
+### Features
+
+* **appointments:** end time + HH:MM mask + per-editor font size ([#14](https://github.com/tryumanshow/dayflow/issues/14)) ([8279b41](https://github.com/tryumanshow/dayflow/commit/8279b41a5925d8190d227c3ab8caa0580bcdeb98))
+
 ## [0.1.5](https://github.com/tryumanshow/dayflow/compare/v0.1.4...v0.1.5) (2026-04-11)
 
 
