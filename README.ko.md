@@ -10,6 +10,7 @@
 
 - **3개 뷰** — Day / Week / Month, 모두 하루 하나의 마크다운 본문 위에서 돌아감.
 - **블록 기반 WYSIWYG 에디터** — BlockNote 기반, 헤딩·불릿·체크리스트가 입력 즉시 렌더링.
+- **리치 텍스트 스타일** — 굵게·기울임·밑줄·취소선 + 텍스트 색 / 배경색을 상단 툴바에서 바로. 마크다운 본문 옆에 무손실 트리를 같이 저장해서 색이랑 밑줄도 재접속 후에 그대로 유지됨.
 - **완전 로컬** — 노트와 회고는 `~/Library/Application Support/Dayflow/`, API 키는 macOS Keychain, 동기화 없음.
 - **선택형 LLM 일일 회고** — OpenAI 또는 Anthropic, 제공자 / 모델 / 키 / 프롬프트 모두 앱 안에서 설정.
 - **이중 언어 지원** — 영어, 한국어. Settings 에서 전환 가능.
@@ -19,6 +20,7 @@
 ### Day 뷰
 - 왼쪽은 마크다운 에디터, 오른쪽은 오늘 완료율.
 - 체크리스트, 메모, 중첩 목록이 하루 하나의 본문 안에 모두 들어감.
+- 상단 툴바: **B** / *I* / <u>U</u> / ~~S~~ + 텍스트/배경 색 스와치. 드래그로 선택 후 버튼 클릭.
 
 ![Day 뷰](Dayflow-macOS/docs/screenshots/ko/day.png)
 
@@ -48,12 +50,27 @@
 ## 요구 사항
 
 - macOS 14.0 이상.
-- Xcode Command Line Tools (첫 빌드 시).
 
-## 설치
+## 빠른 시작 (일반 사용자)
+
+- [최신 릴리즈 페이지](https://github.com/tryumanshow/dayflow/releases/latest) 접속.
+- `Dayflow-<버전>.zip` 다운로드.
+- 압축 해제하면 `Dayflow.app` 이 나옴.
+- `Dayflow.app` 을 `/Applications` 로 드래그.
+- 첫 실행 시 "개발자를 확인할 수 없음" Gatekeeper 경고가 뜸 (아직 Apple Developer 계정 없이 ad-hoc 서명만 하고 있음). 우회 방법 2가지:
+  - **Finder**: `Dayflow.app` 을 우클릭 → **열기** → 대화상자에서 확인. 한 번만 하면 그 뒤로는 바로 실행됨.
+  - **터미널**: `xattr -cr /Applications/Dayflow.app` 실행 후 더블클릭.
+- Launchpad 나 Spotlight 에서 실행. 빌드 단계 필요 없음, Xcode 필요 없음.
+
+## 소스 빌드 (개발자)
+
+코드를 수정하거나 아직 릴리즈되지 않은 커밋을 테스트할 때만 필요함.
+
+추가 요구 사항: **Xcode Command Line Tools** (`xcode-select --install`).
 
 ```bash
-cd Dayflow-macOS
+git clone https://github.com/tryumanshow/dayflow
+cd dayflow/Dayflow-macOS
 ./build.sh
 ```
 
@@ -61,7 +78,7 @@ cd Dayflow-macOS
 - `.app` 번들 구성 + 버전 / 빌드 번호 주입.
 - `tools/make_icon.py` 로 아이콘 렌더링.
 - Ad-hoc 코드사인 + `/Applications/Dayflow.app` 설치.
-- 완료되면 Launchpad 또는 Spotlight 에서 실행.
+- CI 가 main 에 머지될 때마다 `macos-14` 러너에서 동일한 `build.sh` 를 돌리기 때문에, 릴리즈 zip 과 로컬 빌드는 (타임스탬프 제외하면) 동일한 `.app` 을 만들어냄.
 
 ### 로그인 시 자동 기동 (선택)
 

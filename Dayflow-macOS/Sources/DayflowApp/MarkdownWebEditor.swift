@@ -12,14 +12,21 @@ import WebKit
 /// ProseMirror schema wouldn't let us do cleanly.
 ///
 /// Data contract:
-/// - Swift owns the canonical markdown string in the binding.
+/// - Swift owns two parallel representations: the lossy markdown string
+///   (read by Week/Month checkbox parsers, backup-readable), and the
+///   lossless BlockNote document tree as a JSON string (carries rich
+///   styles that markdown can't, e.g. text/background color and
+///   underline). Both are bound.
 /// - When the binding changes externally (different day loaded), we push
-///   it into the editor via `window.dayflowSetMarkdown`.
-/// - When the user types, BlockNote fires `onEditorContentChange` which
-///   posts the new markdown back via the `dayflow` message handler.
+///   into the editor via `window.dayflowSetContent(md, json)`. JSON wins
+///   if non-empty; otherwise we fall back to parsing markdown.
+/// - When the user types, BlockNote fires `onEditorContentChange`, we
+///   compute both markdown and JSON and post them back via the `dayflow`
+///   message handler.
 struct MarkdownWebEditor: NSViewRepresentable {
     @Binding var markdown: String
-    var onChange: (String) -> Void
+    @Binding var markdownJSON: String?
+    var onChange: (String, String?) -> Void
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -44,14 +51,18 @@ struct MarkdownWebEditor: NSViewRepresentable {
 
         context.coordinator.webView = web
         context.coordinator.pendingMarkdown = markdown
+        context.coordinator.pendingJSON = markdownJSON
         return web
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         // Only push when the binding diverged from what the editor last
         // emitted — otherwise we'd bounce the user's own edit back.
-        if markdown != context.coordinator.lastEmittedMarkdown {
+        let mdChanged = markdown != context.coordinator.lastEmittedMarkdown
+        let jsonChanged = (markdownJSON ?? "") != context.coordinator.lastEmittedJSON
+        if mdChanged || jsonChanged {
             context.coordinator.pendingMarkdown = markdown
+            context.coordinator.pendingJSON = markdownJSON
             context.coordinator.flushIfReady()
         }
     }
@@ -63,7 +74,9 @@ struct MarkdownWebEditor: NSViewRepresentable {
         weak var webView: WKWebView?
         var ready: Bool = false
         var pendingMarkdown: String? = nil
+        var pendingJSON: String? = nil
         var lastEmittedMarkdown: String = ""
+        var lastEmittedJSON: String = ""
 
         init(_ parent: MarkdownWebEditor) { self.parent = parent }
 
@@ -75,14 +88,18 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 ready = true
                 flushIfReady()
             case "change":
-                if let value = body["value"] as? String {
-                    lastEmittedMarkdown = value
-                    DispatchQueue.main.async {
-                        if self.parent.markdown != value {
-                            self.parent.markdown = value
-                        }
-                        self.parent.onChange(value)
+                let md = (body["md"] as? String) ?? ""
+                let json = body["json"] as? String
+                lastEmittedMarkdown = md
+                lastEmittedJSON = json ?? ""
+                DispatchQueue.main.async {
+                    if self.parent.markdown != md {
+                        self.parent.markdown = md
                     }
+                    if self.parent.markdownJSON != json {
+                        self.parent.markdownJSON = json
+                    }
+                    self.parent.onChange(md, json)
                 }
             default:
                 break
@@ -90,16 +107,28 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }
 
         func flushIfReady() {
-            guard ready, let md = pendingMarkdown else { return }
+            guard ready else { return }
+            guard let md = pendingMarkdown else { return }
+            let json = pendingJSON
             pendingMarkdown = nil
+            pendingJSON = nil
             lastEmittedMarkdown = md
-            // JSON-encode the string so quotes, backslashes, newlines, AND
-            // multi-byte unicode (e.g. Korean) come through cleanly. Naïve
-            // base64 + atob() corrupts UTF-8 because atob returns a binary
-            // string of single bytes.
-            guard let jsonData = try? JSONEncoder().encode(md),
-                  let jsonLiteral = String(data: jsonData, encoding: .utf8) else { return }
-            let js = "window.dayflowSetMarkdown(\(jsonLiteral))"
+            lastEmittedJSON = json ?? ""
+            // JSON-encode both string args so quotes, backslashes, newlines,
+            // and multi-byte unicode (e.g. Korean) come through cleanly.
+            // Naïve base64 + atob() corrupts UTF-8 because atob returns a
+            // binary string of single bytes.
+            guard let mdData = try? JSONEncoder().encode(md),
+                  let mdLiteral = String(data: mdData, encoding: .utf8) else { return }
+            let jsonLiteral: String
+            if let json = json,
+               let jdata = try? JSONEncoder().encode(json),
+               let s = String(data: jdata, encoding: .utf8) {
+                jsonLiteral = s
+            } else {
+                jsonLiteral = "null"
+            }
+            let js = "window.dayflowSetContent(\(mdLiteral), \(jsonLiteral))"
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
     }
@@ -134,10 +163,83 @@ struct MarkdownWebEditor: NSViewRepresentable {
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui;
         -webkit-font-smoothing: antialiased;
     }
+    body {
+        display: flex;
+        flex-direction: column;
+    }
     #editor {
-        height: 100vh;
+        flex: 1 1 auto;
+        min-height: 0;
         overflow-y: auto;
-        padding: 24px 8px;
+        padding: 16px 8px 24px 8px;
+    }
+    /* Dayflow's own formatting strip. BlockNote's React-side toolbar
+       component isn't loaded (we're on @blocknote/core only), so we
+       build a minimal vanilla one that calls editor.toggleStyles /
+       addStyles / removeStyles directly. */
+    #dayflow-toolbar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 10px;
+        background: rgba(28, 28, 32, 0.7);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        font-size: 13px;
+        user-select: none;
+    }
+    #dayflow-toolbar .sep {
+        width: 1px;
+        height: 16px;
+        background: rgba(255, 255, 255, 0.12);
+        margin: 0 4px;
+    }
+    #dayflow-toolbar .label {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.45);
+        margin-right: 2px;
+    }
+    #dayflow-toolbar button {
+        all: unset;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        height: 24px;
+        padding: 0 6px;
+        border-radius: 4px;
+        color: rgba(255, 255, 255, 0.85);
+        cursor: pointer;
+        font-weight: 600;
+    }
+    #dayflow-toolbar button:hover {
+        background: rgba(255, 255, 255, 0.08);
+    }
+    #dayflow-toolbar button.active {
+        background: rgba(247, 158, 51, 0.22);
+        color: #f79e33;
+    }
+    #dayflow-toolbar button.italic { font-style: italic; }
+    #dayflow-toolbar button.underline { text-decoration: underline; }
+    #dayflow-toolbar button.strike { text-decoration: line-through; }
+    #dayflow-toolbar .swatch {
+        width: 18px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+    #dayflow-toolbar .swatch.active {
+        outline: 2px solid #f79e33;
+        outline-offset: 1px;
+    }
+    #dayflow-toolbar .swatch.clear {
+        background: transparent;
+        color: rgba(255, 255, 255, 0.55);
+        font-size: 11px;
     }
 
     /* BlockNote dark theme overrides */
@@ -193,8 +295,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
         color: rgba(255,255,255,0.75);
     }
     .ProseMirror ::selection { background: rgba(247, 158, 51, 0.32); }
-    /* hide the formatting toolbar / side menu chrome — keep it minimal */
-    .bn-formatting-toolbar, .bn-side-menu, .bn-suggestion-menu { display: none !important; }
+    /* drag-handle side menu + slash-suggestion menu stay hidden to keep
+       the layout minimal — the Dayflow toolbar above covers the common
+       styling actions. */
+    .bn-side-menu, .bn-suggestion-menu { display: none !important; }
     /* placeholder */
     .bn-block-content[data-is-empty-and-focused="true"]::before {
         color: rgba(255,255,255,0.25) !important;
@@ -202,6 +306,30 @@ struct MarkdownWebEditor: NSViewRepresentable {
     </style>
     </head>
     <body>
+    <div id="dayflow-toolbar">
+      <button data-cmd="bold" title="Bold (⌘B)">B</button>
+      <button data-cmd="italic" class="italic" title="Italic (⌘I)">I</button>
+      <button data-cmd="underline" class="underline" title="Underline (⌘U)">U</button>
+      <button data-cmd="strike" class="strike" title="Strikethrough">S</button>
+      <div class="sep"></div>
+      <span class="label">A</span>
+      <button class="swatch clear" data-text="default" title="Default text color">×</button>
+      <button class="swatch" data-text="red"    style="background:#ef4444" title="Red"></button>
+      <button class="swatch" data-text="orange" style="background:#f59e0b" title="Orange"></button>
+      <button class="swatch" data-text="yellow" style="background:#eab308" title="Yellow"></button>
+      <button class="swatch" data-text="green"  style="background:#22c55e" title="Green"></button>
+      <button class="swatch" data-text="blue"   style="background:#3b82f6" title="Blue"></button>
+      <button class="swatch" data-text="purple" style="background:#a855f7" title="Purple"></button>
+      <div class="sep"></div>
+      <span class="label">▨</span>
+      <button class="swatch clear" data-bg="default" title="Default background">×</button>
+      <button class="swatch" data-bg="red"    style="background:#ef4444" title="Red highlight"></button>
+      <button class="swatch" data-bg="orange" style="background:#f59e0b" title="Orange highlight"></button>
+      <button class="swatch" data-bg="yellow" style="background:#eab308" title="Yellow highlight"></button>
+      <button class="swatch" data-bg="green"  style="background:#22c55e" title="Green highlight"></button>
+      <button class="swatch" data-bg="blue"   style="background:#3b82f6" title="Blue highlight"></button>
+      <button class="swatch" data-bg="purple" style="background:#a855f7" title="Purple highlight"></button>
+    </div>
     <div id="editor"></div>
     <script type="module">
     import { BlockNoteEditor } from "https://esm.sh/@blocknote/core@0.15.11";
@@ -210,14 +338,17 @@ struct MarkdownWebEditor: NSViewRepresentable {
     let lastEmitted = "";
     let suppressEmit = false;
 
+    let lastEmittedJSON = "";
+
     function postReady() {
         try { window.webkit.messageHandlers.dayflow.postMessage({ type: "ready" }); } catch (e) {}
     }
-    function postChange(md) {
+    function postChange(md, json) {
         if (suppressEmit) return;
-        if (md === lastEmitted) return;
+        if (md === lastEmitted && json === lastEmittedJSON) return;
         lastEmitted = md;
-        try { window.webkit.messageHandlers.dayflow.postMessage({ type: "change", value: md }); } catch (e) {}
+        lastEmittedJSON = json;
+        try { window.webkit.messageHandlers.dayflow.postMessage({ type: "change", md: md, json: json }); } catch (e) {}
     }
 
     // Line-based markdown parser. BlockNote 0.15.11's tryParseMarkdownToBlocks
@@ -282,19 +413,39 @@ struct MarkdownWebEditor: NSViewRepresentable {
         return root.children;
     }
 
-    window.dayflowSetMarkdown = async function(md) {
+    // Prefer the JSON tree when present — it's the lossless representation
+    // that preserves text color / background color / underline that
+    // `blocksToMarkdownLossy` would strip. Fall back to parsing the
+    // markdown for notes written before JSON side-storage existed, or for
+    // any day whose JSON was intentionally nulled (QuickThrow, Week
+    // checkbox toggle).
+    window.dayflowSetContent = async function(md, json) {
         if (!editor) return;
         try {
             suppressEmit = true;
-            const blocks = mdToBlocks(md || '');
+            let blocks = null;
+            if (json) {
+                try {
+                    const parsed = JSON.parse(json);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        blocks = parsed;
+                    }
+                } catch (e) {
+                    console.log('json parse error: ' + e.message);
+                }
+            }
+            if (!blocks) {
+                blocks = mdToBlocks(md || '');
+            }
             if (blocks.length === 0) {
                 // BlockNote requires at least one block — insert an empty paragraph.
                 blocks.push({ type: 'paragraph', props: {}, content: [], children: [] });
             }
             editor.replaceBlocks(editor.document, blocks);
             lastEmitted = md;
+            lastEmittedJSON = json || "";
         } catch (e) {
-            console.log('setMarkdown error: ' + e.message + ' :: ' + (e.stack || ''));
+            console.log('setContent error: ' + e.message + ' :: ' + (e.stack || ''));
         } finally {
             // small delay so the post-replace onChange that fires synchronously
             // is also suppressed.
@@ -302,20 +453,89 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }
     };
 
-    async function emitCurrentMarkdown() {
+    async function emitCurrentContent() {
         if (!editor) return;
         try {
             const md = await editor.blocksToMarkdownLossy(editor.document);
-            postChange(md);
+            const json = JSON.stringify(editor.document);
+            postChange(md, json);
         } catch (e) {}
     }
 
     // Trailing debounce so that per-keystroke blocksToMarkdownLossy +
-    // JS↔Swift bridge + binding write only fires after the user pauses.
+    // JSON.stringify + JS↔Swift bridge + binding write only fires after
+    // the user pauses.
     let emitTimer = null;
     function scheduleEmit() {
         if (emitTimer) clearTimeout(emitTimer);
-        emitTimer = setTimeout(() => { emitTimer = null; emitCurrentMarkdown(); }, 200);
+        emitTimer = setTimeout(() => { emitTimer = null; emitCurrentContent(); }, 200);
+    }
+
+    // Wire the Dayflow formatting toolbar. mousedown + preventDefault()
+    // keeps the editor's text selection intact — plain click would
+    // steal focus and collapse the selection before the style call
+    // lands. BlockNote's style API:
+    //   editor.toggleStyles({ bold: true })
+    //   editor.addStyles({ textColor: 'red' })
+    //   editor.removeStyles({ textColor: 'red' })
+    //   editor.getActiveStyles() → { bold?, italic?, underline?, strike?, textColor?, backgroundColor? }
+    function bindToolbar() {
+        const bar = document.getElementById('dayflow-toolbar');
+        if (!bar) return;
+        bar.addEventListener('mousedown', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            e.preventDefault();
+            if (!editor) return;
+            const cmd = btn.getAttribute('data-cmd');
+            const text = btn.getAttribute('data-text');
+            const bg = btn.getAttribute('data-bg');
+            try {
+                if (cmd) {
+                    editor.toggleStyles({ [cmd]: true });
+                } else if (text != null) {
+                    if (text === 'default') {
+                        const active = editor.getActiveStyles() || {};
+                        if (active.textColor) editor.removeStyles({ textColor: active.textColor });
+                    } else {
+                        editor.addStyles({ textColor: text });
+                    }
+                } else if (bg != null) {
+                    if (bg === 'default') {
+                        const active = editor.getActiveStyles() || {};
+                        if (active.backgroundColor) editor.removeStyles({ backgroundColor: active.backgroundColor });
+                    } else {
+                        editor.addStyles({ backgroundColor: bg });
+                    }
+                }
+            } catch (err) {
+                console.log('toolbar cmd error: ' + err.message);
+            }
+            refreshToolbarState();
+            scheduleEmit();
+        });
+    }
+
+    function refreshToolbarState() {
+        if (!editor) return;
+        let active = {};
+        try { active = editor.getActiveStyles() || {}; } catch (e) {}
+        const bar = document.getElementById('dayflow-toolbar');
+        if (!bar) return;
+        bar.querySelectorAll('button[data-cmd]').forEach((b) => {
+            const cmd = b.getAttribute('data-cmd');
+            b.classList.toggle('active', !!active[cmd]);
+        });
+        bar.querySelectorAll('button[data-text]').forEach((b) => {
+            const val = b.getAttribute('data-text');
+            const current = active.textColor || 'default';
+            b.classList.toggle('active', val === current);
+        });
+        bar.querySelectorAll('button[data-bg]').forEach((b) => {
+            const val = b.getAttribute('data-bg');
+            const current = active.backgroundColor || 'default';
+            b.classList.toggle('active', val === current);
+        });
     }
 
     (async () => {
@@ -326,6 +546,11 @@ struct MarkdownWebEditor: NSViewRepresentable {
             });
             editor.mount(document.getElementById('editor'));
             editor.onEditorContentChange(scheduleEmit);
+            if (editor.onEditorSelectionChange) {
+                editor.onEditorSelectionChange(refreshToolbarState);
+            }
+            bindToolbar();
+            refreshToolbarState();
             postReady();
         } catch (e) {}
     })();

@@ -125,8 +125,8 @@ struct ContentView: View {
     private var dayView: some View {
         @Bindable var store = store
         return HStack(alignment: .top, spacing: 0) {
-            MarkdownWebEditor(markdown: $store.dayBody, onChange: { newValue in
-                store.updateDayBody(newValue)
+            MarkdownWebEditor(markdown: $store.dayBody, markdownJSON: $store.dayBodyJSON, onChange: { newMD, newJSON in
+                store.updateDayBody(newMD, bodyJSON: newJSON)
             })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, DS.Space.lg)

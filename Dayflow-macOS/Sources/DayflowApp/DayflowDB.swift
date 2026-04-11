@@ -69,6 +69,7 @@ final class DayflowDB: @unchecked Sendable {
         CREATE TABLE IF NOT EXISTS day_notes (
             note_date  TEXT PRIMARY KEY,
             body_md    TEXT NOT NULL,
+            body_json  TEXT,
             updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS reviews (
@@ -78,6 +79,10 @@ final class DayflowDB: @unchecked Sendable {
         );
         """
         sqlite3_exec(db, ddl, nil, nil, nil)
+        // Migration for DBs created before `body_json` existed. `ADD COLUMN`
+        // errors if the column already exists — we swallow that, the column
+        // is the only thing we need and ensureSchema runs on every open.
+        sqlite3_exec(db, "ALTER TABLE day_notes ADD COLUMN body_json TEXT", nil, nil, nil)
     }
 
     // MARK: - format helpers
@@ -116,18 +121,45 @@ final class DayflowDB: @unchecked Sendable {
         return ""
     }
 
-    func saveDayNote(date: Date, body: String) {
+    /// Markdown is always present; `bodyJSON` is the BlockNote-native
+    /// document tree as JSON. JSON carries styles that markdown can't
+    /// represent (text/background color, underline) and is preferred on
+    /// load when available. Passing `nil` explicitly nulls the JSON slot
+    /// so callers who only have markdown (QuickThrow, Week checkbox
+    /// toggle) force the editor to re-derive blocks from markdown.
+    func saveDayNote(date: Date, body: String, bodyJSON: String? = nil) {
         let now = nowISO()
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
-            INSERT INTO day_notes (note_date, body_md, updated_at) VALUES (?,?,?)
-            ON CONFLICT(note_date) DO UPDATE SET body_md=excluded.body_md, updated_at=excluded.updated_at
+            INSERT INTO day_notes (note_date, body_md, body_json, updated_at) VALUES (?,?,?,?)
+            ON CONFLICT(note_date) DO UPDATE SET
+                body_md=excluded.body_md,
+                body_json=excluded.body_json,
+                updated_at=excluded.updated_at
         """, -1, &stmt, nil)
         bindText(stmt, 1, Self.ymd(date))
         bindText(stmt, 2, body)
-        bindText(stmt, 3, now)
+        if let json = bodyJSON {
+            bindText(stmt, 3, json)
+        } else {
+            sqlite3_bind_null(stmt, 3)
+        }
+        bindText(stmt, 4, now)
         sqlite3_step(stmt)
         sqlite3_finalize(stmt)
+    }
+
+    func getDayNoteJSON(date: Date) -> String? {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "SELECT body_json FROM day_notes WHERE note_date = ?", -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, Self.ymd(date))
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            if sqlite3_column_type(stmt, 0) == SQLITE_NULL { return nil }
+            let s = textCol(stmt, 0)
+            return s.isEmpty ? nil : s
+        }
+        return nil
     }
 
     /// Bulk loader — pull every day note in [start, end] (inclusive) so the

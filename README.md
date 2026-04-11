@@ -10,6 +10,7 @@
 
 - **Three views** — Day / Week / Month, all backed by one markdown body per day.
 - **Block-based WYSIWYG editor** — powered by BlockNote, with live rendering of headings, bullets, and checklists.
+- **Rich text styling** — bold, italic, underline, strikethrough, plus text and background color from a top toolbar. Full fidelity is stored alongside the markdown body so colors and underlines survive across reloads.
 - **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain, nothing is synced.
 - **Optional LLM daily review** — OpenAI or Anthropic, picked and configured entirely inside the app.
 - **Bilingual** — English or Korean, switchable in Settings, no relaunch-from-terminal needed.
@@ -19,6 +20,7 @@
 ### Day view
 - Markdown editor on the left, today's completion ratio on the right.
 - Checklists, memos, and nested lists all live in one body per day.
+- Top toolbar: **B** / *I* / <u>U</u> / ~~S~~, plus text and background color swatches. Select text, click a button.
 
 ![Day view](Dayflow-macOS/docs/screenshots/en/day.png)
 
@@ -48,12 +50,27 @@
 ## Requirements
 
 - macOS 14.0 or later.
-- Xcode Command Line Tools (for the first build).
 
-## Install
+## Quickstart (users)
+
+- Head to the [latest release](https://github.com/tryumanshow/dayflow/releases/latest).
+- Download `Dayflow-<version>.zip`.
+- Unzip — you get `Dayflow.app`.
+- Drag `Dayflow.app` into `/Applications`.
+- First launch will show a "cannot verify developer" warning because the release is ad-hoc signed (no paid Apple Developer account yet). Two ways around it:
+  - **Finder**: right-click `Dayflow.app` → **Open** → confirm in the dialog. Once, then it's trusted forever.
+  - **Terminal**: `xattr -cr /Applications/Dayflow.app` then double-click as usual.
+- Launch from Launchpad or Spotlight. That's it — no build step, no Xcode required.
+
+## Build from source (developers)
+
+Only needed if you want to modify the code or test an unreleased commit.
+
+Extra requirement: **Xcode Command Line Tools** (`xcode-select --install`).
 
 ```bash
-cd Dayflow-macOS
+git clone https://github.com/tryumanshow/dayflow
+cd dayflow/Dayflow-macOS
 ./build.sh
 ```
 
@@ -61,7 +78,7 @@ cd Dayflow-macOS
 - Assembles the `.app` bundle with version and build number injected.
 - Renders the app icon from `tools/make_icon.py`.
 - Ad-hoc signs and installs to `/Applications/Dayflow.app`.
-- Launch from Launchpad or Spotlight once finished.
+- CI runs the exact same `build.sh` on a `macos-14` runner for every merge to `main`, so the release zip and your local build produce bit-for-bit the same `.app` (modulo timestamps).
 
 ### Launch at login (optional)
 
