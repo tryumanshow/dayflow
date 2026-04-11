@@ -269,6 +269,34 @@ struct MarkdownWebEditor: NSViewRepresentable {
         editor.commands.setContent(md, false);
     };
 
+    // Tab / Shift+Tab handler.
+    //
+    // TipTap's TaskItem ships a Tab keymap (`sinkListItem('taskItem')`), but
+    // inside a WKWebView the Tab key is intercepted by WebKit's contenteditable
+    // focus-traversal default before ProseMirror's keymap can react. We catch
+    // the event in the capture phase, run the indent / outdent command
+    // directly through TipTap's command API, and only swallow the event when
+    // we actually performed an action.
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Tab') return;
+        if (!editor) return;
+
+        let handled = false;
+        if (e.shiftKey) {
+            handled =
+                editor.commands.liftListItem('taskItem') ||
+                editor.commands.liftListItem('listItem');
+        } else {
+            handled =
+                editor.commands.sinkListItem('taskItem') ||
+                editor.commands.sinkListItem('listItem');
+        }
+        if (handled) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
+
     editor = new Editor({
         element: document.querySelector('#editor'),
         extensions: [
