@@ -1,30 +1,23 @@
 import Foundation
 
+/// Binary task status. The DB still allows arbitrary strings, but the app
+/// collapses everything to TODO / DONE for clarity. Legacy DOING → TODO,
+/// legacy WONT → DONE.
 enum TaskStatus: String, CaseIterable, Identifiable {
     case todo = "TODO"
-    case doing = "DOING"
     case done = "DONE"
-    case wont = "WONT"
 
     var id: String { rawValue }
 
-    var glyph: String {
-        switch self {
-        case .todo:  return "☐"
-        case .doing: return "▶"
-        case .done:  return "☑"
-        case .wont:  return "✗"
+    static func parse(_ raw: String) -> TaskStatus {
+        switch raw.uppercased() {
+        case "DONE", "WONT": return .done
+        default:             return .todo
         }
     }
 
-    var nextInCycle: TaskStatus {
-        switch self {
-        case .todo:  return .doing
-        case .doing: return .done
-        case .done:  return .todo
-        case .wont:  return .todo
-        }
-    }
+    var isDone: Bool { self == .done }
+    var toggled: TaskStatus { self == .todo ? .done : .todo }
 }
 
 struct Task: Identifiable, Hashable {

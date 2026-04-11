@@ -87,7 +87,8 @@ private struct QuickThrowView: View {
     private func submit() {
         let v = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !v.isEmpty else { onDone(); return }
-        store.addTask(title: v, dueDate: date)
+        _ = DayflowDB.shared.addTask(title: v, dueDate: date, parentId: nil)
+        store.refresh()
         title = ""
         onDone()
     }

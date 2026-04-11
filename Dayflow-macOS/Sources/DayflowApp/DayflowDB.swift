@@ -102,6 +102,10 @@ final class DayflowDB {
                 nil, nil, nil)
         }
         sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)", nil, nil, nil)
+
+        // Binary status migration: collapse legacy DOING/WONT.
+        sqlite3_exec(db, "UPDATE tasks SET status='TODO' WHERE status='DOING'", nil, nil, nil)
+        sqlite3_exec(db, "UPDATE tasks SET status='DONE' WHERE status='WONT'", nil, nil, nil)
     }
 
     // MARK: - format helpers
@@ -204,7 +208,7 @@ final class DayflowDB {
         while sqlite3_step(stmt) == SQLITE_ROW {
             let id = Int(sqlite3_column_int64(stmt, 0))
             let title = textCol(stmt, 1)
-            let status = TaskStatus(rawValue: textCol(stmt, 2)) ?? .todo
+            let status = TaskStatus.parse(textCol(stmt, 2))
             let inboxAt = textCol(stmt, 3)
             let due = textColOpt(stmt, 4)
             let updated = textCol(stmt, 5)
@@ -212,6 +216,18 @@ final class DayflowDB {
             out.append(Task(id: id, title: title, status: status, inboxAt: inboxAt, dueDate: due, updatedAt: updated, parentId: parentId))
         }
         return out
+    }
+
+    func updateTitle(_ taskId: Int, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let now = nowISO()
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "UPDATE tasks SET title=?, updated_at=? WHERE id=?", -1, &stmt, nil)
+        bindText(stmt, 1, trimmed)
+        bindText(stmt, 2, now)
+        sqlite3_bind_int64(stmt, 3, sqlite3_int64(taskId))
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
     }
 
     @discardableResult
@@ -300,14 +316,14 @@ final class DayflowDB {
         sqlite3_finalize(stmt)
     }
 
-    func changeStatus(taskId: Int, to newStatus: TaskStatus) {
+    func setStatus(_ taskId: Int, to newStatus: TaskStatus) {
         let now = nowISO()
         var current: TaskStatus = .todo
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, "SELECT status FROM tasks WHERE id = ?", -1, &stmt, nil)
         sqlite3_bind_int64(stmt, 1, sqlite3_int64(taskId))
-        if sqlite3_step(stmt) == SQLITE_ROW, let s = TaskStatus(rawValue: textCol(stmt, 0)) {
-            current = s
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            current = TaskStatus.parse(textCol(stmt, 0))
         } else {
             sqlite3_finalize(stmt)
             return
@@ -326,6 +342,7 @@ final class DayflowDB {
         sqlite3_step(upd)
         sqlite3_finalize(upd)
 
+        // Light audit trail — useful for the LLM review feature.
         var hist: OpaquePointer?
         sqlite3_prepare_v2(db,
             "INSERT INTO state_history (task_id, from_status, to_status, changed_at) VALUES (?,?,?,?)",
@@ -336,44 +353,19 @@ final class DayflowDB {
         bindText(hist, 4, now)
         sqlite3_step(hist)
         sqlite3_finalize(hist)
+    }
 
-        // time_log: opening DOING starts a timer; leaving DOING closes it.
-        if newStatus == .doing && current != .doing {
-            var t: OpaquePointer?
-            sqlite3_prepare_v2(db, "INSERT INTO time_log (task_id, started_at) VALUES (?, ?)", -1, &t, nil)
-            sqlite3_bind_int64(t, 1, sqlite3_int64(taskId))
-            bindText(t, 2, now)
-            sqlite3_step(t)
-            sqlite3_finalize(t)
+    /// Convenience wrapper used by row checkbox click.
+    func toggleDone(_ taskId: Int) {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "SELECT status FROM tasks WHERE id = ?", -1, &stmt, nil)
+        sqlite3_bind_int64(stmt, 1, sqlite3_int64(taskId))
+        var current: TaskStatus = .todo
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            current = TaskStatus.parse(textCol(stmt, 0))
         }
-        if current == .doing && newStatus != .doing {
-            var sel: OpaquePointer?
-            sqlite3_prepare_v2(db,
-                "SELECT id, started_at FROM time_log WHERE task_id=? AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
-                -1, &sel, nil)
-            sqlite3_bind_int64(sel, 1, sqlite3_int64(taskId))
-            if sqlite3_step(sel) == SQLITE_ROW {
-                let entryId = Int(sqlite3_column_int64(sel, 0))
-                let startedAt = textCol(sel, 1)
-                sqlite3_finalize(sel)
-
-                let inFmt = DateFormatter()
-                inFmt.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-                inFmt.locale = Locale(identifier: "en_US_POSIX")
-                let started = inFmt.date(from: startedAt) ?? Date()
-                let duration = Int(Date().timeIntervalSince(started))
-
-                var upd2: OpaquePointer?
-                sqlite3_prepare_v2(db, "UPDATE time_log SET ended_at=?, duration_sec=? WHERE id=?", -1, &upd2, nil)
-                bindText(upd2, 1, now)
-                sqlite3_bind_int64(upd2, 2, sqlite3_int64(duration))
-                sqlite3_bind_int64(upd2, 3, sqlite3_int64(entryId))
-                sqlite3_step(upd2)
-                sqlite3_finalize(upd2)
-            } else {
-                sqlite3_finalize(sel)
-            }
-        }
+        sqlite3_finalize(stmt)
+        setStatus(taskId, to: current.toggled)
     }
 
     // MARK: - notes

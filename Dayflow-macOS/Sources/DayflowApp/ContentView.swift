@@ -2,36 +2,27 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(DayflowStore.self) private var store
-    @State private var newTaskTitle: String = ""
-    @State private var newTaskDate: Date = Date()
-    @State private var newSubtaskParent: Task? = nil
-    @State private var newSubtaskTitle: String = ""
     @State private var newNoteBody: String = ""
-    @FocusState private var inboxFocused: Bool
-    @FocusState private var subtaskFocused: Bool
+    @FocusState private var rowFocus: Int?
 
     var body: some View {
         VStack(spacing: 0) {
-            navigationBar
-                .background(.bar)
+            navigationBar.background(.bar)
             Divider()
-            content
-                .background(Color(nsColor: .windowBackgroundColor))
-            Divider()
-            throwBar
-                .background(.bar)
+            content.background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(minWidth: 1080, minHeight: 680)
-        .onAppear { newTaskDate = store.selectedDate }
-        .onChange(of: store.selectedDate) { _, newValue in newTaskDate = newValue }
+        .onChange(of: store.focusedTaskId) { _, newValue in
+            rowFocus = newValue
+        }
     }
 
-    // MARK: navigation bar -----------------------------------------------------
+    // MARK: - navigation bar -------------------------------------------------
 
     private var navigationBar: some View {
         HStack(spacing: DS.Space.md) {
             HStack(spacing: 6) {
-                Circle().fill(LinearGradient(colors: [.dfDoing, .dfTodo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                Circle().fill(LinearGradient(colors: [.dfAccent, .dfDone], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 14, height: 14)
                 Text("dayflow").font(DS.FontStyle.display)
             }
@@ -63,10 +54,9 @@ struct ContentView: View {
 
             Spacer()
 
-            HStack(spacing: DS.Space.md) {
-                summaryChip(label: "todo", count: store.dayTasks.filter { $0.status == .todo }.count, color: .dfTodo)
-                summaryChip(label: "doing", count: store.dayTasks.filter { $0.status == .doing }.count, color: .dfDoing)
-                summaryChip(label: "done", count: store.dayTasks.filter { $0.status == .done }.count, color: .dfDone)
+            HStack(spacing: 14) {
+                summaryChip(label: "open", count: store.dayTasks.filter { !$0.status.isDone }.count, color: .dfTodo)
+                summaryChip(label: "done", count: store.dayTasks.filter { $0.status.isDone }.count, color: .dfDone)
             }
 
             Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
@@ -103,7 +93,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: content switch ----------------------------------------------------
+    // MARK: - content router --------------------------------------------------
 
     @ViewBuilder
     private var content: some View {
@@ -114,210 +104,166 @@ struct ContentView: View {
         }
     }
 
-    // MARK: day view ----------------------------------------------------------
+    // MARK: - day view (outline editor) --------------------------------------
 
     private var dayView: some View {
         HStack(alignment: .top, spacing: DS.Space.lg) {
-            // left: tasks
-            VStack(alignment: .leading, spacing: DS.Space.sm) {
-                Text("오늘의 할 일")
-                    .font(DS.FontStyle.title)
-                    .padding(.horizontal, DS.Space.sm)
-                taskListCard
-            }
-            .frame(maxWidth: .infinity)
-
-            // right: detail + review
+            outlineCard
+                .frame(maxWidth: .infinity)
             VStack(alignment: .leading, spacing: DS.Space.lg) {
-                detailCard
                 reviewCard
             }
-            .frame(width: 380)
+            .frame(width: 360)
         }
         .padding(DS.Space.lg)
     }
 
-    private var taskListCard: some View {
-        DSCard(padding: DS.Space.sm) {
-            if store.dayTasks.isEmpty {
-                EmptyState(
-                    icon: "☀️",
-                    title: "여유로운 하루",
-                    subtitle: "아래에 할 일을 적어봐"
-                )
-                .frame(minHeight: 280)
-            } else {
+    private var outlineCard: some View {
+        @Bindable var store = store
+        let rows = store.orderedDayRows
+        return DSCard(padding: DS.Space.md) {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                HStack {
+                    Text("오늘의 할 일")
+                        .font(DS.FontStyle.title)
+                    Spacer()
+                    Text("Tab 들여쓰기 · Shift+Tab 내어쓰기 · Enter 새 줄 · Cmd+Enter 체크")
+                        .font(DS.FontStyle.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                Divider()
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(store.orderedDayTasks, id: \.task.id) { item in
-                            TaskRowView(
-                                task: item.task,
-                                depth: item.depth,
-                                isSelected: item.task.id == store.selectedTaskId,
-                                onToggle: { store.cycleStatus(item.task.id) },
-                                onSelect: { store.select(item.task.id) },
-                                onAddSubtask: {
-                                    newSubtaskParent = item.task
-                                    newSubtaskTitle = ""
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                        subtaskFocused = true
-                                    }
-                                },
-                                onDelete: { store.deleteTask(item.task.id) }
-                            )
-                            // inline subtask editor right under the parent it was triggered from
-                            if let parent = newSubtaskParent, parent.id == item.task.id {
-                                HStack(spacing: DS.Space.sm) {
-                                    Spacer().frame(width: CGFloat(item.depth + 1) * 22 + 6)
-                                    Image(systemName: "plus.circle")
-                                        .foregroundStyle(.tertiary)
-                                    TextField("sub-task…", text: $newSubtaskTitle)
-                                        .textFieldStyle(.plain)
-                                        .focused($subtaskFocused)
-                                        .onSubmit { commitSubtask() }
-                                    Button("Add") { commitSubtask() }
-                                        .controlSize(.small)
-                                    Button { newSubtaskParent = nil } label: { Image(systemName: "xmark") }
-                                        .buttonStyle(.borderless)
-                                        .controlSize(.small)
-                                }
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, DS.Space.sm)
-                                .transition(.opacity)
+                    LazyVStack(alignment: .leading, spacing: 1) {
+                        if rows.isEmpty {
+                            EmptyState(icon: "☀️", title: "여유로운 하루", subtitle: "+ 버튼이나 Enter 로 첫 줄을 적어봐")
+                                .frame(minHeight: 240)
+                        } else {
+                            ForEach(rows, id: \.task.id) { row in
+                                outlineRow(task: row.task, depth: row.depth)
                             }
                         }
+                        // bottom + button to start a new top-level row
+                        Button {
+                            if let id = store.newRow() {
+                                rowFocus = id
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.circle")
+                                    .foregroundStyle(.tertiary)
+                                Text("새 줄 추가")
+                                    .font(DS.FontStyle.body)
+                                    .foregroundStyle(.tertiary)
+                                Spacer()
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 4)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 4)
                     }
                     .padding(.vertical, DS.Space.sm)
                 }
-                .frame(minHeight: 320)
+                .frame(minHeight: 360)
             }
-        }
-    }
-
-    private func commitSubtask() {
-        guard let parent = newSubtaskParent else { return }
-        let v = newSubtaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !v.isEmpty else {
-            newSubtaskParent = nil
-            return
-        }
-        store.addSubtask(parent: parent, title: v)
-        newSubtaskTitle = ""
-        // keep editor open under same parent so multiple sub-tasks can be added in a row
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            subtaskFocused = true
         }
     }
 
     @ViewBuilder
-    private var detailCard: some View {
-        DSCard {
-            if let task = store.selectedTask {
-                VStack(alignment: .leading, spacing: DS.Space.md) {
-                    HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
-                        StatusPill(status: task.status)
-                        Spacer()
-                        if let due = task.dueDate {
-                            Text("due \(due)").font(DS.FontStyle.micro).foregroundStyle(.secondary)
-                        }
-                    }
-                    Text(task.title)
-                        .font(DS.FontStyle.title)
-                        .lineLimit(3)
-                        .textSelection(.enabled)
+    private func outlineRow(task: Task, depth: Int) -> some View {
+        @Bindable var store = store
+        let binding = Binding<String>(
+            get: { store.draftTitles[task.id] ?? task.title },
+            set: { store.draftTitles[task.id] = $0 }
+        )
+        let done = task.status.isDone
 
-                    HStack(spacing: DS.Space.sm) {
-                        Button {
-                            store.cycleStatus(task.id)
-                        } label: {
-                            Label("Cycle", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+        HStack(spacing: 8) {
+            // depth indent + guide
+            if depth > 0 {
+                ForEach(0..<depth, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(width: 1)
+                        .padding(.leading, 9)
+                        .padding(.trailing, 12)
+                }
+            }
 
-                        Menu("Set…") {
-                            ForEach(TaskStatus.allCases) { s in
-                                Button("\(s.glyph)  \(s.rawValue)") { store.setStatus(task.id, to: s) }
-                            }
-                        }
-                        .controlSize(.small)
-
-                        Button(role: .destructive) {
-                            store.deleteTask(task.id)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                    }
-
-                    Divider()
-
-                    Text("Notes")
-                        .font(DS.FontStyle.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    if store.notes.isEmpty {
-                        Text("아직 메모 없음")
-                            .font(DS.FontStyle.caption)
-                            .foregroundStyle(.tertiary)
-                    } else {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(store.notes) { note in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(note.bodyMd)
-                                        .font(DS.FontStyle.body)
-                                        .textSelection(.enabled)
-                                    Text(String(note.writtenAt.suffix(8)))
-                                        .font(DS.FontStyle.micro)
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .padding(8)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.primary.opacity(0.04))
-                                .clipShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
-                            }
-                        }
-                    }
-
-                    HStack(spacing: DS.Space.sm) {
-                        TextField("메모 추가…", text: $newNoteBody, axis: .vertical)
-                            .textFieldStyle(.roundedBorder)
-                            .lineLimit(1...3)
-                        Button("Add") {
-                            let v = newNoteBody.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !v.isEmpty else { return }
-                            store.addNote(v)
-                            newNoteBody = ""
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .keyboardShortcut(.return, modifiers: [.command])
-                    }
-
-                    if !store.history.isEmpty {
-                        Divider()
-                        Text("History")
-                            .font(DS.FontStyle.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(store.history.suffix(6)) { h in
-                                HStack(spacing: 6) {
-                                    Text(String(h.changedAt.suffix(8)))
-                                        .font(DS.FontStyle.micro)
-                                        .foregroundStyle(.tertiary)
-                                    Text("\(h.fromStatus ?? "∅") → \(h.toStatus)")
-                                        .font(DS.FontStyle.micro)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
+            // checkbox
+            Button { store.toggleDone(task.id) } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.status(task.status), lineWidth: 1.5)
+                        .frame(width: 16, height: 16)
+                    if done {
+                        RoundedRectangle(cornerRadius: 4).fill(Color.dfDone).frame(width: 16, height: 16)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
                     }
                 }
-            } else {
-                EmptyState(icon: "👈", title: "task 를 골라봐", subtitle: "좌측에서 row 를 클릭하면 상세가 나와")
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+
+            // editable title
+            TextField("", text: binding, prompt: Text("할 일 …").foregroundColor(.secondary))
+                .textFieldStyle(.plain)
+                .font(DS.FontStyle.body)
+                .strikethrough(done)
+                .foregroundStyle(done ? Color.secondary : .primary)
+                .focused($rowFocus, equals: task.id)
+                .onSubmit {
+                    store.commitTitle(task.id)
+                    if let id = store.newRow(asChildOf: task.parentId) {
+                        rowFocus = id
+                    }
+                }
+                .onChange(of: rowFocus) { oldValue, newValue in
+                    if oldValue == task.id && newValue != task.id {
+                        store.commitTitle(task.id)
+                    }
+                }
+                .onKeyPress(.tab) {
+                    store.commitTitle(task.id)
+                    store.indent(task.id)
+                    DispatchQueue.main.async { rowFocus = task.id }
+                    return .handled
+                }
+                .onKeyPress(keys: [.tab], phases: .down) { press in
+                    if press.modifiers.contains(.shift) {
+                        store.commitTitle(task.id)
+                        store.outdent(task.id)
+                        DispatchQueue.main.async { rowFocus = task.id }
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.delete) {
+                    let title = store.draftTitles[task.id] ?? task.title
+                    if title.isEmpty {
+                        store.backspaceEmpty(task.id)
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.return, phases: .down) { press in
+                    if press.modifiers.contains(.command) {
+                        store.toggleDone(task.id)
+                        return .handled
+                    }
+                    return .ignored
+                }
         }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(rowFocus == task.id ? Color.dfAccent.opacity(0.07) : Color.clear)
+        )
+        .animation(DS.Motion.smooth, value: done)
     }
 
     private var reviewCard: some View {
@@ -355,83 +301,89 @@ struct ContentView: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxHeight: 220)
+                    .frame(maxHeight: 360)
                 }
             }
         }
     }
 
-    // MARK: week view ---------------------------------------------------------
+    // MARK: - week view ------------------------------------------------------
 
     private var weekView: some View {
         let cal = Calendar.current
         let weekStart = store.startOfWeek(store.selectedDate)
         let days: [Date] = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) }
-        return ScrollView {
-            HStack(alignment: .top, spacing: DS.Space.sm) {
-                ForEach(days, id: \.self) { day in
-                    weekColumn(for: day)
+        return VStack(spacing: DS.Space.lg) {
+            // top day strip
+            DSCard(padding: DS.Space.md) {
+                HStack(spacing: DS.Space.sm) {
+                    ForEach(days, id: \.self) { day in
+                        weekDayChip(for: day)
+                    }
                 }
             }
-            .padding(DS.Space.lg)
+            // selected day outline
+            VStack(spacing: 0) {
+                outlineCard
+            }
+            .frame(maxHeight: .infinity)
         }
+        .padding(DS.Space.lg)
     }
 
-    private func weekColumn(for day: Date) -> some View {
+    private func weekDayChip(for day: Date) -> some View {
         let cal = Calendar.current
-        let dayTasks = store.weekTasks.filter { tasksFallOn(task: $0, date: day) }
         let isToday = cal.isDateInToday(day)
         let isSelected = cal.isDate(day, inSameDayAs: store.selectedDate)
-        let done = dayTasks.filter { $0.status == .done }.count
+        let dayTasks = store.weekTasks.filter { tasksFallOn(task: $0, date: day) }
         let total = dayTasks.count
-        return DSCard(padding: DS.Space.sm) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(weekdayLabel(day))
-                        .font(DS.FontStyle.caption.weight(.semibold))
-                        .foregroundStyle(isToday ? Color.dfDoing : .secondary)
-                    Text(dayLabel(day))
-                        .font(.system(size: 22, weight: .semibold).monospacedDigit())
-                        .foregroundColor(isToday ? Color.dfDoing : .primary)
-                    Spacer()
-                    if total > 0 {
-                        Text("\(done)/\(total)")
-                            .font(DS.FontStyle.micro)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                ForEach(dayTasks.prefix(6)) { task in
-                    HStack(spacing: 6) {
-                        Circle().fill(Color.status(task.status)).frame(width: 6, height: 6)
-                        Text(task.title)
-                            .font(DS.FontStyle.caption)
-                            .lineLimit(1)
-                            .strikethrough(task.status == .done)
-                            .foregroundStyle(task.status == .done ? Color.secondary : .primary)
-                        Spacer(minLength: 0)
-                    }
-                }
-                if dayTasks.count > 6 {
-                    Text("+\(dayTasks.count - 6) more").font(DS.FontStyle.caption).foregroundStyle(.tertiary)
-                }
-                if dayTasks.isEmpty {
-                    Text("여유 있음").font(DS.FontStyle.caption).foregroundStyle(.tertiary)
-                }
-                Spacer(minLength: 0)
-            }
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
-                .stroke(isSelected ? Color.dfDoing : .clear, lineWidth: isSelected ? 1.5 : 0)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
+        let done = dayTasks.filter { $0.status.isDone }.count
+        let ratio = total == 0 ? 0.0 : Double(done) / Double(total)
+
+        return Button {
             store.selectedDate = cal.startOfDay(for: day)
             store.refresh()
+        } label: {
+            VStack(spacing: 6) {
+                Text(weekdayLabel(day))
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(isToday ? Color.dfAccent : .secondary)
+                Text(dayLabel(day))
+                    .font(.system(size: 22, weight: .semibold).monospacedDigit())
+                    .foregroundColor(isToday ? Color.dfAccent : .primary)
+                if total > 0 {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.08))
+                            Capsule().fill(Color.dfDone).frame(width: geo.size.width * ratio)
+                        }
+                    }
+                    .frame(height: 4)
+                    Text("\(done)/\(total)")
+                        .font(DS.FontStyle.micro)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Capsule().fill(Color.primary.opacity(0.05)).frame(height: 4)
+                    Text("—").font(DS.FontStyle.micro).foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                    .fill(isSelected ? Color.dfAccent.opacity(0.14) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                    .stroke(isSelected ? Color.dfAccent : Color.clear, lineWidth: 1.2)
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
-    // MARK: month view --------------------------------------------------------
+    // MARK: - month view (heatmap + stats + selected day) -------------------
 
     private var monthView: some View {
         @Bindable var store = store
@@ -447,11 +399,11 @@ struct ContentView: View {
         let weekdayHeaders = ["월", "화", "수", "목", "금", "토", "일"]
 
         return HStack(alignment: .top, spacing: DS.Space.lg) {
-            // left — calendar grid + stats card on top
+            // LEFT: stats summary + heatmap
             VStack(alignment: .leading, spacing: DS.Space.lg) {
-                statsCard(stats)
+                statsHeader(stats)
                 DSCard(padding: DS.Space.md) {
-                    VStack(spacing: DS.Space.sm) {
+                    VStack(spacing: 6) {
                         HStack(spacing: 4) {
                             ForEach(weekdayHeaders, id: \.self) { wd in
                                 Text(wd)
@@ -460,10 +412,10 @@ struct ContentView: View {
                                     .frame(maxWidth: .infinity)
                             }
                         }
-                        let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
-                        LazyVGrid(columns: columns, spacing: 6) {
+                        let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
+                        LazyVGrid(columns: columns, spacing: 4) {
                             ForEach(days, id: \.self) { day in
-                                monthCell(for: day)
+                                heatCell(for: day, stats: stats)
                             }
                         }
                     }
@@ -471,63 +423,36 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            // right — monthly plan
-            DSCard {
-                VStack(alignment: .leading, spacing: DS.Space.sm) {
-                    HStack {
-                        Label("Monthly Plan", systemImage: "list.bullet.rectangle")
-                            .font(DS.FontStyle.title)
-                        Spacer()
-                        Text(monthLabel(store.selectedDate))
-                            .font(DS.FontStyle.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("이 달에 하고 싶은 큰 흐름")
-                        .font(DS.FontStyle.caption)
-                        .foregroundStyle(.tertiary)
-                    TextEditor(text: $store.monthPlanBody)
-                        .font(DS.FontStyle.body)
-                        .padding(8)
-                        .background(Color.primary.opacity(0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
-                        .frame(minHeight: 320)
-                    HStack {
-                        Spacer()
-                        Button("Save") { store.saveMonthPlan() }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .keyboardShortcut("s", modifiers: [.command])
-                    }
-                }
+            // RIGHT: selected day list + monthly plan stack
+            VStack(alignment: .leading, spacing: DS.Space.lg) {
+                selectedDayCard
+                monthlyPlanCard
             }
-            .frame(width: 300, alignment: .top)
+            .frame(width: 360)
         }
         .padding(DS.Space.lg)
     }
 
-    private func statsCard(_ stats: DayflowStore.MonthStats) -> some View {
-        DSCard(padding: DS.Space.md) {
-            HStack(spacing: DS.Space.lg) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+    private func statsHeader(_ stats: DayflowStore.MonthStats) -> some View {
+        DSCard(padding: DS.Space.lg) {
+            HStack(spacing: DS.Space.xl) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
                         Text("\(Int(stats.completionRate * 100))")
-                            .font(.system(size: 28, weight: .bold).monospacedDigit())
+                            .font(.system(size: 38, weight: .bold).monospacedDigit())
                             .foregroundStyle(Color.dfDone)
-                        Text("%")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                        Text("%").font(.system(size: 16, weight: .semibold)).foregroundStyle(.secondary)
                     }
                     Text("이 달 완료율")
                         .font(DS.FontStyle.caption)
                         .foregroundStyle(.secondary)
                 }
-                Divider().frame(height: 36)
+                Divider().frame(height: 44)
                 statBlock(value: "\(stats.doneTasks)", label: "done", color: .dfDone)
                 statBlock(value: "\(stats.openTasks)", label: "open", color: .dfTodo)
-                statBlock(value: focusedLabel(stats.focusedSeconds), label: "focused", color: .dfDoing)
-                statBlock(value: "\(stats.longestStreak)일", label: "streak", color: .purple)
+                statBlock(value: "\(stats.longestStreak)일", label: "streak", color: .dfAccent)
                 if let busy = stats.busiestWeekday {
-                    statBlock(value: busy, label: "busiest", color: .pink)
+                    statBlock(value: busy, label: "busiest", color: .purple)
                 }
                 Spacer()
             }
@@ -545,105 +470,137 @@ struct ContentView: View {
         }
     }
 
-    private func focusedLabel(_ sec: Int) -> String {
-        let h = sec / 3600
-        let m = (sec % 3600) / 60
-        if h > 0 { return "\(h)h \(m)m" }
-        return "\(m)m"
-    }
-
-    private func monthCell(for day: Date) -> some View {
+    private func heatCell(for day: Date, stats: DayflowStore.MonthStats) -> some View {
         let cal = Calendar.current
         let inMonth = cal.component(.month, from: day) == cal.component(.month, from: store.selectedDate)
         let isToday = cal.isDateInToday(day)
         let isSelected = cal.isDate(day, inSameDayAs: store.selectedDate)
-        let metrics = store.dayMetrics(day)
+        let key = DayflowDB.ymd(day)
+        let total = stats.totalByDay[key] ?? 0
+        let done = stats.doneByDay[key] ?? 0
+        let ratio = total == 0 ? 0.0 : Double(done) / Double(total)
 
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Text("\(cal.component(.day, from: day))")
-                    .font(.system(size: 12, weight: isToday ? .bold : .regular).monospacedDigit())
-                    .foregroundColor(inMonth ? (isToday ? Color.dfDoing : Color.primary) : Color.secondary.opacity(0.4))
-                Spacer()
-                if metrics.total > 0 {
-                    CompletionRing(
-                        ratio: metrics.ratio,
-                        lineWidth: 2,
-                        size: 14,
-                        color: metrics.ratio == 1 ? .dfDone : .dfDoing
-                    )
-                }
-            }
-            ForEach(store.monthTasks.filter { tasksFallOn(task: $0, date: day) }.prefix(2)) { t in
-                Text(t.title)
-                    .font(DS.FontStyle.micro)
-                    .lineLimit(1)
-                    .strikethrough(t.status == .done)
-                    .foregroundStyle(t.status == .done ? Color.secondary : .primary)
-            }
-            if metrics.total > 2 {
-                Text("+\(metrics.total - 2)")
-                    .font(DS.FontStyle.micro)
-                    .foregroundStyle(.tertiary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(6)
-        .frame(minHeight: 76, maxHeight: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .fill(cellBackground(inMonth: inMonth, isSelected: isSelected, ratio: metrics.ratio))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .stroke(isToday ? Color.dfDoing : Color.clear, lineWidth: 1)
-        )
-        .onTapGesture {
+        return Button {
             store.selectedDate = cal.startOfDay(for: day)
             store.refresh()
+        } label: {
+            VStack(spacing: 2) {
+                Text("\(cal.component(.day, from: day))")
+                    .font(.system(size: 12, weight: isToday ? .bold : .regular).monospacedDigit())
+                    .foregroundColor(inMonth ? (isToday ? Color.dfAccent : Color.primary) : Color.secondary.opacity(0.4))
+                if total > 0 {
+                    Text("\(done)/\(total)")
+                        .font(DS.FontStyle.micro)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(heatColor(inMonth: inMonth, total: total, ratio: ratio, isSelected: isSelected))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(isToday ? Color.dfAccent : (isSelected ? Color.dfAccent.opacity(0.7) : Color.clear),
+                            lineWidth: isToday ? 1.4 : (isSelected ? 1.2 : 0))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func heatColor(inMonth: Bool, total: Int, ratio: Double, isSelected: Bool) -> Color {
+        if !inMonth { return Color.primary.opacity(0.02) }
+        if total == 0 { return Color.primary.opacity(0.04) }
+        // intensity by total volume + green by completion
+        let intensity = min(1.0, Double(total) / 6.0)   // 6+ tasks → max intensity
+        if ratio >= 0.999 {
+            return Color.dfDone.opacity(0.18 + intensity * 0.40)
+        } else if ratio >= 0.5 {
+            return Color.dfDone.opacity(0.10 + intensity * 0.25)
+        } else if ratio > 0 {
+            return Color.dfAccent.opacity(0.08 + intensity * 0.22)
+        } else {
+            return Color.dfTodo.opacity(0.10 + intensity * 0.18)
         }
     }
 
-    private func cellBackground(inMonth: Bool, isSelected: Bool, ratio: Double) -> Color {
-        if isSelected { return Color.dfDoing.opacity(0.18) }
-        if !inMonth   { return Color.primary.opacity(0.02) }
-        if ratio == 0 { return Color.primary.opacity(0.04) }
-        return Color.dfDone.opacity(0.06 + ratio * 0.18)
-    }
-
-    // MARK: throw bar ---------------------------------------------------------
-
-    private var throwBar: some View {
-        HStack(spacing: DS.Space.sm) {
-            Image(systemName: "plus.circle.fill")
-                .foregroundStyle(Color.dfDoing)
-                .font(.system(size: 16))
-            TextField("새 task 적기 (Enter)", text: $newTaskTitle)
-                .textFieldStyle(.plain)
-                .font(DS.FontStyle.body)
-                .focused($inboxFocused)
-                .onSubmit(submitTask)
-            DatePicker("", selection: $newTaskDate, displayedComponents: [.date])
-                .labelsHidden()
-                .datePickerStyle(.compact)
-            Button("Add") { submitTask() }
-                .keyboardShortcut(.return, modifiers: [])
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+    private var selectedDayCard: some View {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "M월 d일 (E)"
+        let dateLabel = f.string(from: store.selectedDate)
+        let tasks = store.dayTasks
+        return DSCard {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                HStack {
+                    Text(dateLabel)
+                        .font(DS.FontStyle.title)
+                    Spacer()
+                    Button("열기") {
+                        store.setMode(.day)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                if tasks.isEmpty {
+                    Text("이 날 적어둔 게 없어")
+                        .font(DS.FontStyle.caption)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(tasks.prefix(8)) { t in
+                            HStack(spacing: 6) {
+                                Image(systemName: t.status.isDone ? "checkmark.square.fill" : "square")
+                                    .foregroundStyle(t.status.isDone ? Color.dfDone : Color.dfTodo)
+                                    .font(.system(size: 11))
+                                Text(t.title.isEmpty ? "(빈 줄)" : t.title)
+                                    .font(DS.FontStyle.body)
+                                    .strikethrough(t.status.isDone)
+                                    .foregroundStyle(t.status.isDone ? Color.secondary : .primary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        if tasks.count > 8 {
+                            Text("+\(tasks.count - 8) more")
+                                .font(DS.FontStyle.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+            }
         }
-        .padding(.horizontal, DS.Space.lg)
-        .padding(.vertical, DS.Space.sm)
     }
 
-    private func submitTask() {
-        let value = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return }
-        store.addTask(title: value, dueDate: newTaskDate)
-        newTaskTitle = ""
-        inboxFocused = true
+    private var monthlyPlanCard: some View {
+        @Bindable var store = store
+        return DSCard {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                HStack {
+                    Label("Monthly Plan", systemImage: "list.bullet.rectangle")
+                        .font(DS.FontStyle.title)
+                    Spacer()
+                    Button("Save") { store.saveMonthPlan() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .keyboardShortcut("s", modifiers: [.command])
+                }
+                Text("이 달의 큰 흐름")
+                    .font(DS.FontStyle.caption)
+                    .foregroundStyle(.tertiary)
+                TextEditor(text: $store.monthPlanBody)
+                    .font(DS.FontStyle.body)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+                    .frame(minHeight: 220)
+            }
+        }
     }
 
-    // MARK: helpers -----------------------------------------------------------
+    // MARK: - helpers --------------------------------------------------------
 
     private func tasksFallOn(task: Task, date: Date) -> Bool {
         let target = DayflowDB.ymd(date)
@@ -664,116 +621,5 @@ struct ContentView: View {
         let f = DateFormatter()
         f.dateFormat = "d"
         return f.string(from: d)
-    }
-
-    private func monthLabel(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "yyyy년 M월"
-        return f.string(from: d)
-    }
-}
-
-// MARK: - TaskRowView (single source of task display) --------------------------
-
-struct TaskRowView: View {
-    let task: Task
-    let depth: Int
-    let isSelected: Bool
-    let onToggle: () -> Void
-    let onSelect: () -> Void
-    let onAddSubtask: () -> Void
-    let onDelete: () -> Void
-
-    @State private var hovered: Bool = false
-
-    private var done: Bool { task.status == .done || task.status == .wont }
-
-    var body: some View {
-        HStack(spacing: DS.Space.sm) {
-            // depth indent
-            if depth > 0 {
-                Spacer().frame(width: CGFloat(depth) * 22)
-                Rectangle()
-                    .fill(Color.primary.opacity(0.12))
-                    .frame(width: 1, height: 18)
-            }
-
-            // tap target — single click toggles status
-            Button(action: onToggle) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.status(task.status), lineWidth: task.status == .doing ? 2.5 : 1.5)
-                        .frame(width: 18, height: 18)
-                    Group {
-                        switch task.status {
-                        case .done:
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(Color.dfDone)
-                        case .doing:
-                            Circle().fill(Color.dfDoing).frame(width: 8, height: 8)
-                        case .wont:
-                            Image(systemName: "minus")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(Color.dfWont)
-                        case .todo:
-                            EmptyView()
-                        }
-                    }
-                }
-                .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Click to cycle status")
-
-            // title (click to select)
-            Text(task.title)
-                .font(DS.FontStyle.body)
-                .strikethrough(done)
-                .foregroundStyle(done ? Color.secondary : .primary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture { onSelect() }
-
-            // hover affordances
-            if hovered || isSelected {
-                Button(action: onAddSubtask) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Add sub-task")
-
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.borderless)
-                .help("Delete")
-            }
-
-            Text("#\(task.id)")
-                .font(DS.FontStyle.micro)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, DS.Space.sm)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .fill(isSelected ? Color.dfDoing.opacity(0.10) : (hovered ? Color.primary.opacity(0.04) : .clear))
-        )
-        .animation(DS.Motion.smooth, value: hovered)
-        .animation(DS.Motion.quick, value: task.status)
-        .onHover { hovered = $0 }
-        .contextMenu {
-            Button("Cycle status") { onToggle() }
-            Button("Add sub-task") { onAddSubtask() }
-            Divider()
-            Button("Delete", role: .destructive) { onDelete() }
-        }
     }
 }

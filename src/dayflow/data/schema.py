@@ -78,6 +78,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "tasks", "parent_id", "INTEGER REFERENCES tasks(id) ON DELETE CASCADE")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)")
 
+    # Status simplification: collapse the old 4-state model to binary TODO/DONE.
+    # DOING → TODO (still open), WONT → DONE (closed). Idempotent.
+    conn.execute("UPDATE tasks SET status='TODO' WHERE status='DOING'")
+    conn.execute("UPDATE tasks SET status='DONE' WHERE status='WONT'")
+
     conn.commit()
 
 

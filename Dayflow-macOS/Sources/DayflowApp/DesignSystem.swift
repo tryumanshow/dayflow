@@ -37,18 +37,12 @@ enum DS {
 }
 
 extension Color {
-    static let dfTodo  = Color(red: 0.32, green: 0.55, blue: 0.95)
-    static let dfDoing = Color(red: 0.97, green: 0.62, blue: 0.20)
-    static let dfDone  = Color(red: 0.30, green: 0.78, blue: 0.46)
-    static let dfWont  = Color(red: 0.55, green: 0.55, blue: 0.58)
+    static let dfAccent = Color(red: 0.97, green: 0.62, blue: 0.20)   // warm signature
+    static let dfTodo   = Color(red: 0.55, green: 0.58, blue: 0.65)   // muted slate (open)
+    static let dfDone   = Color(red: 0.30, green: 0.78, blue: 0.46)   // confident green
 
     static func status(_ s: TaskStatus) -> Color {
-        switch s {
-        case .todo:  return .dfTodo
-        case .doing: return .dfDoing
-        case .done:  return .dfDone
-        case .wont:  return .dfWont
-        }
+        s == .done ? .dfDone : .dfTodo
     }
 }
 
@@ -80,7 +74,7 @@ struct StatusPill: View {
             Circle()
                 .fill(Color.status(status))
                 .frame(width: 6, height: 6)
-            Text(status.rawValue)
+            Text(status == .done ? "DONE" : "TODO")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color.status(status))
         }
