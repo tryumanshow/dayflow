@@ -79,6 +79,11 @@ final class DayflowDB {
             body_md    TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS day_notes (
+            note_date  TEXT PRIMARY KEY,
+            body_md    TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
         CREATE INDEX IF NOT EXISTS idx_tasks_inbox_at ON tasks(inbox_at);
         """
@@ -463,6 +468,81 @@ final class DayflowDB {
         bindText(stmt, 3, now)
         sqlite3_step(stmt)
         sqlite3_finalize(stmt)
+    }
+
+    // MARK: - day notes (markdown body per day)
+
+    func getDayNote(date: Date) -> String {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "SELECT body_md FROM day_notes WHERE note_date = ?", -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, Self.ymd(date))
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            return textCol(stmt, 0)
+        }
+        return ""
+    }
+
+    func saveDayNote(date: Date, body: String) {
+        let now = nowISO()
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, """
+            INSERT INTO day_notes (note_date, body_md, updated_at) VALUES (?,?,?)
+            ON CONFLICT(note_date) DO UPDATE SET body_md=excluded.body_md, updated_at=excluded.updated_at
+        """, -1, &stmt, nil)
+        bindText(stmt, 1, Self.ymd(date))
+        bindText(stmt, 2, body)
+        bindText(stmt, 3, now)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+    }
+
+    /// Returns (open count, done count) for any markdown body that uses
+    /// `- [ ]` / `- [x]` checkboxes (case-insensitive on the x).
+    static func parseCheckboxes(_ body: String) -> (open: Int, done: Int) {
+        var open = 0
+        var done = 0
+        for line in body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
+            // accept "- [ ]", "* [ ]", "+ [ ]"
+            guard trimmed.count >= 5 else { continue }
+            let bullet = trimmed.first!
+            guard bullet == "-" || bullet == "*" || bullet == "+" else { continue }
+            let after = trimmed.dropFirst()
+            guard after.first == " " else { continue }
+            let rest = after.dropFirst()
+            guard rest.hasPrefix("[") else { continue }
+            let inside = rest.dropFirst()
+            guard inside.count >= 2 else { continue }
+            let mark = inside.first!
+            let close = inside.index(after: inside.startIndex)
+            guard inside[close] == "]" else { continue }
+            switch mark {
+            case " ":              open += 1
+            case "x", "X", "✓":    done += 1
+            default: break
+            }
+        }
+        return (open, done)
+    }
+
+    /// Bulk loader — pull every day note in [start, end] (inclusive) so the
+    /// month/week views can compute counts without N round-trips.
+    func loadDayNoteRange(start: Date, end: Date) -> [String: String] {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db,
+            "SELECT note_date, body_md FROM day_notes WHERE note_date BETWEEN ? AND ?",
+            -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, Self.ymd(start))
+        bindText(stmt, 2, Self.ymd(end))
+        var out: [String: String] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let date = textCol(stmt, 0)
+            let body = textCol(stmt, 1)
+            out[date] = body
+        }
+        return out
     }
 
     // MARK: - month plans

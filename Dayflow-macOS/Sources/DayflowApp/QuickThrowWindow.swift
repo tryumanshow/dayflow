@@ -87,8 +87,17 @@ private struct QuickThrowView: View {
     private func submit() {
         let v = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !v.isEmpty else { onDone(); return }
-        _ = DayflowDB.shared.addTask(title: v, dueDate: date, parentId: nil)
-        store.refresh()
+        // append a checkbox line to the target day's markdown body
+        var body = DayflowDB.shared.getDayNote(date: date)
+        if !body.isEmpty && !body.hasSuffix("\n") {
+            body.append("\n")
+        }
+        body.append("- [ ] \(v)\n")
+        DayflowDB.shared.saveDayNote(date: date, body: body)
+        // if we're throwing onto the currently-shown day, refresh in place
+        if Calendar.current.isDate(date, inSameDayAs: store.selectedDate) {
+            store.refresh(force: true)
+        }
         title = ""
         onDone()
     }
