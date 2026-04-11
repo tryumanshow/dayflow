@@ -40,7 +40,7 @@ struct ContentView: View {
                     Button {
                         store.setMode(mode)
                     } label: {
-                        Text(mode.label)
+                        Text(L("nav.\(mode.rawValue)"))
                             .font(.system(size: 12, weight: store.viewMode == mode ? .semibold : .regular))
                             .foregroundStyle(store.viewMode == mode ? Color.primary : Color.secondary)
                             .padding(.horizontal, 10)
@@ -61,7 +61,7 @@ struct ContentView: View {
                 Button {
                     store.goToToday()
                 } label: {
-                    Text("Today")
+                    Text(L("nav.today"))
                         .font(.system(size: 11, weight: .semibold))
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
@@ -582,11 +582,11 @@ struct ContentView: View {
         return parts.joined(separator: " · ")
     }
 
-    /// Weekday header row for the month grid. Sunday-first order,
-    /// matching the rest of the app's calendar (see `startOfWeek` /
-    /// `monthGridRange` which both use `firstWeekday = 1`).
+    /// Weekday header row for the month grid. Sunday-first, honors
+    /// the app's language override via `DayflowL10n.activeLocale`.
     private func localizedWeekdayHeaders() -> [String] {
-        let cal = Calendar(identifier: .gregorian)
+        var cal = Calendar(identifier: .gregorian)
+        cal.locale = DayflowL10n.activeLocale
         return cal.shortWeekdaySymbols
     }
 

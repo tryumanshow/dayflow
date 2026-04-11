@@ -2,17 +2,20 @@
 
 /* Nav bar */
 "nav.today" = "오늘";
+"nav.day" = "일";
+"nav.week" = "주";
+"nav.month" = "월";
 
 /* Header labels */
 "header.day_format" = "yyyy년 M월 d일 (E)";
 
 /* Day view */
 "day.today_progress" = "오늘 진행";
-"day.done_open_format" = "%d done · %d open";
+"day.done_open_format" = "완료 %d · 진행 %d";
 "day.empty" = "아직 적어둔 게 없어";
 "day.ai_review" = "AI 회고";
 "day.review_placeholder" = "하루 마무리할 때 회고를 받아보자.";
-"day.generate" = "Generate";
+"day.generate" = "생성";
 
 /* Appointments */
 "appointments.header" = "약속";
@@ -25,10 +28,10 @@
 "appointments.manage_in_month" = "월간 뷰에서 관리";
 
 /* Week view */
-"week.footer.done" = "done";
-"week.footer.open" = "open";
-"week.footer.days_tracked" = "days tracked";
-"week.footer.day_tracked" = "day tracked";
+"week.footer.done" = "완료";
+"week.footer.open" = "진행 중";
+"week.footer.days_tracked" = "일 기록";
+"week.footer.day_tracked" = "일 기록";
 
 /* Month view */
 "month.standout_header" = "이번 달의 한 줄";

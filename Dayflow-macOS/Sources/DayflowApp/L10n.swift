@@ -71,21 +71,30 @@ enum LanguagePreference {
 /// `AppleLanguages`. So we compute the preferred language ourselves and
 /// open the specific `lproj` sub-bundle as its own `Bundle`.
 enum DayflowL10n {
-    static let activeBundle: Bundle = {
+    /// The language code (`en` / `ko`) we resolved at startup by
+    /// intersecting `AppleLanguages` with the available `.lproj`s.
+    static let activeLanguageCode: String = {
         let available = Bundle.module.localizations
         let userPrefs = UserDefaults.standard.stringArray(forKey: "AppleLanguages")
             ?? Locale.preferredLanguages
-        let preferred = Bundle.preferredLocalizations(
-            from: available,
-            forPreferences: userPrefs
-        )
-        if let code = preferred.first,
-           let path = Bundle.module.path(forResource: code, ofType: "lproj"),
+        let preferred = Bundle.preferredLocalizations(from: available, forPreferences: userPrefs)
+        return preferred.first ?? "en"
+    }()
+
+    static let activeBundle: Bundle = {
+        if let path = Bundle.module.path(forResource: activeLanguageCode, ofType: "lproj"),
            let b = Bundle(path: path) {
             return b
         }
         return Bundle.module
     }()
+
+    /// Locale built from the active language. Use this for
+    /// `DateFormatter.locale` so the app's language override drives
+    /// weekday / month / date display — `Locale.current` alone would
+    /// still follow the OS system locale, leaving the nav bar date
+    /// stuck in English when the app runs in Korean.
+    static let activeLocale: Locale = Locale(identifier: activeLanguageCode)
 }
 
 func L(_ key: String) -> String {

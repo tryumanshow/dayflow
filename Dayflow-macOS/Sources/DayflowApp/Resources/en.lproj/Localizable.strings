@@ -2,6 +2,9 @@
 
 /* Nav bar */
 "nav.today" = "Today";
+"nav.day" = "Day";
+"nav.week" = "Week";
+"nav.month" = "Month";
 
 /* Header labels */
 "header.day_format" = "yyyy MMM d (EEE)";
