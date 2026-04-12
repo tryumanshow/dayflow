@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.9](https://github.com/tryumanshow/dayflow/compare/v0.1.8...v0.1.9) (2026-04-12)
+
+
+### Features
+
+* **appointments:** add category tags with color-coded dots ([#23](https://github.com/tryumanshow/dayflow/issues/23)) ([2a0d108](https://github.com/tryumanshow/dayflow/commit/2a0d10814ff163bfdfa1ee8b044a16a1dca0412c))
+* category color boxes, week bullet display, UX refinements ([#25](https://github.com/tryumanshow/dayflow/issues/25)) ([99a4a23](https://github.com/tryumanshow/dayflow/commit/99a4a239b641116cbfb7d641de44285804377ba2))
+
 ## [0.1.8](https://github.com/tryumanshow/dayflow/compare/v0.1.7...v0.1.8) (2026-04-12)
 
 
