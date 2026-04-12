@@ -3,21 +3,21 @@ import SQLite3
 
 /// Category tag for appointments — drives the colored dot in month/week views.
 enum AppointmentCategory: String, CaseIterable, Identifiable, Codable {
-    case oneTime
+    case event
     case weekly
     case monthly
-    case birthday
-    case anniversary
+    case reminder
+    case important
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .oneTime:     return L("apt_cat.one_time")
-        case .weekly:      return L("apt_cat.weekly")
-        case .monthly:     return L("apt_cat.monthly")
-        case .birthday:    return L("apt_cat.birthday")
-        case .anniversary: return L("apt_cat.anniversary")
+        case .event:     return L("apt_cat.event")
+        case .weekly:    return L("apt_cat.weekly")
+        case .monthly:   return L("apt_cat.monthly")
+        case .reminder:  return L("apt_cat.reminder")
+        case .important: return L("apt_cat.important")
         }
     }
 }
@@ -122,7 +122,7 @@ final class DayflowDB: @unchecked Sendable {
             end_at      TEXT,
             title       TEXT NOT NULL,
             note        TEXT,
-            category    TEXT NOT NULL DEFAULT 'oneTime',
+            category    TEXT NOT NULL DEFAULT 'event',
             created_at  TEXT NOT NULL,
             updated_at  TEXT NOT NULL
         );
@@ -190,7 +190,14 @@ final class DayflowDB: @unchecked Sendable {
         }
         if current < 5 {
             runMigrationStep(version: 5, sql: """
-                ALTER TABLE appointments ADD COLUMN category TEXT NOT NULL DEFAULT 'oneTime';
+                ALTER TABLE appointments ADD COLUMN category TEXT NOT NULL DEFAULT 'event';
+            """)
+        }
+        if current < 6 {
+            // Rename old frequency-based categories to purpose-based ones.
+            runMigrationStep(version: 6, sql: """
+                UPDATE appointments SET category = 'event' WHERE category IN ('oneTime', 'personal', 'other', 'meeting', 'deadline', 'plans', 'routine');
+                UPDATE appointments SET category = 'weekly' WHERE category IN ('social');
             """)
         }
     }
@@ -378,7 +385,7 @@ final class DayflowDB: @unchecked Sendable {
             let noteRaw = textCol(stmt, 4)
             let note = noteRaw.isEmpty ? nil : noteRaw
             let catRaw = textCol(stmt, 5)
-            let category = AppointmentCategory(rawValue: catRaw) ?? .oneTime
+            let category = AppointmentCategory(rawValue: catRaw) ?? .event
             out.append(Appointment(id: id, startAt: startAt, endAt: endAt, title: title, note: note, category: category))
         }
         return out
@@ -386,7 +393,7 @@ final class DayflowDB: @unchecked Sendable {
 
     /// Returns the newly-inserted row id, or -1 on failure.
     @discardableResult
-    func insertAppointment(startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory = .oneTime) -> Int64 {
+    func insertAppointment(startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory = .event) -> Int64 {
         let now = nowISO()
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """

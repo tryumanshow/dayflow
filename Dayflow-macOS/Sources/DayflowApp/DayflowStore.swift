@@ -284,7 +284,7 @@ final class DayflowStore {
     /// explicit end, rendering as a point event. Returns false on
     /// empty title or unparseable time.
     @discardableResult
-    func addAppointment(on day: Date, hhmm: String, endHHmm: String? = nil, title: String, category: AppointmentCategory = .oneTime) -> Bool {
+    func addAppointment(on day: Date, hhmm: String, endHHmm: String? = nil, title: String, category: AppointmentCategory = .event) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
@@ -515,8 +515,11 @@ final class DayflowStore {
             do {
                 let result = try await LLMClient.shared.dailyReview(payload: payload)
                 await MainActor.run {
-                    self.reviewBody = result
                     self.db.saveReview(date: target, body: result)
+                    // Only update the visible review if user is still on the same day
+                    if Calendar.current.isDate(self.selectedDate, inSameDayAs: target) {
+                        self.reviewBody = result
+                    }
                     self.reviewIsLoading = false
                 }
             } catch {
@@ -568,7 +571,9 @@ final class DayflowStore {
             cursor = cal.date(byAdding: .day, value: 1, to: cursor) ?? cursor
         }
 
-        let weekdays = ["일", "월", "화", "수", "목", "금", "토"]
+        var localCal = Calendar(identifier: .gregorian)
+        localCal.locale = DayflowL10n.activeLocale
+        let weekdaySymbols = localCal.shortWeekdaySymbols
         var weekdayCounts: [Int: Int] = [:]
         for (key, count) in doneByDay where count > 0 {
             if let d = DF.ymd.date(from: key) {
@@ -577,7 +582,7 @@ final class DayflowStore {
             }
         }
         let busiestKey = weekdayCounts.max { $0.value < $1.value }?.key
-        let busiest = busiestKey.flatMap { weekdays[safe: $0 - 1] }
+        let busiest = busiestKey.flatMap { weekdaySymbols[safe: $0 - 1] }
 
         var streak = 0
         var maxStreak = 0

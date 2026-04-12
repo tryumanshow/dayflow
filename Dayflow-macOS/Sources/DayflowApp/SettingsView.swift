@@ -23,9 +23,78 @@ struct SettingsView: View {
     @State private var testing: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            header
+        TabView {
+            generalTab
+                .tabItem { Label(L("settings.general_tab"), systemImage: "gearshape") }
+            llmTab
+                .tabItem { Label(L("settings.llm_tab"), systemImage: "brain") }
+        }
+        .frame(width: 520, height: 580)
+        .onAppear { refresh() }
+    }
 
+    @State private var showRestartAlert = false
+
+    private var generalTab: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            field(
+                label: L("settings.language"),
+                hint: L("settings.language.hint")
+            ) {
+                Picker("", selection: $language) {
+                    ForEach(AppLanguage.allCases) { lang in
+                        Text(lang.label).tag(lang)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .onChange(of: language) { _, newValue in
+                    LanguagePreference.current = newValue
+                    showRestartAlert = true
+                }
+            }
+            .alert(L("settings.language.restart_hint"), isPresented: $showRestartAlert) {
+                Button(L("settings.language.restart_now")) {
+                    // Relaunch the app
+                    let url = URL(fileURLWithPath: Bundle.main.bundlePath)
+                    let config = NSWorkspace.OpenConfiguration()
+                    config.createsNewApplicationInstance = true
+                    NSWorkspace.shared.openApplication(at: url, configuration: config)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NSApp.terminate(nil)
+                    }
+                }
+                Button(L("settings.language.restart_later"), role: .cancel) {}
+            }
+
+            fontSizeSlider(label: L("settings.editor_font_size.day"),
+                           hint: L("settings.editor_font_size.hint"),
+                           value: $dayEditorFontSize)
+            fontSizeSlider(label: L("settings.editor_font_size.month_plan"),
+                           hint: nil,
+                           value: $monthPlanEditorFontSize)
+
+            field(
+                label: L("settings.holidays"),
+                hint: L("settings.holidays.hint")
+            ) {
+                Picker("", selection: $holidaysMode) {
+                    ForEach(HolidayDisplayMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            Spacer()
+        }
+        .padding(24)
+    }
+
+    private var llmTab: some View {
+        ScrollView {
+        VStack(alignment: .leading, spacing: 24) {
             field(label: L("settings.provider")) {
                 Picker("", selection: $provider) {
                     ForEach(LLMProvider.allCases) { p in
@@ -40,6 +109,8 @@ struct SettingsView: View {
                 }
             }
 
+            Divider()
+
             field(
                 label: L("settings.api_key"),
                 hint: hasExisting ? L("settings.api_key.hint_existing") : nil
@@ -48,6 +119,8 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { save() }
             }
+
+            Divider()
 
             field(label: L("settings.model")) {
                 Picker("", selection: $model) {
@@ -60,6 +133,8 @@ struct SettingsView: View {
                 }
                 .labelsHidden()
             }
+
+            Divider()
 
             field(
                 label: L("settings.system_prompt"),
@@ -85,42 +160,6 @@ struct SettingsView: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
-            }
-
-            field(
-                label: L("settings.language"),
-                hint: L("settings.language.hint")
-            ) {
-                Picker("", selection: $language) {
-                    ForEach(AppLanguage.allCases) { lang in
-                        Text(lang.label).tag(lang)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .onChange(of: language) { _, newValue in
-                    LanguagePreference.current = newValue
-                }
-            }
-
-            fontSizeSlider(label: L("settings.editor_font_size.day"),
-                           hint: L("settings.editor_font_size.hint"),
-                           value: $dayEditorFontSize)
-            fontSizeSlider(label: L("settings.editor_font_size.month_plan"),
-                           hint: nil,
-                           value: $monthPlanEditorFontSize)
-
-            field(
-                label: L("settings.holidays"),
-                hint: L("settings.holidays.hint")
-            ) {
-                Picker("", selection: $holidaysMode) {
-                    ForEach(HolidayDisplayMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
             }
 
             HStack(spacing: 8) {
@@ -170,23 +209,10 @@ struct SettingsView: View {
             }
         }
         .padding(24)
-        .frame(width: 520)
-        .onAppear { refresh() }
+        }
     }
 
     // MARK: - subviews
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(L("settings.title"))
-                .font(.headline)
-            Text(L("settings.subtitle"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 
     @ViewBuilder
     private func fontSizeSlider(label: String, hint: String?, value: Binding<Double>) -> some View {
@@ -234,9 +260,12 @@ struct SettingsView: View {
 
     private var canSave: Bool {
         let k = apiKey.trimmingCharacters(in: .whitespaces)
-        if !hasExisting && k.isEmpty { return false }
-        if model.trimmingCharacters(in: .whitespaces).isEmpty { return false }
-        return true
+        let hasKey = hasExisting || !k.isEmpty
+        let hasModel = !model.trimmingCharacters(in: .whitespaces).isEmpty
+        let promptChanged = systemPrompt != LLMConfigStore.systemPrompt
+        // Allow save if prompt changed (even without key), or key+model are set
+        if promptChanged { return true }
+        return hasKey && hasModel
     }
 
     private func refresh() {
