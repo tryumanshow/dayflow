@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/tryumanshow/dayflow/compare/v0.1.9...v0.1.10) (2026-04-12)
+
+
+### Features
+
+* UX improvements, category rework, Settings tabs, QA fixes ([#26](https://github.com/tryumanshow/dayflow/issues/26)) ([a030f5b](https://github.com/tryumanshow/dayflow/commit/a030f5ba808b4bd80dc2e9d37c1b73ef29dea747))
+
 ## [0.1.9](https://github.com/tryumanshow/dayflow/compare/v0.1.8...v0.1.9) (2026-04-12)
 
 
