@@ -209,8 +209,15 @@ final class DayflowStore {
         bodies[key] = newValue
     }
 
+    /// NOTE: no same-value guard here, and it's load-bearing.
+    /// `MarkdownWebEditor.Coordinator` applies the new value to the
+    /// `$monthPlanBody` binding BEFORE calling `onChange`, so by the
+    /// time we get here `monthPlanBody` already matches `newValue` —
+    /// a naive `guard newValue != monthPlanBody` would skip every
+    /// real write. `updateDayBody` has the same constraint and also
+    /// runs unconditionally. Write-amplification is bounded by the
+    /// 200ms JS-side debounce.
     func updateMonthPlan(_ newValue: String, bodyJSON: String? = nil) {
-        guard newValue != monthPlanBody || bodyJSON != monthPlanJSON else { return }
         monthPlanBody = newValue
         monthPlanJSON = bodyJSON
         db.saveMonthPlan(date: selectedDate, body: newValue, bodyJSON: bodyJSON)
