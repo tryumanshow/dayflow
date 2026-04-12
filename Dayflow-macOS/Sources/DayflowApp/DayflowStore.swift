@@ -283,13 +283,13 @@ final class DayflowStore {
     /// explicit end, rendering as a point event. Returns false on
     /// empty title or unparseable time.
     @discardableResult
-    func addAppointment(on day: Date, hhmm: String, endHHmm: String? = nil, title: String) -> Bool {
+    func addAppointment(on day: Date, hhmm: String, endHHmm: String? = nil, title: String, category: AppointmentCategory = .oneTime) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
         guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
         let endAt = Self.parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt)
-        db.insertAppointment(startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil)
+        db.insertAppointment(startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category)
         reloadAppointments()
         return true
     }
@@ -303,13 +303,13 @@ final class DayflowStore {
     /// as `addAppointment` — empty title or bad start time returns
     /// false with no mutation. Empty `endHHmm` clears `end_at`.
     @discardableResult
-    func updateAppointment(_ id: Int64, on day: Date, hhmm: String, endHHmm: String? = nil, title: String) -> Bool {
+    func updateAppointment(_ id: Int64, on day: Date, hhmm: String, endHHmm: String? = nil, title: String, category: AppointmentCategory) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
         guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
         let endAt = Self.parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt)
-        db.updateAppointment(id: id, startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil)
+        db.updateAppointment(id: id, startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category)
         reloadAppointments()
         return true
     }

@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var aptEndTimeInput: String = ""
     @State private var aptTitleInput: String = ""
     @State private var aptDateInput: Date = Date()
+    @State private var aptCategoryInput: AppointmentCategory = .oneTime
     @State private var editingAppointmentId: Int64? = nil
     @FocusState private var aptTitleFocused: Bool
 
@@ -253,20 +254,18 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(items) { apt in
                         HStack(spacing: 8) {
+                            Circle()
+                                .fill(apt.category.color)
+                                .frame(width: 7, height: 7)
                             Text(DF.hourMinute.string(from: apt.startAt))
                                 .font(.system(size: 12, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
-                                .frame(width: 44, alignment: .leading)
+                                .fixedSize()
                             if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
                                 Text(pill)
                                     .font(.system(size: 11, weight: .medium).monospacedDigit())
                                     .foregroundStyle(.tertiary)
-                                    .frame(width: 44, alignment: .leading)
-                            } else {
-                                // Placeholder so titles line up across
-                                // rows regardless of whether each row
-                                // has an end time.
-                                Color.clear.frame(width: 44)
+                                    .fixedSize()
                             }
                             Text(apt.title)
                                 .font(DS.FontStyle.body)
@@ -426,7 +425,10 @@ struct ContentView: View {
             if !dayAppointments.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(dayAppointments) { apt in
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(apt.category.color)
+                                .frame(width: 6, height: 6)
                             Text(DF.hourMinute.string(from: apt.startAt))
                                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
@@ -677,6 +679,30 @@ struct ContentView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
                 timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
+                Menu {
+                    ForEach(AppointmentCategory.allCases) { cat in
+                        Button {
+                            aptCategoryInput = cat
+                        } label: {
+                            if aptCategoryInput == cat {
+                                Label(cat.label, systemImage: "checkmark")
+                            } else {
+                                Text(cat.label)
+                            }
+                        }
+                    }
+                } label: {
+                    Text(aptCategoryInput.emoji)
+                        .font(.system(size: 13))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(aptCategoryInput.color.opacity(0.18))
+                        )
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
                 TextField(L("appointments.title_placeholder"), text: $aptTitleInput)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
@@ -731,19 +757,20 @@ struct ContentView: View {
                     Text(DF.shortMonthDay.string(from: apt.startAt))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 60, alignment: .leading)
+                        .fixedSize()
                     Text(DF.hourMinute.string(from: apt.startAt))
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
                         .foregroundStyle(Color.dfAccent)
-                        .frame(width: 40, alignment: .leading)
+                        .fixedSize()
                     if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
                         Text(pill)
                             .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.tertiary)
-                            .frame(width: 44, alignment: .leading)
-                    } else {
-                        Color.clear.frame(width: 44)
+                            .fixedSize()
                     }
+                    Circle()
+                        .fill(apt.category.color)
+                        .frame(width: 7, height: 7)
                     Text(apt.title)
                         .font(DS.FontStyle.body)
                         .foregroundStyle(.primary)
@@ -835,6 +862,7 @@ struct ContentView: View {
         aptTimeInput = DF.hourMinute.string(from: apt.startAt)
         aptEndTimeInput = apt.endAt.map { DF.hourMinute.string(from: $0) } ?? ""
         aptTitleInput = apt.title
+        aptCategoryInput = apt.category
         aptTitleFocused = true
     }
 
@@ -843,21 +871,23 @@ struct ContentView: View {
         aptTimeInput = ""
         aptEndTimeInput = ""
         aptTitleInput = ""
+        aptCategoryInput = .oneTime
         aptTitleFocused = false
     }
 
     private func submitMonthAppointment() {
         let ok: Bool
         if let id = editingAppointmentId {
-            ok = store.updateAppointment(id, on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, title: aptTitleInput)
+            ok = store.updateAppointment(id, on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, title: aptTitleInput, category: aptCategoryInput)
         } else {
-            ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, title: aptTitleInput)
+            ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, title: aptTitleInput, category: aptCategoryInput)
         }
         if ok {
             editingAppointmentId = nil
             aptTimeInput = ""
             aptEndTimeInput = ""
             aptTitleInput = ""
+            aptCategoryInput = .oneTime
             aptTitleFocused = false
         }
     }
@@ -935,7 +965,10 @@ struct ContentView: View {
                             // so the pill is rendered only in the
                             // wider surfaces (right rail, Day/Week).
                             // Cell chip stays start-only.
-                            HStack(spacing: 4) {
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(apt.category.color)
+                                    .frame(width: 5, height: 5)
                                 Text(DF.hourMinute.string(from: apt.startAt))
                                     .font(.system(size: 9, weight: .semibold).monospacedDigit())
                                     .foregroundStyle(Color.dfAccent)

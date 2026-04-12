@@ -186,7 +186,41 @@ extension Color {
     /// warm orange accent so the two signals don't collide.
     static let dfHoliday = Color(red: 0.90, green: 0.40, blue: 0.40)
 
+    // Appointment category colors
+    static let dfCatOneTime     = dfAccent
+    static let dfCatWeekly      = Color(red: 0.35, green: 0.58, blue: 0.92)
+    static let dfCatMonthly     = Color(red: 0.62, green: 0.44, blue: 0.85)
+    static let dfCatBirthday    = Color(red: 0.92, green: 0.48, blue: 0.65)
+    static let dfCatAnniversary = dfHoliday
+
     /// Off-black canvas, never #000.
+}
+
+// MARK: - AppointmentCategory UI extensions
+
+extension AppointmentCategory {
+    var color: Color {
+        switch self {
+        case .oneTime:     return .dfCatOneTime
+        case .weekly:      return .dfCatWeekly
+        case .monthly:     return .dfCatMonthly
+        case .birthday:    return .dfCatBirthday
+        case .anniversary: return .dfCatAnniversary
+        }
+    }
+
+    var emoji: String {
+        switch self {
+        case .oneTime:     return "📌"
+        case .weekly:      return "🔄"
+        case .monthly:     return "📅"
+        case .birthday:    return "🎂"
+        case .anniversary: return "💝"
+        }
+    }
+}
+
+extension Color {
     static let dfCanvas = Color(red: 0.06, green: 0.07, blue: 0.085)
     /// Slightly raised surface (cards, side rail).
     static let dfSurface = Color(red: 0.10, green: 0.11, blue: 0.13)
