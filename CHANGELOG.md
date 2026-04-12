@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/tryumanshow/dayflow/compare/v0.1.7...v0.1.8) (2026-04-12)
+
+
+### Bug Fixes
+
+* **month-plan:** drop broken same-value guard, writes now persist ([#21](https://github.com/tryumanshow/dayflow/issues/21)) ([051b89b](https://github.com/tryumanshow/dayflow/commit/051b89b4ca6412be5a99bf38fad81ac07f489d4d))
+
 ## [0.1.7](https://github.com/tryumanshow/dayflow/compare/v0.1.6...v0.1.7) (2026-04-11)
 
 
