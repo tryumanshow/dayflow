@@ -27,22 +27,22 @@ final class QuickThrowController {
 
     func show() {
         guard let store else { return }
-        if window == nil {
-            let host = NSHostingController(rootView: QuickThrowView(store: store, onDone: { [weak self] in
-                self?.close()
-            }))
-            let panel = NSPanel(contentViewController: host)
-            panel.styleMask = [.titled, .fullSizeContentView, .nonactivatingPanel]
-            panel.titleVisibility = .hidden
-            panel.titlebarAppearsTransparent = true
-            panel.isFloatingPanel = true
-            panel.level = .floating
-            panel.becomesKeyOnlyIfNeeded = false
-            panel.isReleasedWhenClosed = false
-            panel.hidesOnDeactivate = false
-            panel.center()
-            self.window = panel
-        }
+        // Recreate the panel each time so @State resets (date = today)
+        window?.orderOut(nil)
+        let host = NSHostingController(rootView: QuickThrowView(store: store, onDone: { [weak self] in
+            self?.close()
+        }))
+        let panel = NSPanel(contentViewController: host)
+        panel.styleMask = [.titled, .fullSizeContentView, .nonactivatingPanel]
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
+        panel.center()
+        self.window = panel
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
@@ -63,26 +63,29 @@ private struct QuickThrowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("→ throw a task")
+            Text(L("quick_throw.title"))
                 .font(.headline)
-            TextField("e.g. 내일 회의자료 만들기", text: $title)
+            TextField(L("quick_throw.placeholder"), text: $title)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .onSubmit(submit)
-            DatePicker("on", selection: $date, displayedComponents: [.date])
+            DatePicker(L("quick_throw.on"), selection: $date, displayedComponents: [.date])
                 .datePickerStyle(.compact)
             HStack {
                 Spacer()
-                Button("Cancel") { onDone() }
+                Button(L("quick_throw.cancel")) { onDone() }
                     .keyboardShortcut(.escape, modifiers: [])
-                Button("Add") { submit() }
+                Button(L("quick_throw.add")) { submit() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: [])
             }
         }
         .padding(18)
         .frame(width: 380)
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            date = Date()
+        }
     }
 
     private func submit() {

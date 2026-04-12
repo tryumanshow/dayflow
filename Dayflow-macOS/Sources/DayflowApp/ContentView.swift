@@ -11,7 +11,7 @@ struct ContentView: View {
     @State private var aptEndTimeInput: String = ""
     @State private var aptTitleInput: String = ""
     @State private var aptDateInput: Date = Date()
-    @State private var aptCategoryInput: AppointmentCategory = .oneTime
+    @State private var aptCategoryInput: AppointmentCategory = .event
     @State private var editingAppointmentId: Int64? = nil
     @FocusState private var aptTitleFocused: Bool
 
@@ -20,6 +20,7 @@ struct ContentView: View {
     @AppStorage(AppStorageKeys.dayEditorFontSize) private var dayEditorFontSize: Double = AppStorageKeys.dayEditorFontSizeDefault
     @AppStorage(AppStorageKeys.monthPlanEditorFontSize) private var monthPlanEditorFontSize: Double = AppStorageKeys.monthPlanEditorFontSizeDefault
     @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
+    @State private var sideRailWidth: CGFloat = 340
 
     var body: some View {
         VStack(spacing: 0) {
@@ -157,7 +158,20 @@ struct ContentView: View {
             .padding(.top, DS.Space.breathe)
             .padding(.bottom, DS.Space.lg)
 
-            Rectangle().fill(Color.dfHairline).frame(width: 0.7)
+            // Draggable divider between editor and side rail
+            Rectangle().fill(Color.dfHairline).frame(width: 4)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    if hovering { NSCursor.resizeLeftRight.push() }
+                    else { NSCursor.pop() }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { value in
+                            let newWidth = sideRailWidth - value.translation.width
+                            sideRailWidth = max(260, min(500, newWidth))
+                        }
+                )
 
             VStack(spacing: 0) {
                 ScrollView {
@@ -174,7 +188,7 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
                 appCredit
             }
-            .frame(width: 320)
+            .frame(width: sideRailWidth)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
         }
@@ -467,10 +481,12 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(isSelected ? Color.dfAccent.opacity(0.04) : Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture {
-            // Tapping empty area of the column still navigates to Day.
+        .onTapGesture(count: 2) {
             store.selectDate(day)
             store.setMode(.day)
+        }
+        .onTapGesture(count: 1) {
+            store.selectDate(day)
         }
         .animation(DS.Motion.quick, value: isSelected)
     }
@@ -519,6 +535,11 @@ struct ContentView: View {
                             .lineLimit(1)
                     }
                     .padding(.leading, CGFloat(min(task.depth, 3)) * 10)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        store.selectDate(day)
+                        store.setMode(.day)
+                    }
                 }
             }
         }
@@ -856,7 +877,7 @@ struct ContentView: View {
         aptTimeInput = ""
         aptEndTimeInput = ""
         aptTitleInput = ""
-        aptCategoryInput = .oneTime
+        aptCategoryInput = .event
         aptTitleFocused = false
     }
 
@@ -872,7 +893,7 @@ struct ContentView: View {
             aptTimeInput = ""
             aptEndTimeInput = ""
             aptTitleInput = ""
-            aptCategoryInput = .oneTime
+            aptCategoryInput = .event
             aptTitleFocused = false
         }
     }
@@ -919,11 +940,7 @@ struct ContentView: View {
         let appointments = store.appointments(for: day)
         let holidayName = inMonth ? HolidayStore.holidayName(on: day, mode: holidaysMode) : nil
 
-        return Button {
-            store.selectDate(day)
-            store.setMode(.day)
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text("\(cal.component(.day, from: day))")
                         .font(.system(size: 14, weight: isToday ? .bold : .medium).monospacedDigit())
@@ -988,9 +1005,14 @@ struct ContentView: View {
                             lineWidth: isSelected ? 0.9 : 0.7)
             )
             .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .animation(DS.Motion.snap, value: isSelected)
+            .onTapGesture(count: 2) {
+                store.selectDate(day)
+                store.setMode(.day)
+            }
+            .onTapGesture(count: 1) {
+                store.selectDate(day)
+            }
+            .animation(DS.Motion.snap, value: isSelected)
     }
 
     /// Single warm-accent fill with opacity tied to activity density.

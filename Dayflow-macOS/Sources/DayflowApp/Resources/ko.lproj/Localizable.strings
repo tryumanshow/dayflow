@@ -37,8 +37,7 @@
 "week.footer.day_tracked" = "일 기록";
 
 /* Month view */
-"month.standout_header" = "이번 달의 한 줄";
-"month.caption.n_of_m" = "%d of %d";
+"month.caption.n_of_m" = "%d / %d개";
 "month.caption.streak_days" = "%d일 연속";
 "month.caption.busiest" = "가장 활발: %@요일";
 "month.plan_header" = "이달 계획";
@@ -57,8 +56,10 @@
 "menubar.n_open" = "%d 남음";
 
 /* Settings — window */
-"settings.title" = "LLM Provider";
-"settings.subtitle" = "일일 회고 기능에 사용할 모델 제공자를 고를 수 있어. API 키는 macOS Keychain 에 저장돼 — 터미널도 .env 도 필요 없어.";
+"settings.title" = "환경설정";
+"settings.subtitle" = "Dayflow 설정과 AI 회고 기능을 관리해.";
+"settings.general_tab" = "일반";
+"settings.llm_tab" = "AI 회고";
 "settings.provider" = "Provider";
 "settings.api_key" = "API Key";
 "settings.api_key.hint_existing" = "현재 저장된 키가 있어. 바꾸려면 새 값을 입력해.";
@@ -87,6 +88,8 @@
 "settings.language" = "언어";
 "settings.language.hint" = "Dayflow 앱 언어를 시스템 설정과 다르게 지정해. 변경 시 앱 재실행 필요.";
 "settings.language.restart_hint" = "언어 변경은 Dayflow 재실행 이후에 적용돼.";
+"settings.language.restart_now" = "지금 재시작";
+"settings.language.restart_later" = "나중에";
 "settings.editor_font_size" = "에디터 글자 크기";
 "settings.editor_font_size.hint" = "본문 글자 크기. 바로 반영됨 — 재실행 필요 없음.";
 "settings.editor_font_size.day" = "Day 에디터 글자 크기";
@@ -106,17 +109,17 @@
 "llm.error.decode_failed" = "LLM 응답 해석 실패";
 
 /* LLM prompts */
-"llm.default_system_prompt" = "너는 사용자의 일일 회고를 돕는 어시스턴트야. 한국어 반말 톤으로 간결하게 답해. 출력은 마크다운 한 덩어리로, 다음 3개 섹션을 정확히 이 순서로 써:\n1. **잘 한 것** — 오늘 끝낸 task / 진척 (불릿 2~4개)\n2. **막힌 것** — 시작했지만 끝내지 못한 부분, 메모에 드러난 어려움 (불릿 1~3개)\n3. **내일 우선순위 3가지** — 남은 TODO 와 맥락을 고려해서 1-2-3 번호로\n예의차림 / 인사 / 사족 금지. 본문만.";
+"llm.default_system_prompt" = "너는 사용자의 일일 회고를 돕는 어시스턴트야.\n한국어 반말 톤으로 간결하게 답해.\n\n출력은 마크다운 한 덩어리로, 다음 3개 섹션을 정확히 이 순서로 써:\n\n1. **잘 한 것** — 오늘 끝낸 task / 진척 (불릿 2~4개)\n\n2. **막힌 것** — 시작했지만 끝내지 못한 부분, 메모에 드러난 어려움 (불릿 1~3개)\n\n3. **내일 우선순위 3가지** — 남은 TODO 와 맥락을 고려해서 1-2-3 번호로\n\n예의차림 / 인사 / 사족 금지. 본문만.";
 "llm.user_prompt_format" = "오늘 데이터를 바탕으로 회고를 써줘:\n\n```json\n%@\n```";
 "llm.review.empty_day" = "오늘은 아직 적어둔 게 없어. 괜찮아, 지금 한 줄 적어볼까?";
 "llm.review.empty_response" = "(빈 응답)";
 
 /* Appointment categories */
-"apt_cat.one_time" = "일회성";
+"apt_cat.event" = "이벤트";
 "apt_cat.weekly" = "매주";
-"apt_cat.monthly" = "매월";
-"apt_cat.birthday" = "생일";
-"apt_cat.anniversary" = "기념일";
+"apt_cat.monthly" = "매달";
+"apt_cat.reminder" = "리마인더";
+"apt_cat.important" = "중요";
 
 /* Review sections for connection test */
 "llm.test.system" = "You are a connectivity test. Respond with the single word: ok";

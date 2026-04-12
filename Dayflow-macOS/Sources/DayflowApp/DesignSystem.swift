@@ -198,11 +198,11 @@ extension Color {
     static let dfHoliday = Color(red: 0.90, green: 0.40, blue: 0.40)
 
     // Appointment category colors
-    static let dfCatOneTime     = Color(red: 0.55, green: 0.58, blue: 0.65) // neutral gray
-    static let dfCatWeekly      = Color(red: 0.35, green: 0.58, blue: 0.92)
-    static let dfCatMonthly     = Color(red: 0.62, green: 0.44, blue: 0.85)
-    static let dfCatBirthday    = Color(red: 0.92, green: 0.48, blue: 0.65)
-    static let dfCatAnniversary = dfHoliday
+    static let dfCatEvent     = Color(red: 0.35, green: 0.58, blue: 0.92) // blue
+    static let dfCatWeekly    = Color(red: 0.40, green: 0.78, blue: 0.50) // green
+    static let dfCatMonthly   = Color(red: 0.62, green: 0.44, blue: 0.85) // purple
+    static let dfCatReminder  = Color(red: 0.92, green: 0.75, blue: 0.28) // yellow
+    static let dfCatImportant = Color(red: 0.92, green: 0.42, blue: 0.42) // red
 
     /// Off-black canvas, never #000.
 }
@@ -212,11 +212,11 @@ extension Color {
 extension AppointmentCategory {
     var color: Color {
         switch self {
-        case .oneTime:     return .dfCatOneTime
-        case .weekly:      return .dfCatWeekly
-        case .monthly:     return .dfCatMonthly
-        case .birthday:    return .dfCatBirthday
-        case .anniversary: return .dfCatAnniversary
+        case .event:     return .dfCatEvent
+        case .weekly:    return .dfCatWeekly
+        case .monthly:   return .dfCatMonthly
+        case .reminder:  return .dfCatReminder
+        case .important: return .dfCatImportant
         }
     }
 
