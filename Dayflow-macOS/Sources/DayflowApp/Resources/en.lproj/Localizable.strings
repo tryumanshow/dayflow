@@ -111,6 +111,13 @@
 "llm.review.empty_day" = "Nothing written for today yet. That's fine — write one line to start.";
 "llm.review.empty_response" = "(empty response)";
 
+/* Appointment categories */
+"apt_cat.one_time" = "One-time";
+"apt_cat.weekly" = "Weekly";
+"apt_cat.monthly" = "Monthly";
+"apt_cat.birthday" = "Birthday";
+"apt_cat.anniversary" = "Anniversary";
+
 /* Review sections for connection test */
 "llm.test.system" = "You are a connectivity test. Respond with the single word: ok";
 "llm.test.user" = "ping";

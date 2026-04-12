@@ -1,6 +1,27 @@
 import Foundation
 import SQLite3
 
+/// Category tag for appointments — drives the colored dot in month/week views.
+enum AppointmentCategory: String, CaseIterable, Identifiable, Codable {
+    case oneTime
+    case weekly
+    case monthly
+    case birthday
+    case anniversary
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .oneTime:     return L("apt_cat.one_time")
+        case .weekly:      return L("apt_cat.weekly")
+        case .monthly:     return L("apt_cat.monthly")
+        case .birthday:    return L("apt_cat.birthday")
+        case .anniversary: return L("apt_cat.anniversary")
+        }
+    }
+}
+
 /// A single scheduled item (meeting, appointment, time-stamped
 /// reminder). `startAt` is always local wall-clock; we don't track
 /// timezones — this is a personal per-machine planner.
@@ -10,6 +31,7 @@ struct Appointment: Identifiable, Equatable {
     let endAt: Date?
     let title: String
     let note: String?
+    let category: AppointmentCategory
 }
 
 /// Thin wrapper around the Dayflow SQLite DB.
@@ -100,6 +122,7 @@ final class DayflowDB: @unchecked Sendable {
             end_at      TEXT,
             title       TEXT NOT NULL,
             note        TEXT,
+            category    TEXT NOT NULL DEFAULT 'oneTime',
             created_at  TEXT NOT NULL,
             updated_at  TEXT NOT NULL
         );
@@ -163,6 +186,11 @@ final class DayflowDB: @unchecked Sendable {
                     body_json  TEXT,
                     updated_at TEXT NOT NULL
                 );
+            """)
+        }
+        if current < 5 {
+            runMigrationStep(version: 5, sql: """
+                ALTER TABLE appointments ADD COLUMN category TEXT NOT NULL DEFAULT 'oneTime';
             """)
         }
     }
@@ -331,7 +359,7 @@ final class DayflowDB: @unchecked Sendable {
         let endStr = Self.ymd(end) + "T23:59"
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
-            SELECT id, start_at, end_at, title, note
+            SELECT id, start_at, end_at, title, note, category
             FROM appointments
             WHERE start_at BETWEEN ? AND ?
             ORDER BY start_at ASC, id ASC
@@ -349,27 +377,30 @@ final class DayflowDB: @unchecked Sendable {
             let title = textCol(stmt, 3)
             let noteRaw = textCol(stmt, 4)
             let note = noteRaw.isEmpty ? nil : noteRaw
-            out.append(Appointment(id: id, startAt: startAt, endAt: endAt, title: title, note: note))
+            let catRaw = textCol(stmt, 5)
+            let category = AppointmentCategory(rawValue: catRaw) ?? .oneTime
+            out.append(Appointment(id: id, startAt: startAt, endAt: endAt, title: title, note: note, category: category))
         }
         return out
     }
 
     /// Returns the newly-inserted row id, or -1 on failure.
     @discardableResult
-    func insertAppointment(startAt: Date, endAt: Date?, title: String, note: String?) -> Int64 {
+    func insertAppointment(startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory = .oneTime) -> Int64 {
         let now = nowISO()
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
-            INSERT INTO appointments (start_at, end_at, title, note, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO appointments (start_at, end_at, title, note, category, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, DF.appointmentStamp.string(from: startAt))
         bindTextOrNull(stmt, 2, endAt.map { DF.appointmentStamp.string(from: $0) })
         bindText(stmt, 3, title)
         bindTextOrNull(stmt, 4, note)
-        bindText(stmt, 5, now)
+        bindText(stmt, 5, category.rawValue)
         bindText(stmt, 6, now)
+        bindText(stmt, 7, now)
         guard sqlite3_step(stmt) == SQLITE_DONE else { return -1 }
         return sqlite3_last_insert_rowid(db)
     }
@@ -382,11 +413,11 @@ final class DayflowDB: @unchecked Sendable {
         sqlite3_step(stmt)
     }
 
-    func updateAppointment(id: Int64, startAt: Date, endAt: Date?, title: String, note: String?) {
+    func updateAppointment(id: Int64, startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory) {
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
             UPDATE appointments
-            SET start_at = ?, end_at = ?, title = ?, note = ?, updated_at = ?
+            SET start_at = ?, end_at = ?, title = ?, note = ?, category = ?, updated_at = ?
             WHERE id = ?
         """, -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }
@@ -394,8 +425,9 @@ final class DayflowDB: @unchecked Sendable {
         bindTextOrNull(stmt, 2, endAt.map { DF.appointmentStamp.string(from: $0) })
         bindText(stmt, 3, title)
         bindTextOrNull(stmt, 4, note)
-        bindText(stmt, 5, nowISO())
-        sqlite3_bind_int64(stmt, 6, id)
+        bindText(stmt, 5, category.rawValue)
+        bindText(stmt, 6, nowISO())
+        sqlite3_bind_int64(stmt, 7, id)
         sqlite3_step(stmt)
     }
 

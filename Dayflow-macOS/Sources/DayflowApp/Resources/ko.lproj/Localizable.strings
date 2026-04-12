@@ -111,6 +111,13 @@
 "llm.review.empty_day" = "오늘은 아직 적어둔 게 없어. 괜찮아, 지금 한 줄 적어볼까?";
 "llm.review.empty_response" = "(빈 응답)";
 
+/* Appointment categories */
+"apt_cat.one_time" = "일회성";
+"apt_cat.weekly" = "매주";
+"apt_cat.monthly" = "매월";
+"apt_cat.birthday" = "생일";
+"apt_cat.anniversary" = "기념일";
+
 /* Review sections for connection test */
 "llm.test.system" = "You are a connectivity test. Respond with the single word: ok";
 "llm.test.user" = "ping";
