@@ -148,6 +148,17 @@ enum MarkdownLine {
         if trimmed.hasPrefix("## ")  { return .heading(level: 2, text: String(trimmed.dropFirst(3))) }
         if trimmed.hasPrefix("# ")   { return .heading(level: 1, text: String(trimmed.dropFirst(2))) }
 
+        // Numbered lists: "1. text", "12. text", etc. → treat as bullet
+        if let dotIdx = trimmed.firstIndex(of: "."),
+           dotIdx > trimmed.startIndex,
+           trimmed[trimmed.startIndex..<dotIdx].allSatisfy(\.isNumber) {
+            let afterDot = trimmed[trimmed.index(after: dotIdx)...]
+                .drop(while: { $0 == " " || $0 == "\t" })
+            if !afterDot.isEmpty {
+                return .bullet(text: String(afterDot))
+            }
+        }
+
         guard let first = trimmed.first, first == "-" || first == "*" || first == "+" else {
             return .plain(text: trimmed)
         }
@@ -187,7 +198,7 @@ extension Color {
     static let dfHoliday = Color(red: 0.90, green: 0.40, blue: 0.40)
 
     // Appointment category colors
-    static let dfCatOneTime     = dfAccent
+    static let dfCatOneTime     = Color(red: 0.55, green: 0.58, blue: 0.65) // neutral gray
     static let dfCatWeekly      = Color(red: 0.35, green: 0.58, blue: 0.92)
     static let dfCatMonthly     = Color(red: 0.62, green: 0.44, blue: 0.85)
     static let dfCatBirthday    = Color(red: 0.92, green: 0.48, blue: 0.65)
@@ -209,15 +220,6 @@ extension AppointmentCategory {
         }
     }
 
-    var emoji: String {
-        switch self {
-        case .oneTime:     return "📌"
-        case .weekly:      return "🔄"
-        case .monthly:     return "📅"
-        case .birthday:    return "🎂"
-        case .anniversary: return "💝"
-        }
-    }
 }
 
 extension Color {
