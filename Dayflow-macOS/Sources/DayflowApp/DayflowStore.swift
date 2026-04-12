@@ -96,6 +96,7 @@ final class DayflowStore {
     }
 
     func setMode(_ mode: CalendarViewMode) {
+        guard viewMode != mode else { return }
         viewMode = mode
         refresh()
     }
@@ -351,19 +352,29 @@ final class DayflowStore {
         let heading: String?
         let tasks: [PreviewTask]
     }
+    enum PreviewItemKind {
+        case task(checked: Bool)
+        case bullet
+    }
     struct PreviewTask: Identifiable {
         let id: Int
         let text: String
-        let checked: Bool
+        let kind: PreviewItemKind
         let sourceLineIndex: Int
-        /// Indent level — 0 for top-level, 1+ for nesting. Week
-        /// preview renders a padding offset per level so Day-view
-        /// hierarchy is visible at a glance.
         let depth: Int
+
+        var checked: Bool {
+            if case .task(let c) = kind { return c }
+            return false
+        }
+        var isTask: Bool {
+            if case .task = kind { return true }
+            return false
+        }
     }
 
-    private static let weekPreviewMaxGroups = 2
-    private static let weekPreviewMaxTasksPerGroup = 5
+    private static let weekPreviewMaxGroups = 6
+    private static let weekPreviewMaxTasksPerGroup = 8
 
     func weekGroups(for date: Date) -> [WeekGroup] {
         let body = dayBody(for: date)
@@ -387,12 +398,21 @@ final class DayflowStore {
                 var current = groups[groups.count - 1]
                 if current.tasks.count < Self.weekPreviewMaxTasksPerGroup {
                     current.tasks.append(PreviewTask(
-                        id: nextTaskID, text: text, checked: checked,
+                        id: nextTaskID, text: text, kind: .task(checked: checked),
                         sourceLineIndex: idx, depth: depth))
                     nextTaskID += 1
                 }
                 groups[groups.count - 1] = current
-            case .bullet, .plain:
+            case .bullet(text: let text):
+                var current = groups[groups.count - 1]
+                if current.tasks.count < Self.weekPreviewMaxTasksPerGroup {
+                    current.tasks.append(PreviewTask(
+                        id: nextTaskID, text: text, kind: .bullet,
+                        sourceLineIndex: idx, depth: depth))
+                    nextTaskID += 1
+                }
+                groups[groups.count - 1] = current
+            case .plain:
                 continue
             }
         }
@@ -519,9 +539,6 @@ final class DayflowStore {
         var longestStreak: Int
         var doneByDay: [String: Int]
         var openByDay: [String: Int]
-        /// First non-heading line of the day with the most done items.
-        var standoutLine: String?
-        var standoutDate: String?
     }
 
     func currentMonthStats() -> MonthStats {
@@ -531,8 +548,7 @@ final class DayflowStore {
               let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart),
               let monthEnd = cal.date(byAdding: .day, value: -1, to: nextMonth) else {
             return MonthStats(totalTasks: 0, doneTasks: 0, openTasks: 0, completionRate: 0,
-                              busiestWeekday: nil, longestStreak: 0, doneByDay: [:], openByDay: [:],
-                              standoutLine: nil, standoutDate: nil)
+                              busiestWeekday: nil, longestStreak: 0, doneByDay: [:], openByDay: [:])
         }
 
         var doneByDay: [String: Int] = [:]
@@ -577,20 +593,6 @@ final class DayflowStore {
             cursor = cal.date(byAdding: .day, value: 1, to: cursor) ?? cursor
         }
 
-        // Standout day: most done items this month. Tie-breaker: most recent.
-        var standoutKey: String?
-        var standoutCount = 0
-        for (key, count) in doneByDay {
-            if count > standoutCount || (count == standoutCount && (key > (standoutKey ?? ""))) {
-                standoutKey = key
-                standoutCount = count
-            }
-        }
-        var standoutLine: String?
-        if let key = standoutKey, standoutCount > 0 {
-            standoutLine = firstMeaningfulLine(bodies[key] ?? "")
-        }
-
         let total = totalDone + totalOpen
         return MonthStats(
             totalTasks: total,
@@ -600,23 +602,7 @@ final class DayflowStore {
             busiestWeekday: busiest,
             longestStreak: maxStreak,
             doneByDay: doneByDay,
-            openByDay: openByDay,
-            standoutLine: standoutLine,
-            standoutDate: standoutKey
+            openByDay: openByDay
         )
-    }
-
-    /// Return the first line of real content — headings are skipped because
-    /// they identify a section, not the work the user actually did.
-    private func firstMeaningfulLine(_ body: String) -> String? {
-        for raw in body.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline) {
-            guard let line = MarkdownLine.parse(String(raw)) else { continue }
-            switch line {
-            case .heading: continue
-            case .task(_, let text), .bullet(let text), .plain(let text):
-                if !text.isEmpty { return text }
-            }
-        }
-        return nil
     }
 }

@@ -254,9 +254,6 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(items) { apt in
                         HStack(spacing: 8) {
-                            Circle()
-                                .fill(apt.category.color)
-                                .frame(width: 7, height: 7)
                             Text(DF.hourMinute.string(from: apt.startAt))
                                 .font(.system(size: 12, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
@@ -271,6 +268,12 @@ struct ContentView: View {
                                 .font(DS.FontStyle.body)
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(apt.category.color.opacity(0.22))
+                                )
                             Spacer(minLength: 0)
                         }
                     }
@@ -426,9 +429,6 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(dayAppointments) { apt in
                         HStack(spacing: 4) {
-                            Circle()
-                                .fill(apt.category.color)
-                                .frame(width: 6, height: 6)
                             Text(DF.hourMinute.string(from: apt.startAt))
                                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
@@ -441,6 +441,12 @@ struct ContentView: View {
                                 .font(DS.FontStyle.caption)
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(apt.category.color.opacity(0.22))
+                                )
                         }
                     }
                 }
@@ -484,23 +490,36 @@ struct ContentView: View {
                     .lineLimit(1)
             }
             ForEach(group.tasks) { task in
-                Button {
-                    store.toggleWeekTask(day: day, sourceLineIndex: task.sourceLineIndex)
-                } label: {
+                if task.isTask {
+                    Button {
+                        store.toggleWeekTask(day: day, sourceLineIndex: task.sourceLineIndex)
+                    } label: {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: task.checked ? "checkmark.square.fill" : "square")
+                                .font(.system(size: 10))
+                                .foregroundStyle(task.checked ? Color.dfAccent : .secondary)
+                            Text(task.text)
+                                .font(DS.FontStyle.caption)
+                                .foregroundStyle(task.checked ? .tertiary : .secondary)
+                                .strikethrough(task.checked)
+                                .lineLimit(1)
+                        }
+                        .padding(.leading, CGFloat(min(task.depth, 3)) * 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                } else {
                     HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: task.checked ? "checkmark.square.fill" : "square")
+                        Text("•")
                             .font(.system(size: 10))
-                            .foregroundStyle(task.checked ? Color.dfAccent : .secondary)
+                            .foregroundStyle(.secondary)
                         Text(task.text)
                             .font(DS.FontStyle.caption)
-                            .foregroundStyle(task.checked ? .tertiary : .secondary)
-                            .strikethrough(task.checked)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                     .padding(.leading, CGFloat(min(task.depth, 3)) * 10)
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -576,7 +595,6 @@ struct ContentView: View {
                         monthMetricsRail(stats)
                         monthAppointmentsRail
                         monthPlanRail
-                        monthStandoutRail(stats)
                     }
                     .padding(.horizontal, DS.Space.xl)
                     .padding(.top, DS.Space.breathe)
@@ -630,22 +648,6 @@ struct ContentView: View {
         return cal.shortWeekdaySymbols
     }
 
-    @ViewBuilder
-    private func monthStandoutRail(_ stats: DayflowStore.MonthStats) -> some View {
-        if let line = stats.standoutLine, let dateKey = stats.standoutDate {
-            VStack(alignment: .leading, spacing: DS.Space.sm) {
-                SectionLabel(text: L("month.standout_header"))
-                Text(line)
-                    .font(DS.FontStyle.body)
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-                Text(humanDateLabel(from: dateKey))
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
     /// Month view is the single source of truth for scheduling.
     private var monthAppointmentsRail: some View {
         let items = store.currentMonthAppointments()
@@ -679,29 +681,15 @@ struct ContentView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
                 timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
-                Menu {
+                Spacer()
+            }
+            HStack(spacing: 6) {
+                Picker("", selection: $aptCategoryInput) {
                     ForEach(AppointmentCategory.allCases) { cat in
-                        Button {
-                            aptCategoryInput = cat
-                        } label: {
-                            if aptCategoryInput == cat {
-                                Label(cat.label, systemImage: "checkmark")
-                            } else {
-                                Text(cat.label)
-                            }
-                        }
+                        Text(cat.label).tag(cat)
                     }
-                } label: {
-                    Text(aptCategoryInput.emoji)
-                        .font(.system(size: 13))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 3)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(aptCategoryInput.color.opacity(0.18))
-                        )
                 }
-                .menuStyle(.borderlessButton)
+                .pickerStyle(.menu)
                 .fixedSize()
                 TextField(L("appointments.title_placeholder"), text: $aptTitleInput)
                     .textFieldStyle(.plain)
@@ -749,37 +737,34 @@ struct ContentView: View {
     private func appointmentMonthRow(_ apt: Appointment) -> some View {
         let isEditing = (editingAppointmentId == apt.id)
         HStack(spacing: 10) {
-            Button {
-                store.selectDate(apt.startAt)
-                store.setMode(.day)
-            } label: {
-                HStack(spacing: 10) {
-                    Text(DF.shortMonthDay.string(from: apt.startAt))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Text(DF.shortMonthDay.string(from: apt.startAt))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                Text(DF.hourMinute.string(from: apt.startAt))
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(Color.dfAccent)
+                    .fixedSize()
+                if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
+                    Text(pill)
+                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.tertiary)
                         .fixedSize()
-                    Text(DF.hourMinute.string(from: apt.startAt))
-                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(Color.dfAccent)
-                        .fixedSize()
-                    if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
-                        Text(pill)
-                            .font(.system(size: 10, weight: .medium).monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                            .fixedSize()
-                    }
-                    Circle()
-                        .fill(apt.category.color)
-                        .frame(width: 7, height: 7)
-                    Text(apt.title)
-                        .font(DS.FontStyle.body)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
                 }
-                .contentShape(Rectangle())
+                let liveCategory = isEditing ? aptCategoryInput : apt.category
+                Text(apt.title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(liveCategory.color.opacity(0.22))
+                    )
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
             Button {
                 startAppointmentEdit(apt)
             } label: {
@@ -936,6 +921,7 @@ struct ContentView: View {
 
         return Button {
             store.selectDate(day)
+            store.setMode(.day)
         } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -966,9 +952,6 @@ struct ContentView: View {
                             // wider surfaces (right rail, Day/Week).
                             // Cell chip stays start-only.
                             HStack(spacing: 3) {
-                                Circle()
-                                    .fill(apt.category.color)
-                                    .frame(width: 5, height: 5)
                                 Text(DF.hourMinute.string(from: apt.startAt))
                                     .font(.system(size: 9, weight: .semibold).monospacedDigit())
                                     .foregroundStyle(Color.dfAccent)
@@ -976,6 +959,12 @@ struct ContentView: View {
                                     .font(.system(size: 9))
                                     .foregroundStyle(.primary.opacity(0.85))
                                     .lineLimit(1)
+                                    .padding(.horizontal, 3)
+                                    .padding(.vertical, 1)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(apt.category.color.opacity(0.22))
+                                    )
                             }
                         }
                         if appointments.count > 3 {
@@ -1015,8 +1004,4 @@ struct ContentView: View {
         return Color.dfAccent.opacity(0.06 + intensity * 0.26)
     }
 
-    private func humanDateLabel(from ymd: String) -> String {
-        guard let d = DF.ymd.date(from: ymd) else { return ymd }
-        return DF.shortDate.string(from: d)
-    }
 }
