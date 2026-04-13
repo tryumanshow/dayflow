@@ -37,6 +37,7 @@ enum AppStorageKeys {
 
     static let dayEditorFontSizeDefault: Double       = 15
     static let monthPlanEditorFontSizeDefault: Double = 13
+    static let startDate                       = "dayflow.startDate"
 }
 
 enum LanguagePreference {
