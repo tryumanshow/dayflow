@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage(AppStorageKeys.dayEditorFontSize) private var dayEditorFontSize: Double = AppStorageKeys.dayEditorFontSizeDefault
     @AppStorage(AppStorageKeys.monthPlanEditorFontSize) private var monthPlanEditorFontSize: Double = AppStorageKeys.monthPlanEditorFontSizeDefault
     @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
+    @AppStorage(AppStorageKeys.startDate) private var startDateEpoch: Double = 0
     @State private var saved: Bool = false
     @State private var hasExisting: Bool = false
     @State private var errorMessage: String?
@@ -85,6 +86,26 @@ struct SettingsView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
+            }
+
+            field(
+                label: L("settings.start_date"),
+                hint: L("settings.start_date.hint")
+            ) {
+                HStack(spacing: 8) {
+                    DatePicker("", selection: Binding(
+                        get: { startDateEpoch > 0 ? Date(timeIntervalSince1970: startDateEpoch) : Date() },
+                        set: { startDateEpoch = $0.timeIntervalSince1970 }
+                    ), displayedComponents: [.date])
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    if startDateEpoch > 0 {
+                        let days = Calendar.current.dateComponents([.day], from: Date(timeIntervalSince1970: startDateEpoch), to: Date()).day ?? 0
+                        Text(L("settings.start_date.days_format", days))
+                            .font(DS.FontStyle.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Spacer()
