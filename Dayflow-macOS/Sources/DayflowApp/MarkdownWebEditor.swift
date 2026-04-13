@@ -183,7 +183,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
       which would be the exfiltration channel of choice.
     -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline' https://esm.sh; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
-    <link rel="stylesheet" href="https://esm.sh/@blocknote/core@0.15.11/style.css">
+    <link rel="stylesheet" href="https://esm.sh/@blocknote/core@0.18.0/style.css">
     <style>
     html, body {
         margin: 0;
@@ -289,6 +289,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
     #dayflow-toolbar button.italic { font-style: italic; }
     #dayflow-toolbar button.underline { text-decoration: underline; }
     #dayflow-toolbar button.strike { text-decoration: line-through; }
+    #dayflow-toolbar button.code { font-family: ui-monospace, "SF Mono", monospace; font-size: 11px; letter-spacing: -0.5px; }
     #dayflow-toolbar .swatch {
         width: 18px;
         min-width: 18px;
@@ -343,23 +344,47 @@ struct MarkdownWebEditor: NSViewRepresentable {
         color: rgba(255,255,255,0.45) !important;
         text-decoration: line-through;
     }
-    .bn-block-content code {
+    .bn-block-content:not([data-content-type="codeBlock"]) code,
+    .bn-block-content[data-content-type="codeBlock"] {
+        font-family: ui-monospace, "SF Mono", monospace;
+        font-size: 13px;
+    }
+    .bn-block-content:not([data-content-type="codeBlock"]) code {
         background: rgba(255,255,255,0.08);
         color: #f79e33;
         border-radius: 4px;
         padding: 1px 5px;
-        font-family: ui-monospace, "SF Mono", monospace;
-        font-size: 13px;
     }
     .bn-block-content[data-content-type="codeBlock"] {
         background: rgba(255,255,255,0.05);
         border-radius: 6px;
         padding: 10px 12px;
+        color: rgba(255,255,255,0.85);
+        line-height: 1.5;
     }
     .bn-block-content[data-content-type="quote"] {
         border-left: 3px solid rgba(247, 158, 51, 0.6);
         padding-left: 12px;
         color: rgba(255,255,255,0.75);
+    }
+    /* Table dark theme */
+    .bn-block-content[data-content-type="table"] table {
+        border-collapse: collapse;
+        width: 100%;
+    }
+    .bn-block-content[data-content-type="table"] td,
+    .bn-block-content[data-content-type="table"] th {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 6px 10px;
+        min-width: 60px;
+    }
+    .bn-block-content[data-content-type="table"] th {
+        background: rgba(255, 255, 255, 0.06);
+        font-weight: 600;
+    }
+    .bn-block-content[data-content-type="table"] td:focus-within {
+        outline: 2px solid rgba(247, 158, 51, 0.5);
+        outline-offset: -2px;
     }
     .ProseMirror ::selection { background: rgba(247, 158, 51, 0.32); }
     /* drag-handle side menu + slash-suggestion menu stay hidden to keep
@@ -431,6 +456,44 @@ struct MarkdownWebEditor: NSViewRepresentable {
         text-align: center;
         font-size: 12px;
     }
+    /* Table grid picker */
+    #dayflow-grid-picker {
+        position: fixed;
+        z-index: 1001;
+        background: rgba(28, 28, 32, 0.98);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+        padding: 10px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.7);
+        user-select: none;
+    }
+    #dayflow-grid-picker .gp-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 24px);
+        grid-template-rows: repeat(6, 24px);
+        gap: 3px;
+        margin-bottom: 8px;
+    }
+    #dayflow-grid-picker .gp-cell {
+        width: 24px;
+        height: 24px;
+        border-radius: 3px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: transparent;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    #dayflow-grid-picker .gp-cell.active {
+        background: rgba(247, 158, 51, 0.35);
+        border-color: rgba(247, 158, 51, 0.6);
+    }
+    #dayflow-grid-picker .gp-label {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.5);
+        font-weight: 600;
+    }
     </style>
     </head>
     <body>
@@ -440,6 +503,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
         <button data-cmd="italic" class="italic" title="Italic (⌘I)">I</button>
         <button data-cmd="underline" class="underline" title="Underline (⌘U)">U</button>
         <button data-cmd="strike" class="strike" title="Strikethrough">S</button>
+        <button data-cmd="code" class="code" title="Inline Code">{ }</button>
       </div>
       <div class="tb-group colors">
         <span class="label">A</span>
@@ -452,7 +516,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
     </div>
     <div id="editor"></div>
     <script type="module">
-    import { BlockNoteEditor } from "https://esm.sh/@blocknote/core@0.15.11";
+    import { BlockNoteEditor } from "https://esm.sh/@blocknote/core@0.18.0";
 
     let editor = null;
     let lastEmitted = "";
@@ -477,11 +541,40 @@ struct MarkdownWebEditor: NSViewRepresentable {
     // BlockNote block children, which is exactly how cross-list-type nesting
     // works in BlockNote — a bulletListItem can have checkListItem children and
     // vice versa, all within the same `blockContainer` tree.
+    function makeCodeBlock(lines) {
+        return {
+            type: 'codeBlock',
+            props: {},
+            content: [{ type: 'text', text: lines.join('\\n'), styles: {} }],
+            children: [],
+        };
+    }
+
     function mdToBlocks(md) {
         const lines = (md || '').replace(/\\r\\n?/g, '\\n').split('\\n');
         const root = { children: [] };
         const stack = [{ indent: -1, block: root }];
+        let inCodeBlock = false;
+        let codeLines = [];
         for (const raw of lines) {
+            // Fenced code block handling (```...```)
+            if (raw.trim().startsWith('```')) {
+                if (!inCodeBlock) {
+                    inCodeBlock = true;
+                    codeLines = [];
+                    continue;
+                } else {
+                    inCodeBlock = false;
+                    const block = makeCodeBlock(codeLines);
+                    while (stack.length > 1) stack.pop();
+                    stack[stack.length - 1].block.children.push(block);
+                    continue;
+                }
+            }
+            if (inCodeBlock) {
+                codeLines.push(raw);
+                continue;
+            }
             if (!raw.trim()) continue;
             const leading = raw.match(/^(\\s*)/)[0].length;
             const indent = Math.floor(leading / 2);
@@ -529,6 +622,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
             }
             stack[stack.length - 1].block.children.push(block);
             stack.push({ indent, block });
+        }
+        // Flush unclosed fenced code block at EOF
+        if (inCodeBlock && codeLines.length > 0) {
+            root.children.push(makeCodeBlock(codeLines));
         }
         return root.children;
     }
@@ -671,6 +768,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
         // the active-style signature usually hasn't changed.
         const sig = (active.bold?1:0) + '|' + (active.italic?1:0) + '|' +
                     (active.underline?1:0) + '|' + (active.strike?1:0) + '|' +
+                    (active.code?1:0) + '|' +
                     (active.textColor || 'default') + '|' +
                     (active.backgroundColor || 'default');
         if (sig === lastActiveSig) return;
@@ -704,6 +802,8 @@ struct MarkdownWebEditor: NSViewRepresentable {
             { key: 'todo', icon: '☐',  label: 'To-do list',    block: { type: 'checkListItem', props: { checked: false } } },
             { key: 'ul',   icon: '•',  label: 'Bullet list',   block: { type: 'bulletListItem' } },
             { key: 'ol',   icon: '1.', label: 'Numbered list', block: { type: 'numberedListItem' } },
+            { key: 'code', icon: '{ }', label: 'Code Block',   block: { type: 'codeBlock' } },
+            { key: 'table', icon: '▦', label: 'Table',         block: { type: 'table' } },
             { key: 'p',    icon: '¶',  label: 'Paragraph',     block: { type: 'paragraph' } },
         ];
         return defs.map(d => ({ ...d, labelLower: d.label.toLowerCase() }));
@@ -723,6 +823,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
         try {
             const cursor = editor.getTextCursorPosition();
             if (!cursor || !cursor.block) return;
+            if (block.type === 'table') {
+                insertTable(3, 3);
+                return;
+            }
             editor.updateBlock(cursor.block, block);
             scheduleEmit();
         } catch (e) {
@@ -783,21 +887,23 @@ struct MarkdownWebEditor: NSViewRepresentable {
         slashSelectedIndex = 0;
     }
 
-    function positionSlashMenu() {
-        if (!slashMenuEl) return;
+    // Shared popup positioning: place `el` below the caret,
+    // clamped so it doesn't overflow the viewport.
+    function positionPopup(el, vMargin, hMargin) {
         const sel = window.getSelection();
         if (!sel || sel.rangeCount === 0) return;
         let rect = sel.getRangeAt(0).getBoundingClientRect();
-        // Collapsed selection sometimes has a zero rect on empty
-        // blocks — fall back to the empty-and-focused block rect.
         if (rect.width === 0 && rect.height === 0) {
-            const focusedBlock = document.querySelector('.bn-block-content[data-is-empty-and-focused="true"]');
-            if (focusedBlock) rect = focusedBlock.getBoundingClientRect();
+            const fb = document.querySelector('.bn-block-content[data-is-empty-and-focused="true"]');
+            if (fb) rect = fb.getBoundingClientRect();
         }
-        const top = Math.min(window.innerHeight - 380, rect.bottom + 6);
-        const left = Math.min(window.innerWidth - 340, Math.max(8, rect.left));
-        slashMenuEl.style.top = top + 'px';
-        slashMenuEl.style.left = left + 'px';
+        el.style.top = Math.min(window.innerHeight - vMargin, rect.bottom + 6) + 'px';
+        el.style.left = Math.min(window.innerWidth - hMargin, Math.max(8, rect.left)) + 'px';
+    }
+
+    function positionSlashMenu() {
+        if (!slashMenuEl) return;
+        positionPopup(slashMenuEl, 380, 340);
     }
 
     function renderSlashMenu() {
@@ -832,7 +938,103 @@ struct MarkdownWebEditor: NSViewRepresentable {
     function commitSlashCommand(cmd) {
         if (!cmd) return;
         closeSlashMenu();
-        applyBlockType(cmd.block);
+        if (cmd.block.type === 'table') {
+            openGridPicker();
+        } else {
+            applyBlockType(cmd.block);
+        }
+    }
+
+    // Grid picker for table size selection (6×6 max)
+    let gridPickerEl = null;
+
+    function openGridPicker() {
+        if (gridPickerEl) return;
+        gridPickerEl = document.createElement('div');
+        gridPickerEl.id = 'dayflow-grid-picker';
+
+        const grid = document.createElement('div');
+        grid.className = 'gp-grid';
+
+        const MAX = 6;
+        const cells = [];
+        for (let r = 0; r < MAX; r++) {
+            for (let c = 0; c < MAX; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'gp-cell';
+                cell._r = r;
+                cell._c = c;
+                grid.appendChild(cell);
+                cells.push(cell);
+            }
+        }
+
+        const label = document.createElement('div');
+        label.className = 'gp-label';
+        label.textContent = 'Select size';
+
+        gridPickerEl.appendChild(grid);
+        gridPickerEl.appendChild(label);
+        document.body.appendChild(gridPickerEl);
+        positionPopup(gridPickerEl, 250, 200);
+
+        grid.addEventListener('mouseover', (ev) => {
+            const cell = ev.target.closest('.gp-cell');
+            if (!cell) return;
+            const hr = cell._r;
+            const hc = cell._c;
+            for (const c of cells) {
+                c.classList.toggle('active', c._r <= hr && c._c <= hc);
+            }
+            label.textContent = (hc + 1) + ' × ' + (hr + 1);
+        });
+
+        grid.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            const cell = ev.target.closest('.gp-cell');
+            if (!cell) return;
+            const rows = cell._r + 1;
+            const cols = cell._c + 1;
+            closeGridPicker();
+            insertTable(rows, cols);
+        });
+    }
+
+    function closeGridPicker() {
+        if (!gridPickerEl) return;
+        gridPickerEl.remove();
+        gridPickerEl = null;
+    }
+
+    function insertTable(numRows, numCols) {
+        if (!editor) return;
+        try {
+            const cursor = editor.getTextCursorPosition();
+            if (!cursor || !cursor.block) return;
+            const makeRow = () => {
+                const cells = [];
+                for (let i = 0; i < numCols; i++) {
+                    cells.push([{ type: 'text', text: '', styles: {} }]);
+                }
+                return { cells };
+            };
+            const rows = [];
+            for (let i = 0; i < numRows; i++) {
+                rows.push(makeRow());
+            }
+            const tableBlock = {
+                type: 'table',
+                content: { type: 'tableContent', rows },
+                children: [],
+            };
+            editor.insertBlocks([tableBlock], cursor.block, 'after');
+            if (isCurrentBlockEmpty()) {
+                editor.removeBlocks([cursor.block]);
+            }
+            scheduleEmit();
+        } catch (e) {
+            console.log('insertTable error: ' + e.message);
+        }
     }
 
     // Capture-phase keydown so we intercept `/`, arrows, Enter, etc.
@@ -844,10 +1046,38 @@ struct MarkdownWebEditor: NSViewRepresentable {
         // composition cleanly.
         if (e.isComposing || e.keyCode === 229) return;
 
+        // Grid picker intercepts Escape
+        if (gridPickerEl) {
+            if (e.key === 'Escape') { e.preventDefault(); closeGridPicker(); }
+            return;
+        }
+
         if (!slashMenuEl) {
             if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && isCurrentBlockEmpty()) {
                 e.preventDefault();
                 openSlashMenu();
+            }
+            // Backspace inside a table when current cell is empty →
+            // delete the entire table block. If the cell has content,
+            // let ProseMirror handle normal text deletion.
+            if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && editor) {
+                try {
+                    const cursor = editor.getTextCursorPosition();
+                    if (!cursor || !cursor.block) throw 0;
+                    let tableBlock = null;
+                    if (cursor.block.type === 'table') {
+                        tableBlock = cursor.block;
+                    } else if (cursor.parentBlock && cursor.parentBlock.type === 'table') {
+                        tableBlock = cursor.parentBlock;
+                    }
+                    if (!tableBlock) throw 0;
+                    // Only delete if the current cell is empty
+                    if (isCurrentBlockEmpty()) {
+                        e.preventDefault();
+                        editor.removeBlocks([tableBlock]);
+                        scheduleEmit();
+                    }
+                } catch (err) {}
             }
             return;
         }
@@ -889,6 +1119,9 @@ struct MarkdownWebEditor: NSViewRepresentable {
     }, true);
 
     document.addEventListener('mousedown', (e) => {
+        if (gridPickerEl && !gridPickerEl.contains(e.target)) {
+            closeGridPicker();
+        }
         if (!slashMenuEl) return;
         if (slashMenuEl.contains(e.target)) return;
         closeSlashMenu();
@@ -909,7 +1142,9 @@ struct MarkdownWebEditor: NSViewRepresentable {
             bindToolbar();
             refreshToolbarState();
             postReady();
-        } catch (e) {}
+        } catch (e) {
+            console.error('BlockNote init error: ' + e.message + ' :: ' + (e.stack || ''));
+        }
     })();
     </script>
     </body>
