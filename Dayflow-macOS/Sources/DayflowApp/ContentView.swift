@@ -686,11 +686,14 @@ struct ContentView: View {
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 2)
             } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(items) { apt in
-                        appointmentMonthRow(apt)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(items) { apt in
+                            appointmentMonthRow(apt)
+                        }
                     }
                 }
+                .frame(maxHeight: 280)
             }
 
             HStack(spacing: 6) {
