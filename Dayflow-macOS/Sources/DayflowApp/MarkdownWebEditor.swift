@@ -302,6 +302,15 @@ struct MarkdownWebEditor: NSViewRepresentable {
         outline: 2px solid #f79e33;
         outline-offset: 1px;
     }
+    #dayflow-toolbar .swatch-reset {
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.45);
+        font-size: 12px;
+        line-height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
 
     /* Root CSS variable set by Swift (Settings slider) so the user
        can live-adjust the editor body font. Default matches the
@@ -709,6 +718,14 @@ struct MarkdownWebEditor: NSViewRepresentable {
         for (const prop of ['textColor', 'backgroundColor']) {
             const row = bar.querySelector('[data-row="' + prop + '"]');
             if (!row) continue;
+            // "Reset to default" button at the front
+            const reset = document.createElement('button');
+            reset.className = 'swatch swatch-reset';
+            reset.dataset.prop = prop;
+            reset.dataset.color = 'default';
+            reset.title = 'Default';
+            reset.textContent = '×';
+            row.appendChild(reset);
             for (const [name, hex] of COLORS) {
                 const b = document.createElement('button');
                 b.className = 'swatch';
@@ -741,12 +758,12 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 } else if (btn.dataset.prop) {
                     const prop = btn.dataset.prop;
                     const color = btn.dataset.color;
-                    // Toggle: clicking the already-active color clears it.
-                    // Dropping the explicit "clear" chip removes a piece
-                    // of visual chrome that used to break the row of
-                    // colored circles.
                     const active = editor.getActiveStyles() || {};
-                    if (active[prop] === color) {
+                    if (color === 'default') {
+                        if (active[prop] != null && active[prop] !== '') {
+                            editor.removeStyles({ [prop]: active[prop] });
+                        }
+                    } else if (active[prop] === color) {
                         editor.removeStyles({ [prop]: color });
                     } else {
                         editor.addStyles({ [prop]: color });
