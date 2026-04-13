@@ -1,5 +1,39 @@
 import SwiftUI
 
+// MARK: - Days badge (nav bar, right side) ------------------------------------
+
+private struct DaysBadgeView: View {
+    let startDateEpoch: Double
+
+    @State private var isHovering = false
+
+    private static let sinceFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        f.locale = Locale(identifier: "en_US")
+        return f
+    }()
+
+    var body: some View {
+        let days = max(0, Calendar.current.dateComponents(
+            [.day],
+            from: Date(timeIntervalSince1970: startDateEpoch),
+            to: Date()
+        ).day ?? 0)
+        let isMilestone = ContentView.milestones.contains(days)
+        let label = isHovering
+            ? "\(days) days with Dayflow"
+            : "Dayflow since \(Self.sinceFormatter.string(from: Date(timeIntervalSince1970: startDateEpoch)))"
+
+        Text(label)
+            .font(.system(size: 11, weight: isMilestone ? .semibold : .medium, design: .rounded))
+            .foregroundStyle(isMilestone ? AnyShapeStyle(Color.dfAccent) : AnyShapeStyle(.tertiary))
+            .contentTransition(.opacity)
+            .animation(DS.Motion.settle, value: isHovering)
+            .onHover { isHovering = $0 }
+    }
+}
+
 @MainActor
 struct ContentView: View {
     @Environment(DayflowStore.self) private var store
@@ -20,6 +54,7 @@ struct ContentView: View {
     @AppStorage(AppStorageKeys.dayEditorFontSize) private var dayEditorFontSize: Double = AppStorageKeys.dayEditorFontSizeDefault
     @AppStorage(AppStorageKeys.monthPlanEditorFontSize) private var monthPlanEditorFontSize: Double = AppStorageKeys.monthPlanEditorFontSizeDefault
     @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
+    @AppStorage(AppStorageKeys.startDate) private var startDateEpoch: Double = 0
     @State private var sideRailWidth: CGFloat = 340
 
     var body: some View {
@@ -90,6 +125,10 @@ struct ContentView: View {
 
             Spacer()
 
+            if startDateEpoch > 0 {
+                daysBadge
+            }
+
             navIconButton("arrow.clockwise") { store.refresh(force: true) }
         }
         .padding(.horizontal, DS.Space.xl)
@@ -98,6 +137,12 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.dfHairline).frame(height: 0.7)
         }
+    }
+
+    fileprivate static let milestones: Set<Int> = [7, 30, 50, 100, 200, 365, 500, 730, 1000]
+
+    private var daysBadge: some View {
+        DaysBadgeView(startDateEpoch: startDateEpoch)
     }
 
     private func navIconButton(_ symbol: String, action: @escaping () -> Void) -> some View {

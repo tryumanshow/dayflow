@@ -106,7 +106,7 @@
 /* Start date */
 "settings.start_date" = "시작 날짜";
 "settings.start_date.hint" = "Dayflow를 쓰기 시작한 날.";
-"settings.start_date.days_format" = "%d일째";
+"settings.start_date.days_format" = "D+%d";
 
 /* LLM errors */
 "llm.error.missing_api_key" = "%@ API 키가 없어. 메뉴 → Dayflow → Settings… 에서 등록해.";
