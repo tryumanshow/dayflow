@@ -32,7 +32,7 @@ ACCENT = (247, 140, 51, 255)
 ACCENT_SOFT = (247, 140, 51, 64)
 DONE = (77, 199, 117, 255)
 HAIRLINE = (255, 255, 255, 22)
-WHITE = (255, 255, 255, 240)
+WHITE = (255, 255, 255, 255)
 
 
 def rounded_rect_mask(size: int, radius: int) -> Image.Image:
@@ -105,21 +105,7 @@ def draw_icon(px: int) -> Image.Image:
         font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
 
     glyph = "D"
-    bbox = mdraw.textbbox((0, 0), glyph, font=font, anchor="lt")
-    gw = bbox[2] - bbox[0]
-    gh = bbox[3] - bbox[1]
-    gx = cx - gw / 2 - bbox[0]
-    gy = cy - gh / 2 - bbox[1]
-    mdraw.text((gx, gy), glyph, font=font, fill=WHITE)
-
-    # Italic shear ~7° around the ring center so the glyph stays put.
-    shear = math.tan(math.radians(7))
-    mono_layer = mono_layer.transform(
-        (size, size),
-        Image.AFFINE,
-        (1, shear, -shear * cy, 0, 1, 0),
-        resample=Image.BICUBIC,
-    )
+    mdraw.text((cx, cy), glyph, font=font, fill=WHITE, anchor="mm")
 
     img = Image.alpha_composite(img, mono_layer)
 
