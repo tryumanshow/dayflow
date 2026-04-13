@@ -10,7 +10,9 @@
 
 - **Three views** — Day / Week / Month, all backed by one markdown body per day.
 - **Block-based WYSIWYG editor** — powered by BlockNote, with live rendering of headings, bullets, and checklists.
-- **Rich text styling** — bold, italic, underline, strikethrough, plus text and background color from a top toolbar. Full fidelity is stored alongside the markdown body so colors and underlines survive across reloads.
+- **Rich text styling** — bold, italic, underline, strikethrough, inline code, plus text and background color from a top toolbar. Full fidelity is stored alongside the markdown body so colors and underlines survive across reloads.
+- **Code blocks** — type `` ``` `` + Space on an empty line, or pick "Code Block" from the slash menu. Monospaced, dark-themed, with fenced markdown round-tripping.
+- **Tables** — pick "Table" from the slash menu and choose dimensions from a Notion-style grid picker (up to 6 × 6). Backspace on an empty cell removes the entire table.
 - **Monthly plan** — a separate editor per month for the TODOs that belong to the month as a whole, not to any single day. Shown in the Month view right rail.
 - **Appointments** — time-stamped items (meetings, reminders) stored in a dedicated `appointments` table. Surfaced in every view: inline add/delete form in the Day rail, chips above the task preview in Week columns, and a sorted "this month" list in the Month rail. Quick Throw (`⌘⇧I`) has a Task / Appointment tab so you can jot either one without leaving your current app.
 - **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain, nothing is synced.
@@ -22,7 +24,8 @@
 ### Day view
 - Markdown editor on the left, today's completion ratio on the right.
 - Checklists, memos, and nested lists all live in one body per day.
-- Top toolbar: **B** / *I* / <u>U</u> / ~~S~~, plus text and background color swatches. Select text, click a button.
+- Top toolbar: **B** / *I* / <u>U</u> / ~~S~~ / `{ }`, plus text and background color swatches. Select text, click a button.
+- Slash menu (`/` on an empty line): headings, lists, code blocks, tables, and more.
 
 ![Day view](Dayflow-macOS/docs/screenshots/en/day.png)
 
