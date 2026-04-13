@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.11](https://github.com/tryumanshow/dayflow/compare/v0.1.10...v0.1.11) (2026-04-13)
+
+
+### Features
+
+* **editor:** add inline code, code blocks, and tables with grid picker ([2e14fca](https://github.com/tryumanshow/dayflow/commit/2e14fcac8149a22a2ee9e3699bc98681d6a9e3a4))
+* **editor:** inline code, code blocks, and tables with grid picker ([82dc912](https://github.com/tryumanshow/dayflow/commit/82dc912b0dac9dca6bbaaa411ca5249bd1811d17))
+* month appointments scroll cap + color reset buttons ([34c03cf](https://github.com/tryumanshow/dayflow/commit/34c03cf50083efafbe4a270ba40b4d4a12b6bd3f))
+* month appointments scroll cap + color reset buttons ([3dbf4e8](https://github.com/tryumanshow/dayflow/commit/3dbf4e8780be34fab53355477d2bfd6a969530b9))
+* **settings:** add start date picker ([2ff0bd0](https://github.com/tryumanshow/dayflow/commit/2ff0bd00c358e0fb155662859b4307f889f67f1f))
+* **settings:** add start date picker to General tab ([1e75e18](https://github.com/tryumanshow/dayflow/commit/1e75e185ece3f52adc2517853c89d770b14bcb60))
+
+
+### Bug Fixes
+
+* **icon:** center D monogram and increase opacity ([#32](https://github.com/tryumanshow/dayflow/issues/32)) ([9f9c13b](https://github.com/tryumanshow/dayflow/commit/9f9c13be5b6fe15230c36d80afbb830f47a56563))
+
 ## [0.1.10](https://github.com/tryumanshow/dayflow/compare/v0.1.9...v0.1.10) (2026-04-12)
 
 
