@@ -946,9 +946,32 @@ struct ContentView: View {
         }
     }
 
+    @State private var selectedSectionId: Int64? = nil
+    @State private var editingSectionTitleId: Int64? = nil
+    @State private var sectionTitleDraft: String = ""
+
+    /// Resolve the active section id — falls back to the first section
+    /// when the stored selection is stale or nil.
+    private var activeSectionId: Int64? {
+        if let id = selectedSectionId,
+           store.monthPlanSections.contains(where: { $0.id == id }) {
+            return id
+        }
+        return store.monthPlanSections.first?.id
+    }
+
     private var monthPlanRail: some View {
         @Bindable var store = store
+        let activeId = activeSectionId
+        let addSection = {
+            store.addMonthPlanSection(title: L("month.plan.new_section"))
+            if let last = store.monthPlanSections.last {
+                selectedSectionId = last.id
+            }
+        }
+
         return VStack(alignment: .leading, spacing: DS.Space.sm) {
+            // Header
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel(text: L("month.plan_header"))
                 Spacer()
@@ -956,24 +979,142 @@ struct ContentView: View {
                     .font(DS.FontStyle.caption)
                     .foregroundStyle(.tertiary)
             }
-            MarkdownWebEditor(
-                markdown: $store.monthPlanBody,
-                markdownJSON: $store.monthPlanJSON,
-                fontSize: monthPlanEditorFontSize,
-                onChange: { md, json in
-                    store.updateMonthPlan(md, bodyJSON: json)
+
+            // Tab bar
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DS.Space.xs) {
+                    ForEach(store.monthPlanSections) { section in
+                        if editingSectionTitleId == section.id {
+                            TextField("", text: $sectionTitleDraft, onCommit: {
+                                let trimmed = sectionTitleDraft.trimmingCharacters(in: .whitespaces)
+                                if !trimmed.isEmpty {
+                                    store.renameMonthPlanSection(id: section.id, title: trimmed)
+                                }
+                                editingSectionTitleId = nil
+                            })
+                            .textFieldStyle(.plain)
+                            .font(DS.FontStyle.caption.weight(.semibold))
+                            .padding(.horizontal, DS.Space.sm)
+                            .padding(.vertical, DS.Space.xs)
+                            .frame(maxWidth: 120)
+                            .background(
+                                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                            )
+                        } else {
+                            monthPlanTab(section: section, isActive: section.id == activeId)
+                        }
+                    }
+
+                    // "+" button
+                    Button {
+                        addSection()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, DS.Space.xs)
+                            .padding(.vertical, DS.Space.xs)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("month.plan.add_section"))
                 }
-            )
-            .frame(height: 440)
-            .background(
-                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .fill(Color.white.opacity(0.03))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .stroke(Color.dfHairlineSoft, lineWidth: 0.7)
-            )
+            }
+
+            // Editor for active section
+            if let activeId {
+                monthPlanEditor(sectionId: activeId)
+            } else {
+                Button {
+                    addSection()
+                } label: {
+                    HStack {
+                        Image(systemName: "plus.circle")
+                            .foregroundStyle(.tertiary)
+                        Text(L("month.plan.empty"))
+                            .font(DS.FontStyle.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, DS.Space.xl)
+            }
         }
+    }
+
+    /// Separate view so the Binding captures `sectionId` by value
+    /// instead of a mutable array index — prevents out-of-bounds
+    /// crashes when the sections array is mutated mid-render.
+    private func monthPlanEditor(sectionId: Int64) -> some View {
+        @Bindable var store = store
+        return MarkdownWebEditor(
+            markdown: Binding(
+                get: {
+                    store.monthPlanSections.first(where: { $0.id == sectionId })?.bodyMd ?? ""
+                },
+                set: { newValue in
+                    if let i = store.monthPlanSections.firstIndex(where: { $0.id == sectionId }) {
+                        store.monthPlanSections[i].bodyMd = newValue
+                    }
+                }
+            ),
+            markdownJSON: Binding(
+                get: {
+                    store.monthPlanSections.first(where: { $0.id == sectionId })?.bodyJSON
+                },
+                set: { newValue in
+                    if let i = store.monthPlanSections.firstIndex(where: { $0.id == sectionId }) {
+                        store.monthPlanSections[i].bodyJSON = newValue
+                    }
+                }
+            ),
+            fontSize: monthPlanEditorFontSize,
+            onChange: { md, json in
+                store.updateMonthPlanSection(id: sectionId, body: md, bodyJSON: json)
+            }
+        )
+        .id(sectionId)
+        .frame(height: 440)
+        .background(
+            RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                .fill(Color.white.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                .stroke(Color.dfHairlineSoft, lineWidth: 0.7)
+        )
+    }
+
+    private func monthPlanTab(section: MonthPlanSection, isActive: Bool) -> some View {
+        Text(section.title)
+            .font(DS.FontStyle.caption.weight(isActive ? .semibold : .regular))
+            .foregroundStyle(isActive ? .primary : .secondary)
+            .padding(.horizontal, DS.Space.sm)
+            .padding(.vertical, DS.Space.xs)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                    .fill(isActive ? Color.white.opacity(0.08) : Color.clear)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedSectionId = section.id
+            }
+            .contextMenu {
+                Button(L("month.plan.rename_section")) {
+                    sectionTitleDraft = section.title
+                    editingSectionTitleId = section.id
+                }
+                if store.monthPlanSections.count > 1 {
+                    Divider()
+                    Button(L("month.plan.delete_section"), role: .destructive) {
+                        store.deleteMonthPlanSection(id: section.id)
+                        if selectedSectionId == section.id {
+                            selectedSectionId = store.monthPlanSections.first?.id
+                        }
+                    }
+                }
+            }
     }
 
     private func heatCell(for day: Date, stats: DayflowStore.MonthStats) -> some View {

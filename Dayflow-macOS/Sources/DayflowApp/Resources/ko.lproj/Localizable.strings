@@ -42,6 +42,11 @@
 "month.caption.busiest" = "가장 활발: %@요일";
 "month.plan_header" = "이달 계획";
 "month.plan.hint" = "입력하면 자동 저장";
+"month.plan.new_section" = "새 섹션";
+"month.plan.add_section" = "섹션 추가";
+"month.plan.delete_section" = "섹션 삭제";
+"month.plan.rename_section" = "이름 변경";
+"month.plan.empty" = "섹션을 추가해서 계획을 세워보세요";
 
 /* Quick Throw */
 "quick_throw.title" = "→ 할 일 던지기";
