@@ -42,6 +42,11 @@
 "month.caption.busiest" = "busiest: %@";
 "month.plan_header" = "Month plan";
 "month.plan.hint" = "auto-saves as you type";
+"month.plan.new_section" = "New section";
+"month.plan.add_section" = "Add section";
+"month.plan.delete_section" = "Delete section";
+"month.plan.rename_section" = "Rename";
+"month.plan.empty" = "Add a section to start planning";
 
 /* Quick Throw */
 "quick_throw.title" = "→ throw a task";

@@ -36,12 +36,9 @@ final class DayflowStore {
     var reviewIsLoading: Bool = false
     var reviewError: String?
 
-    /// Per-month TODO list, independent of any day note. Lives in the
-    /// `month_plans` table keyed by `yyyy-MM`. Shown in the Month view
-    /// right rail and edited with the same BlockNote editor as the Day
-    /// view.
-    var monthPlanBody: String = ""
-    var monthPlanJSON: String? = nil
+    /// Per-month TODO list split into user-defined sections (Career,
+    /// Finance, etc.). Lives in `month_plan_sections` keyed by `yyyy-MM`.
+    var monthPlanSections: [MonthPlanSection] = []
     private var monthPlanLoadedFor: String = ""
 
     /// Appointments keyed by `yyyy-MM-dd`, covering the same
@@ -118,9 +115,7 @@ final class DayflowStore {
 
         let monthKey = DayflowDB.monthKey(selectedDate)
         if force || monthKey != monthPlanLoadedFor {
-            let plan = db.getMonthPlanFull(date: selectedDate)
-            monthPlanBody = plan.body
-            monthPlanJSON = plan.bodyJSON
+            monthPlanSections = db.getMonthPlanSections(date: selectedDate)
             monthPlanLoadedFor = monthKey
         }
 
@@ -210,18 +205,35 @@ final class DayflowStore {
         bodies[key] = newValue
     }
 
-    /// NOTE: no same-value guard here, and it's load-bearing.
-    /// `MarkdownWebEditor.Coordinator` applies the new value to the
-    /// `$monthPlanBody` binding BEFORE calling `onChange`, so by the
-    /// time we get here `monthPlanBody` already matches `newValue` —
-    /// a naive `guard newValue != monthPlanBody` would skip every
-    /// real write. `updateDayBody` has the same constraint and also
-    /// runs unconditionally. Write-amplification is bounded by the
-    /// 200ms JS-side debounce.
-    func updateMonthPlan(_ newValue: String, bodyJSON: String? = nil) {
-        monthPlanBody = newValue
-        monthPlanJSON = bodyJSON
-        db.saveMonthPlan(date: selectedDate, body: newValue, bodyJSON: bodyJSON)
+    // MARK: - month plan sections
+
+    func addMonthPlanSection(title: String) {
+        let order = (monthPlanSections.last?.sortOrder ?? -1) + 1
+        let newId = db.addMonthPlanSection(date: selectedDate, title: title, sortOrder: order)
+        monthPlanSections.append(MonthPlanSection(
+            id: newId, title: title, sortOrder: order, bodyMd: "", bodyJSON: nil
+        ))
+    }
+
+    func updateMonthPlanSection(id: Int64, body: String, bodyJSON: String?) {
+        db.updateMonthPlanSection(id: id, body: body, bodyJSON: bodyJSON)
+        if let idx = monthPlanSections.firstIndex(where: { $0.id == id }),
+           monthPlanSections[idx].bodyMd != body || monthPlanSections[idx].bodyJSON != bodyJSON {
+            monthPlanSections[idx].bodyMd = body
+            monthPlanSections[idx].bodyJSON = bodyJSON
+        }
+    }
+
+    func renameMonthPlanSection(id: Int64, title: String) {
+        db.renameMonthPlanSection(id: id, title: title)
+        if let idx = monthPlanSections.firstIndex(where: { $0.id == id }) {
+            monthPlanSections[idx].title = title
+        }
+    }
+
+    func deleteMonthPlanSection(id: Int64) {
+        db.deleteMonthPlanSection(id: id)
+        monthPlanSections.removeAll { $0.id == id }
     }
 
     /// Fast path for external markdown-only edits (QuickThrow, Week

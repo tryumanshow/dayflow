@@ -1,6 +1,16 @@
 import Foundation
 import SQLite3
 
+/// A single section inside a month plan. Each month can have
+/// multiple sections (e.g. Career, Finance, Health).
+struct MonthPlanSection: Identifiable, Equatable {
+    let id: Int64
+    var title: String
+    var sortOrder: Int
+    var bodyMd: String
+    var bodyJSON: String?
+}
+
 /// Category tag for appointments — drives the colored dot in month/week views.
 enum AppointmentCategory: String, CaseIterable, Identifiable, Codable {
     case event
@@ -127,6 +137,16 @@ final class DayflowDB: @unchecked Sendable {
             updated_at  TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_appointments_start ON appointments(start_at);
+        CREATE TABLE IF NOT EXISTS month_plan_sections (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            month_key   TEXT NOT NULL,
+            title       TEXT NOT NULL,
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            body_md     TEXT NOT NULL DEFAULT '',
+            body_json   TEXT,
+            updated_at  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mps_month ON month_plan_sections(month_key);
         """
         sqlite3_exec(db, ddl, nil, nil, nil)
         migrate()
@@ -198,6 +218,25 @@ final class DayflowDB: @unchecked Sendable {
             runMigrationStep(version: 6, sql: """
                 UPDATE appointments SET category = 'event' WHERE category IN ('oneTime', 'personal', 'other', 'meeting', 'deadline', 'plans', 'routine');
                 UPDATE appointments SET category = 'weekly' WHERE category IN ('social');
+            """)
+        }
+        if current < 7 {
+            // v7: multi-section month plans. Migrate existing
+            // month_plans rows into the new sections table.
+            runMigrationStep(version: 7, sql: """
+                CREATE TABLE IF NOT EXISTS month_plan_sections (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    month_key   TEXT NOT NULL,
+                    title       TEXT NOT NULL,
+                    sort_order  INTEGER NOT NULL DEFAULT 0,
+                    body_md     TEXT NOT NULL DEFAULT '',
+                    body_json   TEXT,
+                    updated_at  TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_mps_month ON month_plan_sections(month_key);
+                INSERT INTO month_plan_sections (month_key, title, sort_order, body_md, body_json, updated_at)
+                    SELECT month_key, '계획', 0, body_md, body_json, updated_at
+                    FROM month_plans WHERE body_md != '';
             """)
         }
     }
@@ -345,14 +384,82 @@ final class DayflowDB: @unchecked Sendable {
         return (open, done)
     }
 
-    // MARK: - month plans (per-month TODO list)
+    // MARK: - month plan sections
 
-    func getMonthPlanFull(date: Date) -> (body: String, bodyJSON: String?) {
-        getBodyRow(table: "month_plans", keyColumn: "month_key", key: Self.monthKey(date))
+    func getMonthPlanSections(date: Date) -> [MonthPlanSection] {
+        let key = Self.monthKey(date)
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, """
+            SELECT id, title, sort_order, body_md, body_json
+            FROM month_plan_sections WHERE month_key = ?
+            ORDER BY sort_order
+        """, -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, key)
+        var rows: [MonthPlanSection] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let json = textCol(stmt, 4)
+            rows.append(MonthPlanSection(
+                id: sqlite3_column_int64(stmt, 0),
+                title: textCol(stmt, 1),
+                sortOrder: Int(sqlite3_column_int(stmt, 2)),
+                bodyMd: textCol(stmt, 3),
+                bodyJSON: json.isEmpty ? nil : json
+            ))
+        }
+        return rows
     }
 
-    func saveMonthPlan(date: Date, body: String, bodyJSON: String? = nil) {
-        upsertBodyRow(table: "month_plans", keyColumn: "month_key", key: Self.monthKey(date), body: body, bodyJSON: bodyJSON)
+    @discardableResult
+    func addMonthPlanSection(date: Date, title: String, sortOrder: Int) -> Int64 {
+        let key = Self.monthKey(date)
+        let now = nowISO()
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, """
+            INSERT INTO month_plan_sections (month_key, title, sort_order, body_md, body_json, updated_at)
+            VALUES (?,?,?,?,?,?)
+        """, -1, &stmt, nil)
+        bindText(stmt, 1, key)
+        bindText(stmt, 2, title)
+        sqlite3_bind_int(stmt, 3, Int32(sortOrder))
+        bindText(stmt, 4, "")
+        sqlite3_bind_null(stmt, 5)
+        bindText(stmt, 6, now)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+        return sqlite3_last_insert_rowid(db)
+    }
+
+    func updateMonthPlanSection(id: Int64, body: String, bodyJSON: String?) {
+        let now = nowISO()
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, """
+            UPDATE month_plan_sections SET body_md = ?, body_json = ?, updated_at = ? WHERE id = ?
+        """, -1, &stmt, nil)
+        bindText(stmt, 1, body)
+        bindTextOrNull(stmt, 2, bodyJSON)
+        bindText(stmt, 3, now)
+        sqlite3_bind_int64(stmt, 4, id)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+    }
+
+    func renameMonthPlanSection(id: Int64, title: String) {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "UPDATE month_plan_sections SET title = ?, updated_at = ? WHERE id = ?", -1, &stmt, nil)
+        bindText(stmt, 1, title)
+        bindText(stmt, 2, nowISO())
+        sqlite3_bind_int64(stmt, 3, id)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+    }
+
+    func deleteMonthPlanSection(id: Int64) {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, "DELETE FROM month_plan_sections WHERE id = ?", -1, &stmt, nil)
+        sqlite3_bind_int64(stmt, 1, id)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
     }
 
     // MARK: - appointments (scheduled items)
