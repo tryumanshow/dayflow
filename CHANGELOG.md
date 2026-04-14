@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.12](https://github.com/tryumanshow/dayflow/compare/v0.1.11...v0.1.12) (2026-04-14)
+
+
+### Features
+
+* **month-plan:** add multi-section tabs for monthly plans ([30aa944](https://github.com/tryumanshow/dayflow/commit/30aa94491db6010bb7d115aa6b01198f25ff6b11))
+* **month-plan:** add multi-section tabs for monthly plans ([0b54f49](https://github.com/tryumanshow/dayflow/commit/0b54f49a2737423e766ef4dfcf682676aabeef82))
+* **nav:** show usage duration badge in navigation bar ([#33](https://github.com/tryumanshow/dayflow/issues/33)) ([5950024](https://github.com/tryumanshow/dayflow/commit/5950024bba5a29158eb7ca995c025a38303ef2d5))
+
 ## [0.1.11](https://github.com/tryumanshow/dayflow/compare/v0.1.10...v0.1.11) (2026-04-13)
 
 
