@@ -33,6 +33,37 @@ struct DayflowApp: App {
                 }
                 .keyboardShortcut("n", modifiers: [.command])
             }
+            // Replace SwiftUI's default Edit-menu pasteboard & undo
+            // commands with custom versions that forward to the
+            // WKWebView editor via NotificationCenter.
+            CommandGroup(replacing: .pasteboard) {
+                Button("Copy") {
+                    NotificationCenter.default.post(name: .dayflowCopy, object: nil)
+                }
+                .keyboardShortcut("c", modifiers: .command)
+                Button("Cut") {
+                    NotificationCenter.default.post(name: .dayflowCut, object: nil)
+                }
+                .keyboardShortcut("x", modifiers: .command)
+                Button("Paste") {
+                    NotificationCenter.default.post(name: .dayflowPaste, object: nil)
+                }
+                .keyboardShortcut("v", modifiers: .command)
+                Button("Select All") {
+                    NotificationCenter.default.post(name: .dayflowSelectAll, object: nil)
+                }
+                .keyboardShortcut("a", modifiers: .command)
+            }
+            CommandGroup(replacing: .undoRedo) {
+                Button("Undo") {
+                    NotificationCenter.default.post(name: .dayflowUndo, object: nil)
+                }
+                .keyboardShortcut("z", modifiers: .command)
+                Button("Redo") {
+                    NotificationCenter.default.post(name: .dayflowRedo, object: nil)
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+            }
             CommandGroup(after: .appInfo) {
                 Button("Refresh") { store.refresh() }
                     .keyboardShortcut("r", modifiers: [.command])

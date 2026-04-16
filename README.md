@@ -84,6 +84,15 @@ cd dayflow/Dayflow-macOS
 - Ad-hoc signs and installs to `/Applications/Dayflow.app`.
 - CI runs the exact same `build.sh` on a `macos-14` runner for every merge to `main`, so the release zip and your local build produce bit-for-bit the same `.app` (modulo timestamps).
 
+### Quick rebuild & restart (development)
+
+```bash
+cd dayflow/Dayflow-macOS && swift build \
+  && killall DayflowApp \
+  ; cp .build/debug/DayflowApp /Applications/Dayflow.app/Contents/MacOS/DayflowApp \
+  && open /Applications/Dayflow.app
+```
+
 ### Launch at login (optional)
 
 ```bash
