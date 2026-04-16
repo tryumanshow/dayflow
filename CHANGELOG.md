@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.13](https://github.com/tryumanshow/dayflow/compare/v0.1.12...v0.1.13) (2026-04-16)
+
+
+### Bug Fixes
+
+* **editor:** bridge ⌘C/V/X/Z/A to WKWebView via NotificationCenter ([#36](https://github.com/tryumanshow/dayflow/issues/36)) ([7e5944a](https://github.com/tryumanshow/dayflow/commit/7e5944a4aa2d08ccea6541cab09456138b2c09b6))
+
 ## [0.1.12](https://github.com/tryumanshow/dayflow/compare/v0.1.11...v0.1.12) (2026-04-14)
 
 
