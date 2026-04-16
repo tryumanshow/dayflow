@@ -23,6 +23,16 @@ import WebKit
 /// - When the user types, BlockNote fires `onEditorContentChange`, we
 ///   compute both markdown and JSON and post them back via the `dayflow`
 ///   message handler.
+/// Notification names for bridging SwiftUI menu commands → WKWebView.
+extension Notification.Name {
+    static let dayflowCopy      = Notification.Name("dayflowCopy")
+    static let dayflowCut       = Notification.Name("dayflowCut")
+    static let dayflowPaste     = Notification.Name("dayflowPaste")
+    static let dayflowSelectAll = Notification.Name("dayflowSelectAll")
+    static let dayflowUndo      = Notification.Name("dayflowUndo")
+    static let dayflowRedo      = Notification.Name("dayflowRedo")
+}
+
 struct MarkdownWebEditor: NSViewRepresentable {
     @Binding var markdown: String
     @Binding var markdownJSON: String?
@@ -93,7 +103,72 @@ struct MarkdownWebEditor: NSViewRepresentable {
         /// dirty check so we don't re-inject on every tick.
         var appliedFontSize: Double = -1
 
-        init(_ parent: MarkdownWebEditor) { self.parent = parent }
+        init(_ parent: MarkdownWebEditor) {
+            self.parent = parent
+            super.init()
+            let nc = NotificationCenter.default
+            nc.addObserver(self, selector: #selector(handleCopy),      name: .dayflowCopy,      object: nil)
+            nc.addObserver(self, selector: #selector(handleCut),       name: .dayflowCut,       object: nil)
+            nc.addObserver(self, selector: #selector(handlePaste),     name: .dayflowPaste,     object: nil)
+            nc.addObserver(self, selector: #selector(handleSelectAll), name: .dayflowSelectAll, object: nil)
+            nc.addObserver(self, selector: #selector(handleUndo),      name: .dayflowUndo,      object: nil)
+            nc.addObserver(self, selector: #selector(handleRedo),      name: .dayflowRedo,      object: nil)
+        }
+
+        // MARK: - Menu command handlers (via Notification)
+
+        @objc private func handleCopy() {
+            webView?.evaluateJavaScript("window.getSelection().toString().trim()") { result, _ in
+                if let raw = result as? String {
+                    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                    }
+                }
+            }
+        }
+
+        @objc private func handleCut() {
+            webView?.evaluateJavaScript("window.getSelection().toString().trim()") { [weak self] result, _ in
+                if let raw = result as? String {
+                    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        self?.webView?.evaluateJavaScript("document.execCommand('delete')", completionHandler: nil)
+                    }
+                }
+            }
+        }
+
+        @objc private func handlePaste() {
+            guard let text = NSPasteboard.general.string(forType: .string) else { return }
+            let js = Self.jsStringLiteral(text)
+            webView?.evaluateJavaScript("document.execCommand('insertText', false, \(js))", completionHandler: nil)
+        }
+
+        @objc private func handleSelectAll() {
+            webView?.evaluateJavaScript("document.execCommand('selectAll')", completionHandler: nil)
+        }
+
+        @objc private func handleUndo() {
+            webView?.evaluateJavaScript("""
+                document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'z', code: 'KeyZ', metaKey: true, shiftKey: false,
+                    bubbles: true, cancelable: true
+                }))
+                """, completionHandler: nil)
+        }
+
+        @objc private func handleRedo() {
+            webView?.evaluateJavaScript("""
+                document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'z', code: 'KeyZ', metaKey: true, shiftKey: true,
+                    bubbles: true, cancelable: true
+                }))
+                """, completionHandler: nil)
+        }
 
         func userContentController(_ uc: WKUserContentController, didReceive msg: WKScriptMessage) {
             guard let body = msg.body as? [String: Any],
@@ -566,6 +641,8 @@ struct MarkdownWebEditor: NSViewRepresentable {
         let inCodeBlock = false;
         let codeLines = [];
         for (const raw of lines) {
+            // Skip HTML comments — no block representation in BlockNote.
+            if (!inCodeBlock && /^\\s*<!--.*-->\\s*$/.test(raw)) continue;
             // Fenced code block handling (```...```)
             if (raw.trim().startsWith('```')) {
                 if (!inCodeBlock) {
@@ -662,8 +739,18 @@ struct MarkdownWebEditor: NSViewRepresentable {
             if (!blocks) {
                 blocks = mdToBlocks(md || '');
             }
+            // Replace blocks that are just HTML comments (e.g. "<!---->")
+            // with empty paragraphs to preserve visual spacing.
+            blocks = blocks.map(b => {
+                if (b.type !== 'paragraph' || !b.content) return b;
+                const text = (Array.isArray(b.content) ? b.content : [])
+                    .map(c => (typeof c === 'string' ? c : c.text || '')).join('').trim();
+                if (/^<!--.*-->$/.test(text)) {
+                    return { type: 'paragraph', props: b.props || {}, content: [], children: [] };
+                }
+                return b;
+            });
             if (blocks.length === 0) {
-                // BlockNote requires at least one block.
                 blocks.push({ type: 'paragraph', props: {}, content: [], children: [] });
             }
             editor.replaceBlocks(editor.document, blocks);

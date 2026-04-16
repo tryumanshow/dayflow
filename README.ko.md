@@ -84,6 +84,15 @@ cd dayflow/Dayflow-macOS
 - Ad-hoc 코드사인 + `/Applications/Dayflow.app` 설치.
 - CI 가 main 에 머지될 때마다 `macos-14` 러너에서 동일한 `build.sh` 를 돌리기 때문에, 릴리즈 zip 과 로컬 빌드는 (타임스탬프 제외하면) 동일한 `.app` 을 만들어냄.
 
+### 빠른 재빌드 & 재시작 (개발용)
+
+```bash
+cd dayflow/Dayflow-macOS && swift build \
+  && killall DayflowApp \
+  ; cp .build/debug/DayflowApp /Applications/Dayflow.app/Contents/MacOS/DayflowApp \
+  && open /Applications/Dayflow.app
+```
+
 ### 로그인 시 자동 기동 (선택)
 
 ```bash
