@@ -1,4 +1,68 @@
 import SwiftUI
+import AppKit
+
+// Native AppKit resize handle. SwiftUI DragGesture next to a WKWebView sibling
+// is unreliable on macOS — hover fires but mouseDown/drag events can get lost.
+// Using an NSView with explicit mouseDown/mouseDragged + cursor rect is rock
+// solid.
+struct HorizontalResizeHandle: NSViewRepresentable {
+    var onDrag: (CGFloat) -> Void
+    var onEnd: () -> Void
+
+    final class HandleView: NSView {
+        var onDrag: ((CGFloat) -> Void)?
+        var onEnd: (() -> Void)?
+        private var lastX: CGFloat = 0
+        private var trackingArea: NSTrackingArea?
+
+        override var isFlipped: Bool { true }
+        override var acceptsFirstResponder: Bool { true }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let t = trackingArea { removeTrackingArea(t) }
+            let t = NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .activeInActiveApp, .cursorUpdate, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(t)
+            trackingArea = t
+        }
+        override func cursorUpdate(with event: NSEvent) { NSCursor.resizeLeftRight.set() }
+        override func mouseEntered(with event: NSEvent) { NSCursor.resizeLeftRight.set() }
+        override func mouseExited(with event: NSEvent) { NSCursor.arrow.set() }
+
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.separatorColor.withAlphaComponent(0.5).setFill()
+            let line = NSRect(x: bounds.midX - 0.5, y: 0, width: 1, height: bounds.height)
+            line.fill()
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            lastX = event.locationInWindow.x
+        }
+        override func mouseDragged(with event: NSEvent) {
+            let x = event.locationInWindow.x
+            onDrag?(x - lastX)
+            lastX = x
+        }
+        override func mouseUp(with event: NSEvent) { onEnd?() }
+    }
+
+    func makeNSView(context: Context) -> HandleView {
+        let v = HandleView()
+        v.onDrag = onDrag
+        v.onEnd = onEnd
+        return v
+    }
+    func updateNSView(_ nsView: HandleView, context: Context) {
+        nsView.onDrag = onDrag
+        nsView.onEnd = onEnd
+    }
+}
 
 // MARK: - Days badge (nav bar, right side) ------------------------------------
 
@@ -56,6 +120,7 @@ struct ContentView: View {
     @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
     @AppStorage(AppStorageKeys.startDate) private var startDateEpoch: Double = 0
     @State private var sideRailWidth: CGFloat = 340
+    @State private var sideRailDragStart: CGFloat? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,7 +130,7 @@ struct ContentView: View {
                 .transition(.opacity)
         }
         .background(Color.dfCanvas)
-        .frame(minWidth: 1120, minHeight: 720)
+        .frame(minWidth: 600, minHeight: 500)
     }
 
     // MARK: - navigation bar -------------------------------------------------
@@ -198,25 +263,20 @@ struct ContentView: View {
                     store.updateDayBody(newMD, bodyJSON: newJSON)
                 }
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, DS.Space.lg)
             .padding(.top, DS.Space.breathe)
             .padding(.bottom, DS.Space.lg)
+            .layoutPriority(1)
 
-            // Draggable divider between editor and side rail
-            Rectangle().fill(Color.dfHairline).frame(width: 4)
-                .contentShape(Rectangle())
-                .onHover { hovering in
-                    if hovering { NSCursor.resizeLeftRight.push() }
-                    else { NSCursor.pop() }
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 1)
-                        .onChanged { value in
-                            let newWidth = sideRailWidth - value.translation.width
-                            sideRailWidth = max(260, min(500, newWidth))
-                        }
-                )
+            // Draggable divider between editor and side rail (AppKit-backed).
+            HorizontalResizeHandle(
+                onDrag: { dx in
+                    sideRailWidth = max(220, min(500, sideRailWidth - dx))
+                },
+                onEnd: { }
+            )
+            .frame(minWidth: 10, maxWidth: 10, maxHeight: .infinity)
 
             VStack(spacing: 0) {
                 ScrollView {
@@ -233,7 +293,7 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
                 appCredit
             }
-            .frame(width: sideRailWidth)
+            .frame(minWidth: 220, maxWidth: sideRailWidth)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
         }
