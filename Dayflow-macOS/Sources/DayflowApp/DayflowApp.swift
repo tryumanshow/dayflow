@@ -64,6 +64,12 @@ struct DayflowApp: App {
                 }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
             }
+            CommandGroup(after: .textEditing) {
+                Button("Find…") {
+                    NotificationCenter.default.post(name: .dayflowFind, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
             CommandGroup(after: .appInfo) {
                 Button("Refresh") { store.refresh() }
                     .keyboardShortcut("r", modifiers: [.command])
