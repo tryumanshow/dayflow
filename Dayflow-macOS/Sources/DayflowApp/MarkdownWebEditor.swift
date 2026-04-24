@@ -31,6 +31,7 @@ extension Notification.Name {
     static let dayflowSelectAll = Notification.Name("dayflowSelectAll")
     static let dayflowUndo      = Notification.Name("dayflowUndo")
     static let dayflowRedo      = Notification.Name("dayflowRedo")
+    static let dayflowFind      = Notification.Name("dayflowFind")
 }
 
 struct MarkdownWebEditor: NSViewRepresentable {
@@ -113,6 +114,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleSelectAll), name: .dayflowSelectAll, object: nil)
             nc.addObserver(self, selector: #selector(handleUndo),      name: .dayflowUndo,      object: nil)
             nc.addObserver(self, selector: #selector(handleRedo),      name: .dayflowRedo,      object: nil)
+            nc.addObserver(self, selector: #selector(handleFind),      name: .dayflowFind,      object: nil)
         }
 
         // MARK: - Menu command handlers (via Notification)
@@ -168,6 +170,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
                     bubbles: true, cancelable: true
                 }))
                 """, completionHandler: nil)
+        }
+
+        @objc private func handleFind() {
+            webView?.evaluateJavaScript("window.dayflowOpenFind && window.dayflowOpenFind()", completionHandler: nil)
         }
 
         func userContentController(_ uc: WKUserContentController, didReceive msg: WKScriptMessage) {
@@ -258,7 +264,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
       which would be the exfiltration channel of choice.
     -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline' https://esm.sh; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
-    <link rel="stylesheet" href="https://esm.sh/@blocknote/core@0.18.0/style.css">
+    <link rel="stylesheet" href="https://esm.sh/@blocknote/core@0.25.0/style.css">
     <style>
     html, body {
         margin: 0;
@@ -578,6 +584,83 @@ struct MarkdownWebEditor: NSViewRepresentable {
         color: rgba(255, 255, 255, 0.5);
         font-weight: 600;
     }
+    /* Find bar — overlays the editor, toggled by ⌘F. */
+    #dayflow-find-bar {
+        position: fixed;
+        top: 8px;
+        right: 12px;
+        z-index: 1002;
+        display: none;
+        align-items: center;
+        gap: 4px;
+        background: rgba(28, 28, 32, 0.98);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        padding: 6px;
+        font-size: 13px;
+    }
+    #dayflow-find-bar.open { display: inline-flex; }
+    #dayflow-find-bar input {
+        all: unset;
+        width: 180px;
+        color: rgba(255, 255, 255, 0.92);
+        padding: 4px 8px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.06);
+        transition: background 0.15s;
+    }
+    #dayflow-find-bar input::placeholder { color: rgba(255, 255, 255, 0.35); }
+    #dayflow-find-bar input.miss { background: rgba(239, 68, 68, 0.25); }
+    #dayflow-find-bar button {
+        all: unset;
+        min-width: 24px;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        color: rgba(255, 255, 255, 0.8);
+        cursor: pointer;
+        font-size: 12px;
+    }
+    #dayflow-find-bar button:hover { background: rgba(255, 255, 255, 0.1); }
+    /* CSS Custom Highlights — match decoration without any DOM or
+       selection mutation. WebKit 17.2+ (macOS 14.2+) required; on
+       older systems highlights silently no-op but find still
+       navigates. */
+    ::highlight(dayflow-find) {
+        background-color: rgba(247, 158, 51, 0.32);
+        color: inherit;
+    }
+    ::highlight(dayflow-find-current) {
+        background-color: rgba(247, 158, 51, 0.85);
+        color: #000;
+    }
+    /* Paragraphs whose text is exactly a markdown HR sequence get
+       rendered as a divider. `dayflow-hr-marker` lands on the widest
+       block-level ancestor (not the narrow `.bn-block-content` which
+       is inline-block) so the line spans the row. Caret stays
+       visible via `caret-color` so the block is still editable. */
+    .dayflow-hr-marker {
+        position: relative;
+    }
+    .dayflow-hr-marker .bn-inline-content,
+    .dayflow-hr-marker [data-content-type="paragraph"] {
+        color: transparent;
+        caret-color: rgba(247, 158, 51, 0.9);
+    }
+    .dayflow-hr-marker::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.25);
+        transform: translateY(-50%);
+        pointer-events: none;
+    }
     </style>
     </head>
     <body>
@@ -598,9 +681,15 @@ struct MarkdownWebEditor: NSViewRepresentable {
         <span data-row="backgroundColor"></span>
       </div>
     </div>
+    <div id="dayflow-find-bar" role="search" aria-label="Find in page">
+      <input type="text" placeholder="Find" spellcheck="false" autocomplete="off" autocapitalize="off">
+      <button data-find="prev" title="Previous (⇧↵)">↑</button>
+      <button data-find="next" title="Next (↵)">↓</button>
+      <button data-find="close" title="Close (Esc)">✕</button>
+    </div>
     <div id="editor"></div>
     <script type="module">
-    import { BlockNoteEditor } from "https://esm.sh/@blocknote/core@0.18.0";
+    import { BlockNoteEditor } from "https://esm.sh/@blocknote/core@0.22.0";
 
     let editor = null;
     let lastEmitted = "";
@@ -756,6 +845,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             editor.replaceBlocks(editor.document, blocks);
             lastEmitted = md;
             lastEmittedJSON = typeof jsonText === 'string' ? jsonText : "";
+            applyHrStyling();
         } catch (e) {
             console.log('setContent error: ' + e.message + ' :: ' + (e.stack || ''));
         } finally {
@@ -767,8 +857,13 @@ struct MarkdownWebEditor: NSViewRepresentable {
     async function emitCurrentContent() {
         if (!editor) return;
         try {
-            const md = await editor.blocksToMarkdownLossy(editor.document);
-            const json = JSON.stringify(editor.document);
+            let md = await editor.blocksToMarkdownLossy(editor.document);
+            let json = JSON.stringify(editor.document);
+            // Strip ZWSPs injected by the nested-list IME workaround
+            // only when present — avoid an allocation on every emit.
+            const ZWSP = '\\u200B';
+            if (md && md.indexOf(ZWSP) !== -1) md = md.split(ZWSP).join('');
+            if (json.indexOf(ZWSP) !== -1) json = json.split(ZWSP).join('');
             postChange(md, json);
         } catch (e) {}
     }
@@ -1141,14 +1236,200 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }
     }
 
+    // Find bar — opened by ⌘F. We deliberately avoid `window.find()`:
+    // it moves the document selection into the editor's contenteditable,
+    // stealing focus from the find input so subsequent keystrokes type
+    // into the editor instead. Instead we TreeWalk text nodes for
+    // matches and decorate them via the CSS Custom Highlights API —
+    // no DOM and no selection mutation, so the input keeps focus.
+    const findBarEl = document.getElementById('dayflow-find-bar');
+    const findInputEl = findBarEl.querySelector('input');
+    const editorRootEl = document.getElementById('editor');
+    let findMatches = [];
+    let findCurrentIndex = -1;
+    const findHighlightsSupported = !!(window.CSS && CSS.highlights && typeof Highlight !== 'undefined');
+
+    function markFindMiss(miss) {
+        findInputEl.classList.toggle('miss', !!miss);
+    }
+
+    // Render both the all-matches highlight and the current-match
+    // highlight. `CSS.highlights.set` replaces existing entries, so
+    // we only explicitly delete when transitioning to empty.
+    function renderFindHighlights() {
+        if (!findHighlightsSupported) return;
+        try {
+            if (findMatches.length === 0) {
+                CSS.highlights.delete('dayflow-find');
+                CSS.highlights.delete('dayflow-find-current');
+                return;
+            }
+            CSS.highlights.set('dayflow-find', new Highlight(...findMatches));
+            if (findCurrentIndex >= 0) {
+                CSS.highlights.set('dayflow-find-current', new Highlight(findMatches[findCurrentIndex]));
+            } else {
+                CSS.highlights.delete('dayflow-find-current');
+            }
+        } catch (e) { console.log('find highlight error: ' + e.message); }
+    }
+
+    // Lightweight update when only the current match moved —
+    // skips re-allocating the full-matches Highlight (potentially
+    // thousands of ranges) on every ↑/↓.
+    function updateCurrentHighlight() {
+        if (!findHighlightsSupported) return;
+        try {
+            if (findCurrentIndex < 0 || findCurrentIndex >= findMatches.length) {
+                CSS.highlights.delete('dayflow-find-current');
+                return;
+            }
+            CSS.highlights.set('dayflow-find-current', new Highlight(findMatches[findCurrentIndex]));
+        } catch (e) { console.log('find highlight error: ' + e.message); }
+    }
+
+    function computeFindMatches(query) {
+        const matches = [];
+        if (!query || !editorRootEl) return matches;
+        const walker = document.createTreeWalker(editorRootEl, NodeFilter.SHOW_TEXT, null);
+        const qLower = query.toLowerCase();
+        const qLen = query.length;
+        let node;
+        while ((node = walker.nextNode())) {
+            const text = node.nodeValue;
+            if (!text) continue;
+            const tLower = text.toLowerCase();
+            let idx = 0;
+            while (true) {
+                const found = tLower.indexOf(qLower, idx);
+                if (found === -1) break;
+                const range = document.createRange();
+                range.setStart(node, found);
+                range.setEnd(node, found + qLen);
+                matches.push(range);
+                idx = found + qLen;
+            }
+        }
+        return matches;
+    }
+
+    function scrollCurrentMatchIntoView(smooth) {
+        if (findCurrentIndex < 0 || findCurrentIndex >= findMatches.length) return;
+        if (!editorRootEl) return;
+        const rect = findMatches[findCurrentIndex].getBoundingClientRect();
+        const cRect = editorRootEl.getBoundingClientRect();
+        if (rect.top < cRect.top + 20 || rect.bottom > cRect.bottom - 20) {
+            const offset = rect.top - cRect.top - (cRect.height / 3);
+            editorRootEl.scrollBy({ top: offset, behavior: smooth ? 'smooth' : 'instant' });
+        }
+    }
+
+    function runFindSearch() {
+        const q = findInputEl.value;
+        findMatches = computeFindMatches(q);
+        if (!q) {
+            findCurrentIndex = -1;
+            markFindMiss(false);
+            renderFindHighlights();
+            return;
+        }
+        if (findMatches.length === 0) {
+            findCurrentIndex = -1;
+            markFindMiss(true);
+            renderFindHighlights();
+            return;
+        }
+        markFindMiss(false);
+        findCurrentIndex = 0;
+        renderFindHighlights();
+        scrollCurrentMatchIntoView(false);
+    }
+
+    // Trailing-debounce the TreeWalker search so rapid typing (especially
+    // Korean IME, which fires `input` per jamo) doesn't re-walk the whole
+    // editor on every keystroke.
+    let findSearchTimer = null;
+    function scheduleFindSearch() {
+        if (findSearchTimer) clearTimeout(findSearchTimer);
+        findSearchTimer = setTimeout(() => { findSearchTimer = null; runFindSearch(); }, 120);
+    }
+
+    function navigateFind(backward) {
+        if (findMatches.length === 0) return;
+        findCurrentIndex = backward
+            ? (findCurrentIndex - 1 + findMatches.length) % findMatches.length
+            : (findCurrentIndex + 1) % findMatches.length;
+        updateCurrentHighlight();
+        scrollCurrentMatchIntoView(true);
+    }
+
+    window.dayflowOpenFind = function() {
+        findBarEl.classList.add('open');
+        findInputEl.focus();
+        findInputEl.select();
+        // Editor content may have changed since last open; re-run so
+        // stale ranges don't point into replaced text nodes.
+        if (findInputEl.value) runFindSearch();
+    };
+
+    function closeFindBar() {
+        findBarEl.classList.remove('open');
+        markFindMiss(false);
+        findMatches = [];
+        findCurrentIndex = -1;
+        renderFindHighlights();
+    }
+
+    findInputEl.addEventListener('input', scheduleFindSearch);
+
+    findInputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeFindBar();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            navigateFind(e.shiftKey);
+        }
+    });
+
+    findBarEl.addEventListener('mousedown', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        e.preventDefault();
+        const action = btn.dataset.find;
+        if (action === 'close') { closeFindBar(); return; }
+        findInputEl.focus();
+        if (action === 'next') navigateFind(false);
+        else if (action === 'prev') navigateFind(true);
+    });
+
     // Capture-phase keydown so we intercept `/`, arrows, Enter, etc.
     // before ProseMirror sees them.
     document.addEventListener('keydown', (e) => {
+        // When focus is in the find input, let its own handlers run
+        // and skip all editor-level shortcuts (slash menu, table
+        // backspace). Without this, typing `/` in the find field
+        // would false-trigger the slash menu.
+        if (document.activeElement === findInputEl) return;
+
         // IME composition guard — Korean/Japanese/Chinese input
         // pre-commit keys fire with `key: "Process"` / isComposing
         // true and keyCode 229. Ignore so ProseMirror handles the
         // composition cleanly.
-        if (e.isComposing || e.keyCode === 229) return;
+        if (e.isComposing || e.keyCode === 229) {
+            // Enter pressed mid-composition hits a ProseMirror/BlockNote
+            // 0.18 bug: the in-flight IME character gets committed AND
+            // duplicated onto the new line. Swallow the raw Enter so
+            // the IME only commits; the user presses Enter again (after
+            // composition ends) to get the newline. This matches macOS
+            // native text-field semantics.
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            return;
+        }
 
         // Grid picker intercepts Escape
         if (gridPickerEl) {
@@ -1231,6 +1512,101 @@ struct MarkdownWebEditor: NSViewRepresentable {
         closeSlashMenu();
     }, true);
 
+    // Horizontal rule — paragraphs whose trimmed text matches a
+    // markdown HR sequence get a marker class that CSS renders as
+    // a divider. The marker lands on the widest block-level
+    // ancestor (not the narrow inline-block `.bn-block-content`)
+    // so the line spans the full row; we walk up until we hit the
+    // ProseMirror/editor boundary rather than trusting a specific
+    // BlockNote wrapper class, because those have renamed across
+    // versions.
+    const HR_TEXT_RE = /^(?:-{3,}|\\*{3,}|_{3,})$/;
+    const HR_CLASS = 'dayflow-hr-marker';
+
+    function findHrWrapper(p, root) {
+        let best = p;
+        let bestWidth = p.offsetWidth;
+        for (let cur = p; cur; cur = cur.parentElement) {
+            const parent = cur.parentElement;
+            if (!parent || parent === root) break;
+            if (parent.classList.contains('ProseMirror')) break;
+            if (parent.classList.contains('bn-editor')) break;
+            if (parent.offsetWidth > bestWidth) { best = parent; bestWidth = parent.offsetWidth; }
+        }
+        return best;
+    }
+
+    function applyHrStyling() {
+        if (!editorRootEl) return;
+        for (const p of editorRootEl.querySelectorAll('[data-content-type="paragraph"]')) {
+            const t = (p.textContent || '').replace(/\\u200B/g, '').trim();
+            const isHr = HR_TEXT_RE.test(t);
+            // Clear any stale marker that may have been set on an
+            // ancestor when this paragraph was previously an HR.
+            for (let cur = p; cur && cur !== editorRootEl; cur = cur.parentElement) {
+                cur.classList.remove(HR_CLASS);
+            }
+            if (isHr) findHrWrapper(p, editorRootEl).classList.add(HR_CLASS);
+        }
+    }
+
+    // Primary trigger is the MutationObserver (fires synchronously
+    // with ProseMirror's DOM writes; onEditorContentChange is async
+    // and can lag the visible state). rAF-coalesced to absorb bursts.
+    let hrObserver = null;
+    let hrRafPending = false;
+    function scheduleHrStyling() {
+        if (hrRafPending) return;
+        hrRafPending = true;
+        requestAnimationFrame(() => {
+            hrRafPending = false;
+            // Cheap dirty-check: if no HR sequence appears anywhere in
+            // the editor, skip the per-paragraph walk entirely.
+            if (!editorRootEl) return;
+            const t = editorRootEl.textContent || '';
+            if (t.indexOf('---') === -1 && t.indexOf('***') === -1 && t.indexOf('___') === -1) {
+                // Still clear any leftover markers from a prior HR state.
+                const stale = editorRootEl.querySelectorAll('.' + HR_CLASS);
+                for (const s of stale) s.classList.remove(HR_CLASS);
+                return;
+            }
+            applyHrStyling();
+        });
+    }
+    function installHrObserver() {
+        if (!editorRootEl || hrObserver) return;
+        hrObserver = new MutationObserver(scheduleHrStyling);
+        hrObserver.observe(editorRootEl, { childList: true, subtree: true, characterData: true });
+    }
+
+    // Nested-list Korean IME workaround. ProseMirror has a known bug
+    // where composing IME text into an empty nested list item (depth ≥ 2)
+    // causes the committed syllable to be duplicated onto a new
+    // sibling block. Inserting a zero-width space at compositionstart
+    // gives PM a pre-existing text node to write into, avoiding the
+    // split path. The ZWSP is stripped from exported markdown/JSON.
+    // See: ProseMirror discuss thread on composition regressions +
+    // obsidian-day-planner#759 (same repro in another PM-based editor).
+    function installNestedImeWorkaround() {
+        if (!editorRootEl || !editor) return;
+        editorRootEl.addEventListener('compositionstart', () => {
+            try {
+                // NOTE: `_tiptapEditor` is BlockNote-internal (underscore
+                // prefix) and can churn across @blocknote/core bumps.
+                // Re-verify on every upgrade.
+                const tt = editor._tiptapEditor;
+                if (!tt) return;
+                const { $from } = tt.state.selection;
+                // depth ≥ 2 = inside at least one list-item parent;
+                // content.size === 0 = current block is empty (composition
+                // is about to write its first character).
+                if ($from.depth >= 2 && $from.parent.content.size === 0) {
+                    tt.commands.insertContent('\\u200B');
+                }
+            } catch (e) { console.log('nested-IME workaround error: ' + e.message); }
+        }, true);
+    }
+
     (async () => {
         try {
             editor = BlockNoteEditor.create({
@@ -1238,7 +1614,9 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 initialContent: undefined,
             });
             editor.mount(document.getElementById('editor'));
-            editor.onEditorContentChange(scheduleEmit);
+            installHrObserver();
+            installNestedImeWorkaround();
+            editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); });
             if (editor.onEditorSelectionChange) {
                 editor.onEditorSelectionChange(refreshToolbarState);
             }
