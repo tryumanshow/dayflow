@@ -1607,6 +1607,34 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }, true);
     }
 
+    // Checkbox toggle. BlockNote 0.22 + @blocknote/core only (no React)
+    // doesn't reliably wire the native input change → block.props.checked
+    // path, so clicking the rendered checkbox is a no-op. Delegate from
+    // the editor root: locate the surrounding block via [data-id] and
+    // flip `checked` through the editor API. mousedown (not click) so
+    // ProseMirror's own click handler can't swallow the event first;
+    // preventDefault stops focus from jumping into the contentEditable
+    // and collapsing the toggle.
+    function installCheckboxToggle() {
+        if (!editorRootEl || !editor) return;
+        editorRootEl.addEventListener('mousedown', (e) => {
+            const input = e.target && e.target.closest && e.target.closest('input[type="checkbox"]');
+            if (!input) return;
+            const blockEl = input.closest('[data-id]');
+            const blockId = blockEl && blockEl.getAttribute('data-id');
+            if (!blockId) return;
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                const block = editor.getBlock(blockId);
+                if (!block || block.type !== 'checkListItem') return;
+                const next = !(block.props && block.props.checked);
+                editor.updateBlock(blockId, { props: { checked: next } });
+                scheduleEmit();
+            } catch (err) { console.log('checkbox toggle error: ' + err.message); }
+        }, true);
+    }
+
     (async () => {
         try {
             editor = BlockNoteEditor.create({
@@ -1616,6 +1644,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             editor.mount(document.getElementById('editor'));
             installHrObserver();
             installNestedImeWorkaround();
+            installCheckboxToggle();
             editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); });
             if (editor.onEditorSelectionChange) {
                 editor.onEditorSelectionChange(refreshToolbarState);
