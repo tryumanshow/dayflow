@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.14](https://github.com/tryumanshow/dayflow/compare/v0.1.13...v0.1.14) (2026-04-25)
+
+
+### Features
+
+* **editor:** add ⌘F find bar, HR rendering, and nested-list IME workaround ([#40](https://github.com/tryumanshow/dayflow/issues/40)) ([15b6fb3](https://github.com/tryumanshow/dayflow/commit/15b6fb3a7e056013c4db9e844ae4a3a3f8305148))
+
+
+### Bug Fixes
+
+* **editor:** toggle checkListItem on checkbox click ([#41](https://github.com/tryumanshow/dayflow/issues/41)) ([1cdd8b3](https://github.com/tryumanshow/dayflow/commit/1cdd8b3f96373d44ea53eab189788bd551e6e347))
+* **resize:** use AppKit-backed handle for side rail divider ([#38](https://github.com/tryumanshow/dayflow/issues/38)) ([21de240](https://github.com/tryumanshow/dayflow/commit/21de24016e2391748546decf94c30ba9f8c9f430))
+
 ## [0.1.13](https://github.com/tryumanshow/dayflow/compare/v0.1.12...v0.1.13) (2026-04-16)
 
 
