@@ -282,8 +282,10 @@ final class DayflowStore {
 
     // MARK: - appointments
 
+    /// Per-cell chip list. Spans are drawn as bars by the overlay,
+    /// not as per-day chips.
     func appointments(for date: Date) -> [Appointment] {
-        appointmentsByDay[DayflowDB.ymd(date)] ?? []
+        (appointmentsByDay[DayflowDB.ymd(date)] ?? []).filter { !$0.isMultiDay }
     }
 
     /// All appointments whose `startAt` falls within the calendar
@@ -298,17 +300,21 @@ final class DayflowStore {
             .sorted { $0.startAt < $1.startAt }
     }
 
+    func currentMonthSpans() -> [Appointment] {
+        appointmentsByDay.values.flatMap { $0 }
+            .filter(\.isMultiDay)
+            .sorted { ($0.startAt, $0.id) < ($1.startAt, $1.id) }
+    }
+
     /// Parse `HH:mm` against the target day and insert. `endHHmm` is
     /// optional — empty string / nil means the appointment has no
     /// explicit end, rendering as a point event. Returns false on
     /// empty title or unparseable time.
     @discardableResult
-    func addAppointment(on day: Date, hhmm: String, endHHmm: String? = nil, title: String, category: AppointmentCategory = .event) -> Bool {
+    func addAppointment(on day: Date, hhmm: String, endHHmm: String? = nil, endDay: Date? = nil, title: String, category: AppointmentCategory = .event) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
-        guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
-        let endAt = Self.parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt)
+        guard let (startAt, endAt) = Self.resolveTimes(day: day, hhmm: hhmm, endHHmm: endHHmm, endDay: endDay) else { return false }
         db.insertAppointment(startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category)
         reloadAppointments()
         return true
@@ -323,15 +329,27 @@ final class DayflowStore {
     /// as `addAppointment` — empty title or bad start time returns
     /// false with no mutation. Empty `endHHmm` clears `end_at`.
     @discardableResult
-    func updateAppointment(_ id: Int64, on day: Date, hhmm: String, endHHmm: String? = nil, title: String, category: AppointmentCategory) -> Bool {
+    func updateAppointment(_ id: Int64, on day: Date, hhmm: String, endHHmm: String? = nil, endDay: Date? = nil, title: String, category: AppointmentCategory) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
-        guard let startAt = Self.combine(day: day, hhmm: trimmedTime) else { return false }
-        let endAt = Self.parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt)
+        guard let (startAt, endAt) = Self.resolveTimes(day: day, hhmm: hhmm, endHHmm: endHHmm, endDay: endDay) else { return false }
         db.updateAppointment(id: id, startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category)
         reloadAppointments()
         return true
+    }
+
+    /// Multi-day span (endDay > start day) collapses to 00:00 → 23:59
+    /// and ignores the hhmm fields.
+    private static func resolveTimes(day: Date, hhmm: String, endHHmm: String?, endDay: Date?) -> (Date, Date?)? {
+        let cal = Calendar.current
+        if let endDay, !cal.isDate(endDay, inSameDayAs: day), endDay > day {
+            let startAt = cal.startOfDay(for: day)
+            let endAt = cal.date(bySettingHour: 23, minute: 59, second: 0, of: endDay)
+            return (startAt, endAt)
+        }
+        let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let startAt = combine(day: day, hhmm: trimmedTime) else { return nil }
+        return (startAt, parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt))
     }
 
     /// A zero-duration or negative range is almost certainly a

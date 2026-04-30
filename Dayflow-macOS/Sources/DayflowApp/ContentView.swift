@@ -109,6 +109,9 @@ struct ContentView: View {
     @State private var aptEndTimeInput: String = ""
     @State private var aptTitleInput: String = ""
     @State private var aptDateInput: Date = Date()
+    /// `nil` distinguishes "no end date set" from any concrete value —
+    /// it's the source of truth for single-day vs multi-day mode.
+    @State private var aptEndDateInput: Date? = nil
     @State private var aptCategoryInput: AppointmentCategory = .event
     @State private var editingAppointmentId: Int64? = nil
     @FocusState private var aptTitleFocused: Bool
@@ -728,12 +731,19 @@ struct ContentView: View {
                 .padding(.horizontal, DS.Space.xl)
                 .padding(.top, DS.Space.breathe)
 
-                VStack(spacing: 4) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        HStack(spacing: 4) {
-                            ForEach(row, id: \.self) { day in
-                                heatCell(for: day, stats: stats)
+                let layout = Self.spanLayout(for: store.currentMonthSpans(), gridDays: days, cal: cal)
+                VStack(spacing: Self.spanCellSpacing) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
+                        let weekStartIdx = rowIdx * 7
+                        let weekLanes = layout.laneCount(weekStartIdx: weekStartIdx)
+                        let topReserve: CGFloat = CGFloat(weekLanes) * (Self.spanBarHeight + Self.spanLaneGap)
+                        ZStack(alignment: .topLeading) {
+                            HStack(spacing: Self.spanCellSpacing) {
+                                ForEach(row, id: \.self) { day in
+                                    heatCell(for: day, stats: stats, topReserve: topReserve)
+                                }
                             }
+                            spanOverlay(weekStartIdx: weekStartIdx, layout: layout)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -842,16 +852,60 @@ struct ContentView: View {
                 .frame(maxHeight: 280)
             }
 
+            let isMultiDay = aptEndDateInput != nil
             HStack(spacing: 6) {
                 DatePicker("", selection: $aptDateInput, displayedComponents: [.date])
                     .datePickerStyle(.compact)
                     .labelsHidden()
-                timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
-                Text("–")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-                timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
+                if isMultiDay {
+                    Text("→")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    DatePicker(
+                        "",
+                        selection: Binding(
+                            get: { aptEndDateInput ?? aptDateInput },
+                            set: { aptEndDateInput = $0 }
+                        ),
+                        in: aptDateInput...,
+                        displayedComponents: [.date]
+                    )
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    Button {
+                        aptEndDateInput = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("appointments.end_date_remove"))
+                } else {
+                    timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
+                    Text("–")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                    timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
+                    Button {
+                        aptEndDateInput = Calendar.current.date(byAdding: .day, value: 1, to: aptDateInput) ?? aptDateInput
+                    } label: {
+                        Text(L("appointments.end_date_add"))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(Color.dfHairlineSoft, lineWidth: 0.7)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
                 Spacer()
+            }
+            .onChange(of: aptDateInput) { _, new in
+                if let end = aptEndDateInput, end < new { aptEndDateInput = new }
             }
             HStack(spacing: 6) {
                 Picker("", selection: $aptCategoryInput) {
@@ -906,21 +960,29 @@ struct ContentView: View {
     @ViewBuilder
     private func appointmentMonthRow(_ apt: Appointment) -> some View {
         let isEditing = (editingAppointmentId == apt.id)
+        let dateText: String = {
+            if apt.isMultiDay, let endAt = apt.endAt {
+                return "\(DF.shortMonthDay.string(from: apt.startAt)) → \(DF.shortMonthDay.string(from: endAt))"
+            }
+            return DF.shortMonthDay.string(from: apt.startAt)
+        }()
         HStack(spacing: 10) {
             HStack(spacing: 10) {
-                Text(DF.shortMonthDay.string(from: apt.startAt))
+                Text(dateText)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .fixedSize()
-                Text(DF.hourMinute.string(from: apt.startAt))
-                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Color.dfAccent)
-                    .fixedSize()
-                if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
-                    Text(pill)
-                        .font(.system(size: 10, weight: .medium).monospacedDigit())
-                        .foregroundStyle(.tertiary)
+                if !apt.isMultiDay {
+                    Text(DF.hourMinute.string(from: apt.startAt))
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Color.dfAccent)
                         .fixedSize()
+                    if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
+                        Text(pill)
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                            .fixedSize()
+                    }
                 }
                 let liveCategory = isEditing ? aptCategoryInput : apt.category
                 Text(apt.title)
@@ -1012,39 +1074,39 @@ struct ContentView: View {
     }
 
     private func startAppointmentEdit(_ apt: Appointment) {
+        let isSpan = apt.isMultiDay
         editingAppointmentId = apt.id
         aptDateInput = apt.startAt
-        aptTimeInput = DF.hourMinute.string(from: apt.startAt)
-        aptEndTimeInput = apt.endAt.map { DF.hourMinute.string(from: $0) } ?? ""
+        aptEndDateInput = isSpan ? apt.endAt : nil
+        aptTimeInput = isSpan ? "" : DF.hourMinute.string(from: apt.startAt)
+        aptEndTimeInput = isSpan ? "" : (apt.endAt.map { DF.hourMinute.string(from: $0) } ?? "")
         aptTitleInput = apt.title
         aptCategoryInput = apt.category
         aptTitleFocused = true
     }
 
     private func cancelAppointmentEdit() {
-        editingAppointmentId = nil
-        aptTimeInput = ""
-        aptEndTimeInput = ""
-        aptTitleInput = ""
-        aptCategoryInput = .event
-        aptTitleFocused = false
+        resetAppointmentForm()
     }
 
     private func submitMonthAppointment() {
         let ok: Bool
         if let id = editingAppointmentId {
-            ok = store.updateAppointment(id, on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, title: aptTitleInput, category: aptCategoryInput)
+            ok = store.updateAppointment(id, on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
         } else {
-            ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, title: aptTitleInput, category: aptCategoryInput)
+            ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
         }
-        if ok {
-            editingAppointmentId = nil
-            aptTimeInput = ""
-            aptEndTimeInput = ""
-            aptTitleInput = ""
-            aptCategoryInput = .event
-            aptTitleFocused = false
-        }
+        if ok { resetAppointmentForm() }
+    }
+
+    private func resetAppointmentForm() {
+        editingAppointmentId = nil
+        aptTimeInput = ""
+        aptEndTimeInput = ""
+        aptEndDateInput = nil
+        aptTitleInput = ""
+        aptCategoryInput = .event
+        aptTitleFocused = false
     }
 
     @State private var selectedSectionId: Int64? = nil
@@ -1230,7 +1292,7 @@ struct ContentView: View {
             }
     }
 
-    private func heatCell(for day: Date, stats: DayflowStore.MonthStats) -> some View {
+    private func heatCell(for day: Date, stats: DayflowStore.MonthStats, topReserve: CGFloat = 0) -> some View {
         let cal = Calendar.current
         let inMonth = cal.component(.month, from: day) == cal.component(.month, from: store.selectedDate)
         let isToday = cal.isDateInToday(day)
@@ -1256,6 +1318,9 @@ struct ContentView: View {
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
+                }
+                if topReserve > 0 {
+                    Color.clear.frame(height: topReserve)
                 }
                 // Show up to 3 appointment chips under the day number.
                 // On overflow, last row becomes a "+N" counter. Only
@@ -1326,6 +1391,101 @@ struct ContentView: View {
         if total == 0 { return Color.white.opacity(0.025) }
         let intensity = min(1.0, Double(total) / 6.0)
         return Color.dfAccent.opacity(0.06 + intensity * 0.26)
+    }
+
+    // MARK: - multi-day span bars (month overlay)
+
+    static let spanBarHeight: CGFloat = 14
+    static let spanLaneGap: CGFloat = 2
+    static let spanCellSpacing: CGFloat = 4
+    // Cell padding 10 + ~14pt day digit + a little air.
+    static let spanTopInset: CGFloat = 30
+
+    /// Spans laid out against a fixed grid (column indices 0..gridDays.count-1)
+    /// with greedy first-fit lane assignment. A span keeps its lane across
+    /// every week it crosses, so a trip reads as one continuous strip.
+    struct SpanLayout {
+        struct Entry {
+            let apt: Appointment
+            let startIdx: Int
+            let endIdx: Int
+            let lane: Int
+        }
+        let entries: [Entry]
+
+        func laneCount(weekStartIdx: Int) -> Int {
+            let weekEndIdx = weekStartIdx + 6
+            return entries.lazy
+                .filter { $0.endIdx >= weekStartIdx && $0.startIdx <= weekEndIdx }
+                .map { $0.lane + 1 }
+                .max() ?? 0
+        }
+    }
+
+    static func spanLayout(for spans: [Appointment], gridDays: [Date], cal: Calendar) -> SpanLayout {
+        let dayKeys = gridDays.map { DayflowDB.ymd($0) }
+        let keyToIdx: [String: Int] = Dictionary(uniqueKeysWithValues: dayKeys.enumerated().map { ($1, $0) })
+        let lastIdx = gridDays.count - 1
+        var laneEnds: [Int] = []
+        var entries: [SpanLayout.Entry] = []
+        for apt in spans {
+            let startKey = DayflowDB.ymd(apt.startAt)
+            let endKey = DayflowDB.ymd(apt.endAt ?? apt.startAt)
+            // Spans starting before the grid clamp to 0; ending after, to lastIdx.
+            let startIdx = keyToIdx[startKey] ?? (apt.startAt < gridDays.first! ? 0 : lastIdx)
+            let endIdx = keyToIdx[endKey] ?? lastIdx
+            let lane: Int
+            if let i = laneEnds.firstIndex(where: { $0 < startIdx }) {
+                laneEnds[i] = endIdx
+                lane = i
+            } else {
+                laneEnds.append(endIdx)
+                lane = laneEnds.count - 1
+            }
+            entries.append(.init(apt: apt, startIdx: startIdx, endIdx: endIdx, lane: lane))
+        }
+        return SpanLayout(entries: entries)
+    }
+
+    private func spanOverlay(weekStartIdx: Int, layout: SpanLayout) -> some View {
+        let weekEndIdx = weekStartIdx + 6
+        let cellSpacing = Self.spanCellSpacing
+        return GeometryReader { geo in
+            let cellWidth = (geo.size.width - cellSpacing * 6) / 7
+            ForEach(layout.entries, id: \.apt.id) { entry in
+                if entry.endIdx >= weekStartIdx && entry.startIdx <= weekEndIdx {
+                    let segStart = max(entry.startIdx, weekStartIdx)
+                    let segEnd = min(entry.endIdx, weekEndIdx)
+                    let col = segStart - weekStartIdx
+                    let span = segEnd - segStart + 1
+                    let x = CGFloat(col) * (cellWidth + cellSpacing)
+                    let w = CGFloat(span) * cellWidth + CGFloat(span - 1) * cellSpacing
+                    let y = Self.spanTopInset + CGFloat(entry.lane) * (Self.spanBarHeight + Self.spanLaneGap)
+                    // Only round the true ends so mid-week segments read
+                    // as one continuous bar across week boundaries.
+                    let isStart = segStart == entry.startIdx
+                    let isEnd = segEnd == entry.endIdx
+                    Text(entry.apt.title)
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 6)
+                        .frame(width: w, height: Self.spanBarHeight, alignment: .leading)
+                        .background(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: isStart ? 4 : 0,
+                                bottomLeadingRadius: isStart ? 4 : 0,
+                                bottomTrailingRadius: isEnd ? 4 : 0,
+                                topTrailingRadius: isEnd ? 4 : 0,
+                                style: .continuous
+                            )
+                            .fill(entry.apt.category.color.opacity(0.55))
+                        )
+                        .offset(x: x, y: y)
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 
 }
