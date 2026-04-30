@@ -38,6 +38,11 @@ enum AppStorageKeys {
     static let dayEditorFontSizeDefault: Double       = 15
     static let monthPlanEditorFontSizeDefault: Double = 13
     static let startDate                       = "dayflow.startDate"
+    /// User-controlled width of the right side rail. Persisted across
+    /// launches and shared by the Day and Month views — drag once,
+    /// applies everywhere.
+    static let sideRailWidth        = "dayflow.sideRail.width"
+    static let sideRailWidthDefault: Double = 340
 }
 
 enum LanguagePreference {

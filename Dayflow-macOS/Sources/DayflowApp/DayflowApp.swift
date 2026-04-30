@@ -70,10 +70,36 @@ struct DayflowApp: App {
                 }
                 .keyboardShortcut("f", modifiers: .command)
             }
+            // Editor zoom — Cmd+= (also fires for Cmd++), Cmd+-, Cmd+0.
+            // Lives in the View menu so it sits next to the standard
+            // macOS zoom slot. Active view mode decides which AppStorage
+            // value gets bumped (Day rail vs Month plan editor).
+            CommandGroup(after: .toolbar) {
+                Button("Editor: Zoom In") {
+                    NotificationCenter.default.post(name: .dayflowZoomIn, object: nil)
+                }
+                .keyboardShortcut("=", modifiers: .command)
+                Button("Editor: Zoom Out") {
+                    NotificationCenter.default.post(name: .dayflowZoomOut, object: nil)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+                Button("Editor: Default Zoom") {
+                    NotificationCenter.default.post(name: .dayflowZoomReset, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: .command)
+            }
             CommandGroup(after: .appInfo) {
                 Button("Refresh") { store.refresh() }
                     .keyboardShortcut("r", modifiers: [.command])
                 Button("Generate Daily Review") { store.generateReview() }
+                // Developer-only: visible only when a sibling source
+                // tree with `build.sh` is detected. End-user installs
+                // never see the item.
+                if DevRebuild.repoPath != nil {
+                    Divider()
+                    Button("🔄 Rebuild & Relaunch") { DevRebuild.rebuildAndRelaunch() }
+                        .keyboardShortcut("r", modifiers: [.command, .shift])
+                }
             }
         }
 

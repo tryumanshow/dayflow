@@ -32,6 +32,12 @@ extension Notification.Name {
     static let dayflowUndo      = Notification.Name("dayflowUndo")
     static let dayflowRedo      = Notification.Name("dayflowRedo")
     static let dayflowFind      = Notification.Name("dayflowFind")
+    /// Editor zoom — bumps `dayEditorFontSize` or
+    /// `monthPlanEditorFontSize` in `ContentView` based on the active
+    /// view mode. Mirrors the macOS `View → Zoom In/Out/Reset` triplet.
+    static let dayflowZoomIn    = Notification.Name("dayflowZoomIn")
+    static let dayflowZoomOut   = Notification.Name("dayflowZoomOut")
+    static let dayflowZoomReset = Notification.Name("dayflowZoomReset")
 }
 
 /// WKWebView consumes scroll-wheel events even when its inner document
