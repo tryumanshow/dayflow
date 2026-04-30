@@ -47,6 +47,14 @@
 "month.plan.delete_section" = "섹션 삭제";
 "month.plan.rename_section" = "이름 변경";
 "month.plan.empty" = "섹션을 추가해서 계획을 세워보세요";
+"month.plan.history" = "이전 버전 보기...";
+"month.plan.history.title" = "이전 버전 (자동 백업)";
+"month.plan.history.empty" = "백업된 이전 버전이 없어요";
+"month.plan.history.hint" = "본문이 비어 있는 상태로 덮어써질 때마다 직전 버전이 자동 보관돼. 섹션당 최대 50개.";
+"month.plan.history.restore" = "이 버전으로 복원";
+"month.plan.history.chars" = "자";
+"month.plan.history.select_hint" = "왼쪽에서 버전을 선택해.";
+"common.close" = "닫기";
 
 /* Quick Throw */
 "quick_throw.title" = "→ 할 일 던지기";

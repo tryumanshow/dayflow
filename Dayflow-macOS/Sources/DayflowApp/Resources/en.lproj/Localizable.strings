@@ -47,6 +47,14 @@
 "month.plan.delete_section" = "Delete section";
 "month.plan.rename_section" = "Rename";
 "month.plan.empty" = "Add a section to start planning";
+"month.plan.history" = "View earlier versions...";
+"month.plan.history.title" = "Earlier versions (auto-backup)";
+"month.plan.history.empty" = "No earlier versions yet";
+"month.plan.history.hint" = "Whenever the body is overwritten with empty content, the prior version is auto-saved. Up to 50 per section.";
+"month.plan.history.restore" = "Restore this version";
+"month.plan.history.chars" = "chars";
+"month.plan.history.select_hint" = "Pick a version on the left.";
+"common.close" = "Close";
 
 /* Quick Throw */
 "quick_throw.title" = "→ throw a task";
