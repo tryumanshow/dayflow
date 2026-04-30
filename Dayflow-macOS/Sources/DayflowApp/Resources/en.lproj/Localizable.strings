@@ -28,6 +28,8 @@
 "appointments.title_placeholder" = "Title";
 "appointments.month_header" = "This month";
 "appointments.month_hint" = "edit here";
+"appointments.end_date_add" = "+ end date";
+"appointments.end_date_remove" = "Remove end date";
 "appointments.manage_in_month" = "manage in Month";
 
 /* Week view */

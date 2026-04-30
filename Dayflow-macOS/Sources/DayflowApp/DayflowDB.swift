@@ -42,6 +42,11 @@ struct Appointment: Identifiable, Equatable {
     let title: String
     let note: String?
     let category: AppointmentCategory
+
+    var isMultiDay: Bool {
+        guard let endAt else { return false }
+        return DayflowDB.ymd(startAt) != DayflowDB.ymd(endAt)
+    }
 }
 
 /// Thin wrapper around the Dayflow SQLite DB.
@@ -589,15 +594,18 @@ final class DayflowDB: @unchecked Sendable {
         let startStr = Self.ymd(start) + "T00:00"
         let endStr = Self.ymd(end) + "T23:59"
         var stmt: OpaquePointer?
+        // Half-open overlap with the window — pulls in spans whose
+        // start_at sits before gridStart but still cross into it.
         sqlite3_prepare_v2(db, """
             SELECT id, start_at, end_at, title, note, category
             FROM appointments
-            WHERE start_at BETWEEN ? AND ?
+            WHERE start_at <= ?
+              AND COALESCE(end_at, start_at) >= ?
             ORDER BY start_at ASC, id ASC
         """, -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, startStr)
-        bindText(stmt, 2, endStr)
+        bindText(stmt, 1, endStr)
+        bindText(stmt, 2, startStr)
 
         var out: [Appointment] = []
         while sqlite3_step(stmt) == SQLITE_ROW {

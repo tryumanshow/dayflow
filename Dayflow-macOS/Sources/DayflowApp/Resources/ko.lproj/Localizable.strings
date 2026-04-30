@@ -28,6 +28,8 @@
 "appointments.title_placeholder" = "제목";
 "appointments.month_header" = "이 달의 일정";
 "appointments.month_hint" = "여기서 관리";
+"appointments.end_date_add" = "+ 종료일";
+"appointments.end_date_remove" = "종료일 제거";
 "appointments.manage_in_month" = "월간 뷰에서 관리";
 
 /* Week view */

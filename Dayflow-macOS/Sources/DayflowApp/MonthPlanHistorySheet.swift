@@ -99,11 +99,13 @@ struct MonthPlanHistorySheet: View {
         return entries.first(where: { $0.id == id })
     }
 
+    @MainActor
     private func reload() {
         entries = store.monthPlanSectionHistory(id: sectionId)
         if selectedEntryId == nil { selectedEntryId = entries.first?.id }
     }
 
+    @MainActor
     private func restore(_ entry: DayflowDB.MonthPlanSectionHistoryEntry) {
         store.updateMonthPlanSection(id: sectionId, body: entry.bodyMd, bodyJSON: entry.bodyJSON)
         onClose()
