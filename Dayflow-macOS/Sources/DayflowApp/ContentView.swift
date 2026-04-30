@@ -1009,6 +1009,7 @@ struct ContentView: View {
     @State private var selectedSectionId: Int64? = nil
     @State private var editingSectionTitleId: Int64? = nil
     @State private var sectionTitleDraft: String = ""
+    @State private var historySectionId: Int64? = nil
 
     /// Resolve the active section id — falls back to the first section
     /// when the stored selection is stale or nil.
@@ -1101,6 +1102,14 @@ struct ContentView: View {
                 .padding(.vertical, DS.Space.xl)
             }
         }
+        .sheet(item: Binding(
+            get: { historySectionId.map(IdentifiedSectionId.init) },
+            set: { historySectionId = $0?.id }
+        )) { wrapped in
+            MonthPlanHistorySheet(sectionId: wrapped.id, store: store) {
+                historySectionId = nil
+            }
+        }
     }
 
     /// Separate view so the Binding captures `sectionId` by value
@@ -1164,6 +1173,9 @@ struct ContentView: View {
                 Button(L("month.plan.rename_section")) {
                     sectionTitleDraft = section.title
                     editingSectionTitleId = section.id
+                }
+                Button(L("month.plan.history")) {
+                    historySectionId = section.id
                 }
                 if store.monthPlanSections.count > 1 {
                     Divider()

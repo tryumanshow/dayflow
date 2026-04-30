@@ -147,6 +147,16 @@ final class DayflowDB: @unchecked Sendable {
             updated_at  TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_mps_month ON month_plan_sections(month_key);
+        CREATE TABLE IF NOT EXISTS month_plan_section_history (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            section_id  INTEGER NOT NULL,
+            body_md     TEXT NOT NULL,
+            body_json   TEXT,
+            saved_at    TEXT NOT NULL,
+            reason      TEXT NOT NULL DEFAULT 'pre-overwrite',
+            FOREIGN KEY (section_id) REFERENCES month_plan_sections(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_mpsh_section ON month_plan_section_history(section_id, saved_at DESC);
         """
         sqlite3_exec(db, ddl, nil, nil, nil)
         migrate()
@@ -237,6 +247,25 @@ final class DayflowDB: @unchecked Sendable {
                 INSERT INTO month_plan_sections (month_key, title, sort_order, body_md, body_json, updated_at)
                     SELECT month_key, '계획', 0, body_md, body_json, updated_at
                     FROM month_plans WHERE body_md != '';
+            """)
+        }
+        if current < 8 {
+            // v8: undo-safe history for month_plan_sections. Every
+            // overwrite of non-empty body snapshots the previous
+            // version into history so an accidental wipe (Swift↔JS
+            // binding race + BlockNote 0.22 toggleStyles edge cases
+            // can flush an empty document back to disk) is recoverable.
+            runMigrationStep(version: 8, sql: """
+                CREATE TABLE IF NOT EXISTS month_plan_section_history (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    section_id  INTEGER NOT NULL,
+                    body_md     TEXT NOT NULL,
+                    body_json   TEXT,
+                    saved_at    TEXT NOT NULL,
+                    reason      TEXT NOT NULL DEFAULT 'pre-overwrite',
+                    FOREIGN KEY (section_id) REFERENCES month_plan_sections(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_mpsh_section ON month_plan_section_history(section_id, saved_at DESC);
             """)
         }
     }
@@ -432,6 +461,60 @@ final class DayflowDB: @unchecked Sendable {
 
     func updateMonthPlanSection(id: Int64, body: String, bodyJSON: String?) {
         let now = nowISO()
+        // Snapshot the current row into history BEFORE overwriting whenever
+        // we'd be dropping non-empty content into a different body. The
+        // BlockNote↔Swift binding race can flush an empty doc back to disk
+        // (see `month_plan_section_history` migration v8); this guarantees
+        // every prior version stays recoverable even if the editor wipes
+        // itself. Snapshot is skipped when body+JSON match exactly so
+        // idempotent re-saves (e.g. lossless markdown round-trip after
+        // initial load) don't churn history.
+        var existingMd: String = ""
+        var existingJSON: String? = nil
+        var read: OpaquePointer?
+        if sqlite3_prepare_v2(db, "SELECT body_md, body_json FROM month_plan_sections WHERE id = ?", -1, &read, nil) == SQLITE_OK {
+            sqlite3_bind_int64(read, 1, id)
+            if sqlite3_step(read) == SQLITE_ROW {
+                existingMd = textCol(read, 0)
+                let j = textCol(read, 1)
+                existingJSON = j.isEmpty ? nil : j
+            }
+            sqlite3_finalize(read)
+        }
+        let bodyChanged = existingMd != body || existingJSON != bodyJSON
+        let droppingContent = !existingMd.isEmpty && bodyChanged
+        if droppingContent {
+            let reason = body.isEmpty ? "wipe-guard" : "pre-overwrite"
+            var hist: OpaquePointer?
+            sqlite3_prepare_v2(db, """
+                INSERT INTO month_plan_section_history (section_id, body_md, body_json, saved_at, reason)
+                VALUES (?, ?, ?, ?, ?)
+            """, -1, &hist, nil)
+            sqlite3_bind_int64(hist, 1, id)
+            bindText(hist, 2, existingMd)
+            bindTextOrNull(hist, 3, existingJSON)
+            bindText(hist, 4, now)
+            bindText(hist, 5, reason)
+            sqlite3_step(hist)
+            sqlite3_finalize(hist)
+            // Bound history at 50 rows per section — older snapshots
+            // age out so a long-lived section doesn't grow unbounded.
+            var prune: OpaquePointer?
+            sqlite3_prepare_v2(db, """
+                DELETE FROM month_plan_section_history
+                WHERE section_id = ?
+                  AND id NOT IN (
+                    SELECT id FROM month_plan_section_history
+                    WHERE section_id = ?
+                    ORDER BY saved_at DESC, id DESC
+                    LIMIT 50
+                  )
+            """, -1, &prune, nil)
+            sqlite3_bind_int64(prune, 1, id)
+            sqlite3_bind_int64(prune, 2, id)
+            sqlite3_step(prune)
+            sqlite3_finalize(prune)
+        }
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
             UPDATE month_plan_sections SET body_md = ?, body_json = ?, updated_at = ? WHERE id = ?
@@ -442,6 +525,40 @@ final class DayflowDB: @unchecked Sendable {
         sqlite3_bind_int64(stmt, 4, id)
         sqlite3_step(stmt)
         sqlite3_finalize(stmt)
+    }
+
+    struct MonthPlanSectionHistoryEntry {
+        let id: Int64
+        let bodyMd: String
+        let bodyJSON: String?
+        let savedAt: String
+        let reason: String
+    }
+
+    /// Most recent first. Used by the section "복구..." menu so the user
+    /// can roll back an accidental wipe without leaving the app.
+    func getMonthPlanSectionHistory(sectionId: Int64) -> [MonthPlanSectionHistoryEntry] {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, """
+            SELECT id, body_md, body_json, saved_at, reason
+            FROM month_plan_section_history
+            WHERE section_id = ?
+            ORDER BY saved_at DESC, id DESC
+        """, -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, sectionId)
+        var out: [MonthPlanSectionHistoryEntry] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let json = textCol(stmt, 2)
+            out.append(MonthPlanSectionHistoryEntry(
+                id: sqlite3_column_int64(stmt, 0),
+                bodyMd: textCol(stmt, 1),
+                bodyJSON: json.isEmpty ? nil : json,
+                savedAt: textCol(stmt, 3),
+                reason: textCol(stmt, 4)
+            ))
+        }
+        return out
     }
 
     func renameMonthPlanSection(id: Int64, title: String) {

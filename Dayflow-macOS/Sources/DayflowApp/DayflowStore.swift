@@ -236,6 +236,13 @@ final class DayflowStore {
         monthPlanSections.removeAll { $0.id == id }
     }
 
+    /// Recovery surface for the per-section history table. Used by the
+    /// section "복구..." menu — see DayflowDB.updateMonthPlanSection for
+    /// the snapshot policy that populates this list.
+    func monthPlanSectionHistory(id: Int64) -> [DayflowDB.MonthPlanSectionHistoryEntry] {
+        db.getMonthPlanSectionHistory(sectionId: id)
+    }
+
     /// Fast path for external markdown-only edits (QuickThrow, Week
     /// checkbox toggles). Updates the in-memory cache without the
     /// month-range SQL round-trip that `refresh(force:)` would cost.
