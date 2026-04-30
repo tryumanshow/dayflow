@@ -119,7 +119,7 @@ struct ContentView: View {
     @AppStorage(AppStorageKeys.monthPlanEditorFontSize) private var monthPlanEditorFontSize: Double = AppStorageKeys.monthPlanEditorFontSizeDefault
     @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
     @AppStorage(AppStorageKeys.startDate) private var startDateEpoch: Double = 0
-    @State private var sideRailWidth: CGFloat = 340
+    @AppStorage(AppStorageKeys.sideRailWidth) private var sideRailWidth: Double = AppStorageKeys.sideRailWidthDefault
     @State private var sideRailDragStart: CGFloat? = nil
 
     var body: some View {
@@ -131,6 +131,33 @@ struct ContentView: View {
         }
         .background(Color.dfCanvas)
         .frame(minWidth: 600, minHeight: 500)
+        .onReceive(NotificationCenter.default.publisher(for: .dayflowZoomIn))    { _ in bumpEditorFontSize(by: +1) }
+        .onReceive(NotificationCenter.default.publisher(for: .dayflowZoomOut))   { _ in bumpEditorFontSize(by: -1) }
+        .onReceive(NotificationCenter.default.publisher(for: .dayflowZoomReset)) { _ in resetEditorFontSize() }
+    }
+
+    /// Range matches the Settings slider (see SettingsView). One step
+    /// per shortcut press; sustained Cmd+= keeps the user in tactile
+    /// control, no acceleration curve to surprise them.
+    private static let editorFontSizeRange: ClosedRange<Double> = 9...20
+
+    private func bumpEditorFontSize(by delta: Double) {
+        let clamp: (Double) -> Double = { v in
+            min(Self.editorFontSizeRange.upperBound, max(Self.editorFontSizeRange.lowerBound, v))
+        }
+        switch store.viewMode {
+        case .day:   dayEditorFontSize = clamp(dayEditorFontSize + delta)
+        case .month: monthPlanEditorFontSize = clamp(monthPlanEditorFontSize + delta)
+        case .week:  NSSound.beep()  // no editor surface in week view
+        }
+    }
+
+    private func resetEditorFontSize() {
+        switch store.viewMode {
+        case .day:   dayEditorFontSize = AppStorageKeys.dayEditorFontSizeDefault
+        case .month: monthPlanEditorFontSize = AppStorageKeys.monthPlanEditorFontSizeDefault
+        case .week:  NSSound.beep()
+        }
     }
 
     // MARK: - navigation bar -------------------------------------------------
@@ -272,7 +299,7 @@ struct ContentView: View {
             // Draggable divider between editor and side rail (AppKit-backed).
             HorizontalResizeHandle(
                 onDrag: { dx in
-                    sideRailWidth = max(220, min(500, sideRailWidth - dx))
+                    sideRailWidth = max(220, min(500, sideRailWidth - Double(dx)))
                 },
                 onEnd: { }
             )
@@ -293,7 +320,11 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
                 appCredit
             }
-            .frame(minWidth: 220, maxWidth: sideRailWidth)
+            // FIXED width — driven entirely by the user's drag state.
+            // The previous `minWidth/maxWidth` form pinned the rail at
+            // 220 because the editor's `.layoutPriority(1)` claimed all
+            // remaining space first, leaving the drag effectively dead.
+            .frame(width: sideRailWidth)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
         }
@@ -712,8 +743,18 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
 
-            Rectangle().fill(Color.dfHairline).frame(width: 0.7)
+            // Draggable divider — same AppKit-backed handle the day
+            // view uses, sharing `sideRailWidth` so a drag in either
+            // mode applies everywhere.
+            HorizontalResizeHandle(
+                onDrag: { dx in
+                    sideRailWidth = max(220, min(500, sideRailWidth - Double(dx)))
+                },
+                onEnd: { }
+            )
+            .frame(minWidth: 10, maxWidth: 10, maxHeight: .infinity)
 
             VStack(spacing: 0) {
                 ScrollView {
@@ -730,7 +771,7 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
                 appCredit
             }
-            .frame(width: 460)
+            .frame(width: sideRailWidth)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
         }
