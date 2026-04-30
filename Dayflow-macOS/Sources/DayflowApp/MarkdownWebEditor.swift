@@ -34,6 +34,37 @@ extension Notification.Name {
     static let dayflowFind      = Notification.Name("dayflowFind")
 }
 
+/// WKWebView consumes scroll-wheel events even when its inner document
+/// has no overflow to scroll. That swallows the gesture when this editor
+/// is hosted inside a SwiftUI `ScrollView` (the right rail in 이달 계획),
+/// so the user can't scroll past the editor with the cursor on top of it.
+/// Forward the event to `nextResponder` whenever the inner editor body
+/// reports it has nothing to scroll in the wheel direction. JS pushes a
+/// `scrollState` message after every content/size change so the flag
+/// stays in sync without per-event JS round-trips.
+final class ScrollForwardingWebView: WKWebView {
+    /// Updated by the `scrollState` message from the editor JS:
+    /// `canScrollUp` / `canScrollDown` reflect whether the inner
+    /// `#editor` has room to scroll further in that direction.
+    var canScrollUp: Bool = false
+    var canScrollDown: Bool = false
+
+    override func scrollWheel(with event: NSEvent) {
+        // deltaY > 0 = wheel rolled up (page scrolls down on natural
+        // scroll, up on classic) — match macOS convention: positive
+        // deltaY scrolls content downward, i.e. shows content above.
+        let dy = event.scrollingDeltaY
+        let goingUp = dy > 0
+        let goingDown = dy < 0
+        let canHandleHere = (goingUp && canScrollUp) || (goingDown && canScrollDown)
+        if canHandleHere {
+            super.scrollWheel(with: event)
+        } else {
+            nextResponder?.scrollWheel(with: event)
+        }
+    }
+}
+
 struct MarkdownWebEditor: NSViewRepresentable {
     @Binding var markdown: String
     @Binding var markdownJSON: String?
@@ -50,7 +81,8 @@ struct MarkdownWebEditor: NSViewRepresentable {
         config.userContentController = userContent
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
 
-        let web = WKWebView(frame: .zero, configuration: config)
+        let web = ScrollForwardingWebView(frame: .zero, configuration: config)
+        context.coordinator.scrollWebView = web
         web.setValue(false, forKey: "drawsBackground")
         web.navigationDelegate = context.coordinator
         web.allowsBackForwardNavigationGestures = false
@@ -92,6 +124,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var parent: MarkdownWebEditor
         weak var webView: WKWebView?
+        weak var scrollWebView: ScrollForwardingWebView?
         var ready: Bool = false
         var pendingMarkdown: String? = nil
         var pendingJSON: String? = nil
@@ -184,6 +217,11 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 ready = true
                 flushIfReady()
                 applyFontSizeIfReady()
+            case "scrollState":
+                let up = (body["canScrollUp"] as? Bool) ?? false
+                let down = (body["canScrollDown"] as? Bool) ?? false
+                scrollWebView?.canScrollUp = up
+                scrollWebView?.canScrollDown = down
             case "change":
                 let md = (body["md"] as? String) ?? ""
                 let json = body["json"] as? String
@@ -283,8 +321,13 @@ struct MarkdownWebEditor: NSViewRepresentable {
         flex: 1 1 auto;
         min-height: 0;
         overflow-y: auto;
-        padding: 16px 8px 24px 8px;
+        /* WebKit excludes padding-bottom from scrollable area on
+           overflow:auto containers — push the bottom breathing room
+           onto the inner BlockNote container instead so the last
+           block doesn't sit flush against the editor edge. */
+        padding: 16px 8px 0 8px;
     }
+    .bn-container { padding-bottom: 24px; }
     /* Dayflow's own formatting strip. BlockNote's React-side toolbar
        component isn't loaded (we're on @blocknote/core only), so we
        build a minimal vanilla one that calls editor.toggleStyles /
@@ -707,6 +750,25 @@ struct MarkdownWebEditor: NSViewRepresentable {
         lastEmittedJSON = json;
         try { window.webkit.messageHandlers.dayflow.postMessage({ type: "change", md: md, json: json }); } catch (e) {}
     }
+    // Tell Swift whether the inner editor still has scroll headroom in
+    // each direction. Swift uses this to decide between consuming a
+    // wheel event vs forwarding it to the enclosing SwiftUI ScrollView.
+    let lastScrollSig = { up: null, down: null };
+    function postScrollState() {
+        const root = document.getElementById('editor');
+        if (!root) return;
+        // 1px slack soaks up subpixel rounding so we don't oscillate
+        // at the boundary.
+        const up = root.scrollTop > 1;
+        const down = (root.scrollHeight - root.clientHeight - root.scrollTop) > 1;
+        if (up === lastScrollSig.up && down === lastScrollSig.down) return;
+        lastScrollSig.up = up; lastScrollSig.down = down;
+        try {
+            window.webkit.messageHandlers.dayflow.postMessage({
+                type: "scrollState", canScrollUp: up, canScrollDown: down
+            });
+        } catch (e) {}
+    }
 
     // Line-based markdown parser. BlockNote 0.15.11's tryParseMarkdownToBlocks
     // chokes on GFM task lists (`- [ ] foo` becomes [empty checkListItem, "foo"
@@ -873,6 +935,27 @@ struct MarkdownWebEditor: NSViewRepresentable {
     function scheduleEmit() {
         if (emitTimer) clearTimeout(emitTimer);
         emitTimer = setTimeout(() => { emitTimer = null; emitCurrentContent(); }, 200);
+    }
+
+    // Sync scroll-overflow state to Swift on every relevant event so the
+    // wheel-forwarding decision stays accurate. Listeners are attached
+    // once, after the editor mounts.
+    function installScrollStateBridge() {
+        const root = document.getElementById('editor');
+        if (!root) return;
+        const refresh = () => postScrollState();
+        root.addEventListener('scroll', refresh, { passive: true });
+        if (window.ResizeObserver) {
+            new ResizeObserver(refresh).observe(root);
+        }
+        // Mutations inside the editor change content height too.
+        if (editorRootEl) {
+            new MutationObserver(refresh).observe(editorRootEl, {
+                childList: true, subtree: true, characterData: true
+            });
+        }
+        // Initial sync once layout has settled.
+        requestAnimationFrame(refresh);
     }
 
     // BlockNote default-schema color palette. Names are the public
@@ -1645,7 +1728,8 @@ struct MarkdownWebEditor: NSViewRepresentable {
             installHrObserver();
             installNestedImeWorkaround();
             installCheckboxToggle();
-            editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); });
+            installScrollStateBridge();
+            editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); postScrollState(); });
             if (editor.onEditorSelectionChange) {
                 editor.onEditorSelectionChange(refreshToolbarState);
             }
