@@ -283,8 +283,13 @@ struct MarkdownWebEditor: NSViewRepresentable {
         flex: 1 1 auto;
         min-height: 0;
         overflow-y: auto;
-        padding: 16px 8px 24px 8px;
+        /* WebKit excludes padding-bottom from scrollable area on
+           overflow:auto containers — push the bottom breathing room
+           onto the inner BlockNote container instead so the last
+           block doesn't sit flush against the editor edge. */
+        padding: 16px 8px 0 8px;
     }
+    .bn-container { padding-bottom: 24px; }
     /* Dayflow's own formatting strip. BlockNote's React-side toolbar
        component isn't loaded (we're on @blocknote/core only), so we
        build a minimal vanilla one that calls editor.toggleStyles /
