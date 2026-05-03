@@ -124,6 +124,13 @@ struct ContentView: View {
     @AppStorage(AppStorageKeys.startDate) private var startDateEpoch: Double = 0
     @AppStorage(AppStorageKeys.sideRailWidth) private var sideRailWidth: Double = AppStorageKeys.sideRailWidthDefault
     @State private var sideRailDragStart: CGFloat? = nil
+    /// Transient drag-time width. AppKit mouseDragged callbacks update
+    /// this @State (which reliably triggers SwiftUI body re-renders);
+    /// on mouseUp we commit it back to @AppStorage. Direct writes to
+    /// @AppStorage from AppKit event handlers can fail to invalidate the
+    /// view during a drag, leaving the rail visually stuck.
+    @State private var liveRailWidth: Double? = nil
+    private var displayRailWidth: Double { liveRailWidth ?? sideRailWidth }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -302,9 +309,12 @@ struct ContentView: View {
             // Draggable divider between editor and side rail (AppKit-backed).
             HorizontalResizeHandle(
                 onDrag: { dx in
-                    sideRailWidth = max(220, min(500, sideRailWidth - Double(dx)))
+                    let base = liveRailWidth ?? sideRailWidth
+                    liveRailWidth = max(220, min(500, base - Double(dx)))
                 },
-                onEnd: { }
+                onEnd: {
+                    if let v = liveRailWidth { sideRailWidth = v; liveRailWidth = nil }
+                }
             )
             .frame(minWidth: 10, maxWidth: 10, maxHeight: .infinity)
 
@@ -327,7 +337,7 @@ struct ContentView: View {
             // The previous `minWidth/maxWidth` form pinned the rail at
             // 220 because the editor's `.layoutPriority(1)` claimed all
             // remaining space first, leaving the drag effectively dead.
-            .frame(width: sideRailWidth)
+            .frame(width: displayRailWidth)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
         }
@@ -752,17 +762,27 @@ struct ContentView: View {
                 .padding(.bottom, DS.Space.xl)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .layoutPriority(1)
+            // Match Day editor's pattern: explicit `minWidth` gives the
+            // HStack a concrete lower bound so fixed-width siblings (the
+            // resize handle and the rail) are honored during re-layout
+            // when `displayRailWidth` changes mid-drag. Without minWidth,
+            // a `maxWidth: .infinity` + `layoutPriority(1)` combination
+            // — especially with a GeometryReader inside (`spanOverlay`)
+            // — confuses HStack's negotiation and the rail's fixed width
+            // updates fail to propagate visually during a drag.
+            .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
 
             // Draggable divider — same AppKit-backed handle the day
             // view uses, sharing `sideRailWidth` so a drag in either
             // mode applies everywhere.
             HorizontalResizeHandle(
                 onDrag: { dx in
-                    sideRailWidth = max(220, min(500, sideRailWidth - Double(dx)))
+                    let base = liveRailWidth ?? sideRailWidth
+                    liveRailWidth = max(220, min(500, base - Double(dx)))
                 },
-                onEnd: { }
+                onEnd: {
+                    if let v = liveRailWidth { sideRailWidth = v; liveRailWidth = nil }
+                }
             )
             .frame(minWidth: 10, maxWidth: 10, maxHeight: .infinity)
 
@@ -781,7 +801,7 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
                 appCredit
             }
-            .frame(width: sideRailWidth)
+            .frame(width: displayRailWidth)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
         }
