@@ -310,7 +310,7 @@ struct ContentView: View {
             HorizontalResizeHandle(
                 onDrag: { dx in
                     let base = liveRailWidth ?? sideRailWidth
-                    liveRailWidth = max(220, min(500, base - Double(dx)))
+                    liveRailWidth = max(300, min(500, base - Double(dx)))
                 },
                 onEnd: {
                     if let v = liveRailWidth { sideRailWidth = v; liveRailWidth = nil }
@@ -772,20 +772,6 @@ struct ContentView: View {
             // updates fail to propagate visually during a drag.
             .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
 
-            // Draggable divider — same AppKit-backed handle the day
-            // view uses, sharing `sideRailWidth` so a drag in either
-            // mode applies everywhere.
-            HorizontalResizeHandle(
-                onDrag: { dx in
-                    let base = liveRailWidth ?? sideRailWidth
-                    liveRailWidth = max(220, min(500, base - Double(dx)))
-                },
-                onEnd: {
-                    if let v = liveRailWidth { sideRailWidth = v; liveRailWidth = nil }
-                }
-            )
-            .frame(minWidth: 10, maxWidth: 10, maxHeight: .infinity)
-
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.Space.breathe) {
@@ -804,6 +790,26 @@ struct ContentView: View {
             .frame(width: displayRailWidth)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
+            // Handle as an overlay on the rail's leading edge instead of
+            // an HStack sibling. Month grid's `maxWidth: .infinity` +
+            // inner GeometryReader (`spanOverlay`) confuses HStack hit
+            // testing on macOS — the NSView handle stops receiving
+            // mouseEntered/mouseDown even when visible. Overlay
+            // straddling the boundary guarantees z-order and hit area.
+            .overlay(alignment: .leading) {
+                HorizontalResizeHandle(
+                    onDrag: { dx in
+                        let base = liveRailWidth ?? sideRailWidth
+                        liveRailWidth = max(300, min(500, base - Double(dx)))
+                    },
+                    onEnd: {
+                        if let v = liveRailWidth { sideRailWidth = v; liveRailWidth = nil }
+                    }
+                )
+                .frame(width: 10)
+                .frame(maxHeight: .infinity)
+                .offset(x: -5)
+            }
         }
     }
 
@@ -1009,12 +1015,14 @@ struct ContentView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(
                         RoundedRectangle(cornerRadius: 4)
                             .fill(liveCategory.color.opacity(0.22))
                     )
+                    .layoutPriority(0)
                 Spacer(minLength: 0)
             }
             Button {
