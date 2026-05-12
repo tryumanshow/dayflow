@@ -483,9 +483,7 @@ struct ContentView: View {
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, DS.Space.sm)
             } else {
-                Text(store.reviewBody)
-                    .font(DS.FontStyle.body)
-                    .textSelection(.enabled)
+                ReviewMarkdownView(text: store.reviewBody)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
