@@ -123,6 +123,7 @@ struct ContentView: View {
     @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
     @AppStorage(AppStorageKeys.startDate) private var startDateEpoch: Double = 0
     @AppStorage(AppStorageKeys.sideRailWidth) private var sideRailWidth: Double = AppStorageKeys.sideRailWidthDefault
+    @AppStorage(AppStorageKeys.sideRailHidden) private var sideRailHidden: Bool = false
     @State private var sideRailDragStart: CGFloat? = nil
     /// Transient drag-time width. AppKit mouseDragged callbacks update
     /// this @State (which reliably triggers SwiftUI body re-renders);
@@ -231,6 +232,11 @@ struct ContentView: View {
                 daysBadge
             }
 
+            if store.viewMode != .week {
+                navIconButton(sideRailHidden ? "sidebar.right" : "sidebar.squares.right") {
+                    withAnimation(DS.Motion.settle) { sideRailHidden.toggle() }
+                }
+            }
             navIconButton("arrow.clockwise") { store.refresh(force: true) }
         }
         .padding(.horizontal, DS.Space.xl)
@@ -306,40 +312,39 @@ struct ContentView: View {
             .padding(.bottom, DS.Space.lg)
             .layoutPriority(1)
 
-            // Draggable divider between editor and side rail (AppKit-backed).
-            HorizontalResizeHandle(
-                onDrag: { dx in
-                    let base = liveRailWidth ?? sideRailWidth
-                    liveRailWidth = max(300, min(500, base - Double(dx)))
-                },
-                onEnd: {
-                    if let v = liveRailWidth { sideRailWidth = v; liveRailWidth = nil }
-                }
-            )
-            .frame(minWidth: 10, maxWidth: 10, maxHeight: .infinity)
-
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: DS.Space.breathe) {
-                        daySummaryRail
-                        appointmentsRail
-                        reviewRail
+            if !sideRailHidden {
+                // Draggable divider between editor and side rail (AppKit-backed).
+                HorizontalResizeHandle(
+                    onDrag: { dx in
+                        let base = liveRailWidth ?? sideRailWidth
+                        liveRailWidth = max(300, min(500, base - Double(dx)))
+                    },
+                    onEnd: {
+                        if let v = liveRailWidth { sideRailWidth = v; liveRailWidth = nil }
                     }
-                    .padding(.horizontal, DS.Space.xl)
-                    .padding(.top, DS.Space.breathe)
-                    .padding(.bottom, DS.Space.xl)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                )
+                .frame(minWidth: 10, maxWidth: 10, maxHeight: .infinity)
+
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: DS.Space.breathe) {
+                            daySummaryRail
+                            appointmentsRail
+                            reviewRail
+                        }
+                        .padding(.horizontal, DS.Space.xl)
+                        .padding(.top, DS.Space.breathe)
+                        .padding(.bottom, DS.Space.xl)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: .infinity)
+                    appCredit
                 }
+                .frame(width: displayRailWidth)
                 .frame(maxHeight: .infinity)
-                appCredit
+                .background(Color.dfQuiet)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
             }
-            // FIXED width — driven entirely by the user's drag state.
-            // The previous `minWidth/maxWidth` form pinned the rail at
-            // 220 because the editor's `.layoutPriority(1)` claimed all
-            // remaining space first, leaving the drag effectively dead.
-            .frame(width: displayRailWidth)
-            .frame(maxHeight: .infinity)
-            .background(Color.dfQuiet)
         }
     }
 
@@ -770,6 +775,7 @@ struct ContentView: View {
             // updates fail to propagate visually during a drag.
             .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
 
+            if !sideRailHidden {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.Space.breathe) {
@@ -807,6 +813,8 @@ struct ContentView: View {
                 .frame(width: 10)
                 .frame(maxHeight: .infinity)
                 .offset(x: -5)
+            }
+            .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
     }
