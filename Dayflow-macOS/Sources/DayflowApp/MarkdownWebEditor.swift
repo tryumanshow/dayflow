@@ -158,40 +158,15 @@ struct MarkdownWebEditor: NSViewRepresentable {
 
         // MARK: - Menu command handlers (via Notification)
 
-        @objc private func handleCopy() {
-            webView?.evaluateJavaScript("window.getSelection().toString().trim()") { result, _ in
-                if let raw = result as? String {
-                    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !text.isEmpty {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(text, forType: .string)
-                    }
-                }
-            }
-        }
-
-        @objc private func handleCut() {
-            webView?.evaluateJavaScript("window.getSelection().toString().trim()") { [weak self] result, _ in
-                if let raw = result as? String {
-                    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !text.isEmpty {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(text, forType: .string)
-                        self?.webView?.evaluateJavaScript("document.execCommand('delete')", completionHandler: nil)
-                    }
-                }
-            }
-        }
-
-        @objc private func handlePaste() {
-            guard let text = NSPasteboard.general.string(forType: .string) else { return }
-            let js = Self.jsStringLiteral(text)
-            webView?.evaluateJavaScript("document.execCommand('insertText', false, \(js))", completionHandler: nil)
-        }
-
-        @objc private func handleSelectAll() {
-            webView?.evaluateJavaScript("document.execCommand('selectAll')", completionHandler: nil)
-        }
+        // Forward to WKWebView's native action selectors. ProseMirror's
+        // clipboard plugin runs on the resulting DOM copy/cut/paste event
+        // and preserves block structure (HTML + plain text flavors).
+        // Trimming or re-serializing in Swift collapses chunk boundaries,
+        // so we delegate entirely.
+        @objc private func handleCopy()      { webView?.perform(#selector(NSText.copy(_:)),      with: nil) }
+        @objc private func handleCut()       { webView?.perform(#selector(NSText.cut(_:)),       with: nil) }
+        @objc private func handlePaste()     { webView?.perform(#selector(NSText.paste(_:)),     with: nil) }
+        @objc private func handleSelectAll() { webView?.perform(#selector(NSText.selectAll(_:)), with: nil) }
 
         @objc private func handleUndo() {
             webView?.evaluateJavaScript("""
@@ -308,7 +283,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
       which would be the exfiltration channel of choice.
     -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline' https://esm.sh; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
-    <link rel="stylesheet" href="https://esm.sh/@blocknote/core@0.25.0/style.css">
+    <link rel="stylesheet" href="https://esm.sh/@blocknote/core@0.22.0/style.css">
     <style>
     html, body {
         margin: 0;
@@ -738,7 +713,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
     </div>
     <div id="editor"></div>
     <script type="module">
-    import { BlockNoteEditor } from "https://esm.sh/@blocknote/core@0.22.0";
+    import { BlockNoteEditor } from "https://esm.sh/@blocknote/core@0.22.0?deps=prosemirror-model@1.23.0,prosemirror-view@1.33.7,prosemirror-state@1.4.3,prosemirror-transform@1.10.2,prosemirror-tables@1.6.1,prosemirror-dropcursor@1.8.1";
 
     let editor = null;
     let lastEmitted = "";
