@@ -43,6 +43,9 @@ enum AppStorageKeys {
     /// applies everywhere.
     static let sideRailWidth        = "dayflow.sideRail.width"
     static let sideRailWidthDefault: Double = 340
+    /// Whether the right side rail is hidden in Day and Month views.
+    /// Toggle from the nav bar; persisted across launches.
+    static let sideRailHidden       = "dayflow.sideRail.hidden"
 }
 
 enum LanguagePreference {
