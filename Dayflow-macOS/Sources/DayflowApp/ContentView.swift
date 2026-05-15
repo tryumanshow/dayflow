@@ -132,6 +132,11 @@ struct ContentView: View {
     /// view during a drag, leaving the rail visually stuck.
     @State private var liveRailWidth: Double? = nil
     private var displayRailWidth: Double { liveRailWidth ?? sideRailWidth }
+    /// Tracks which nav icon button the cursor is over so we can light it
+    /// up on hover. Keyed by SF Symbol name — all current callers pass a
+    /// unique symbol, which keeps the key collision-free without plumbing
+    /// extra ids through call sites.
+    @State private var hoveredNavSymbol: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -206,7 +211,7 @@ struct ContentView: View {
             Divider().frame(height: 16)
 
             HStack(spacing: 6) {
-                navIconButton("chevron.left") { store.step(by: -1) }
+                navIconButton("chevron.left", tooltip: L("nav.tooltip.previous")) { store.step(by: -1) }
                 Button {
                     store.goToToday()
                 } label: {
@@ -219,7 +224,8 @@ struct ContentView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                navIconButton("chevron.right") { store.step(by: 1) }
+                .help(L("nav.tooltip.today"))
+                navIconButton("chevron.right", tooltip: L("nav.tooltip.next")) { store.step(by: 1) }
             }
 
             Text(headerLabel)
@@ -233,11 +239,17 @@ struct ContentView: View {
             }
 
             if store.viewMode != .week {
-                navIconButton(sideRailHidden ? "sidebar.right" : "sidebar.squares.right") {
+                navIconButton(
+                    "sidebar.right",
+                    tooltip: sideRailHidden
+                        ? L("nav.tooltip.toggle_rail_show")
+                        : L("nav.tooltip.toggle_rail_hide"),
+                    isActive: !sideRailHidden
+                ) {
                     withAnimation(DS.Motion.settle) { sideRailHidden.toggle() }
                 }
             }
-            navIconButton("arrow.clockwise") { store.refresh(force: true) }
+            navIconButton("arrow.clockwise", tooltip: L("nav.tooltip.refresh")) { store.refresh(force: true) }
         }
         .padding(.horizontal, DS.Space.xl)
         .padding(.vertical, DS.Space.md)
@@ -253,18 +265,34 @@ struct ContentView: View {
         DaysBadgeView(startDateEpoch: startDateEpoch)
     }
 
-    private func navIconButton(_ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private func navIconButton(
+        _ symbol: String,
+        tooltip: String? = nil,
+        isActive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        let hovered = hoveredNavSymbol == symbol
+        let tint: Color = isActive ? Color.dfAccent : (hovered ? .primary : .secondary)
+        let bgOpacity: Double = hovered ? 0.10 : (isActive ? 0.07 : 0.04)
+        return Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
+                .foregroundStyle(tint)
+                .frame(width: 24, height: 24)
                 .background(
                     RoundedRectangle(cornerRadius: DS.Radius.sm)
-                        .fill(Color.white.opacity(0.04))
+                        .fill(Color.white.opacity(bgOpacity))
                 )
+                .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
+                .animation(DS.Motion.snap, value: hovered)
+                .animation(DS.Motion.snap, value: isActive)
         }
         .buttonStyle(.plain)
+        .onHover { isHovering in
+            hoveredNavSymbol = isHovering ? symbol : (hoveredNavSymbol == symbol ? nil : hoveredNavSymbol)
+        }
+        .help(tooltip ?? "")
+        .accessibilityLabel(tooltip ?? symbol)
     }
 
     private var headerLabel: String {

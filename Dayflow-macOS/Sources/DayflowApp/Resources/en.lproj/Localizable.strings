@@ -5,6 +5,16 @@
 "nav.day" = "Day";
 "nav.week" = "Week";
 "nav.month" = "Month";
+"nav.tooltip.previous" = "Previous";
+"nav.tooltip.next" = "Next";
+"nav.tooltip.today" = "Jump to today";
+"nav.tooltip.refresh" = "Refresh";
+"nav.tooltip.toggle_rail_hide" = "Hide side panel";
+"nav.tooltip.toggle_rail_show" = "Show side panel";
+"menu.previous" = "Previous";
+"menu.next" = "Next";
+"menu.today" = "Today";
+"menu.toggle_side_panel" = "Toggle Side Panel";
 
 /* Header labels */
 "header.day_format" = "yyyy MMM d (EEE)";

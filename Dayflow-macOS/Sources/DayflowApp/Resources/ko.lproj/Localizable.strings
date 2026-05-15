@@ -5,6 +5,16 @@
 "nav.day" = "일";
 "nav.week" = "주";
 "nav.month" = "월";
+"nav.tooltip.previous" = "이전";
+"nav.tooltip.next" = "다음";
+"nav.tooltip.today" = "오늘로 이동";
+"nav.tooltip.refresh" = "새로고침";
+"nav.tooltip.toggle_rail_hide" = "사이드 패널 숨기기";
+"nav.tooltip.toggle_rail_show" = "사이드 패널 보이기";
+"menu.previous" = "이전";
+"menu.next" = "다음";
+"menu.today" = "오늘";
+"menu.toggle_side_panel" = "사이드 패널 토글";
 
 /* Header labels */
 "header.day_format" = "yyyy년 M월 d일 (E)";
