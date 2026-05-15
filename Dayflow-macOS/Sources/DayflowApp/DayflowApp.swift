@@ -86,6 +86,31 @@ struct DayflowApp: App {
             // Lives in the View menu so it sits next to the standard
             // macOS zoom slot. Active view mode decides which AppStorage
             // value gets bumped (Day rail vs Month plan editor).
+            // View-bar navigation commands. Surfacing them in the menu bar
+            // does two jobs: discoverability (users see the shortcuts next
+            // to the labels) and reach (the shortcuts work app-wide even
+            // when the nav bar is offscreen behind a sheet).
+            CommandGroup(after: .toolbar) {
+                Button(NSLocalizedString("menu.previous", bundle: DayflowL10n.activeBundle, comment: "")) {
+                    store.step(by: -1)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: .command)
+                Button(NSLocalizedString("menu.next", bundle: DayflowL10n.activeBundle, comment: "")) {
+                    store.step(by: 1)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: .command)
+                Button(NSLocalizedString("menu.today", bundle: DayflowL10n.activeBundle, comment: "")) {
+                    store.goToToday()
+                }
+                .keyboardShortcut("t", modifiers: .command)
+                Button(NSLocalizedString("menu.toggle_side_panel", bundle: DayflowL10n.activeBundle, comment: "")) {
+                    let key = AppStorageKeys.sideRailHidden
+                    let current = UserDefaults.standard.bool(forKey: key)
+                    UserDefaults.standard.set(!current, forKey: key)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+                Divider()
+            }
             CommandGroup(after: .toolbar) {
                 Button("Editor: Zoom In") {
                     NotificationCenter.default.post(name: .dayflowZoomIn, object: nil)
