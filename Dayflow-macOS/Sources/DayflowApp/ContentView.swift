@@ -98,6 +98,18 @@ private struct DaysBadgeView: View {
     }
 }
 
+fileprivate enum AppointmentRepeat: String, CaseIterable, Identifiable {
+    case none, weekly, monthly
+    var id: String { rawValue }
+    var labelKey: String {
+        switch self {
+        case .none: return "appointments.repeat.none"
+        case .weekly: return "appointments.repeat.weekly"
+        case .monthly: return "appointments.repeat.monthly"
+        }
+    }
+}
+
 @MainActor
 struct ContentView: View {
     @Environment(DayflowStore.self) private var store
@@ -113,6 +125,7 @@ struct ContentView: View {
     /// it's the source of truth for single-day vs multi-day mode.
     @State private var aptEndDateInput: Date? = nil
     @State private var aptCategoryInput: AppointmentCategory = .event
+    @State private var aptRepeatInput: AppointmentRepeat = .none
     @State private var editingAppointmentId: Int64? = nil
     @FocusState private var aptTitleFocused: Bool
 
@@ -963,6 +976,16 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 }
                 Spacer()
+                if !isMultiDay {
+                    Picker("", selection: $aptRepeatInput) {
+                        ForEach(AppointmentRepeat.allCases) { r in
+                            Text(L(r.labelKey)).tag(r)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .help(L("appointments.repeat.help"))
+                }
             }
             .onChange(of: aptDateInput) { _, new in
                 if let end = aptEndDateInput, end < new { aptEndDateInput = new }
@@ -1152,13 +1175,66 @@ struct ContentView: View {
     }
 
     private func submitMonthAppointment() {
+        // Time can be left blank — default to 00:00 so "all-day" style
+        // adds still land. resolveTimes otherwise rejects empty hhmm.
+        let effectiveTime = aptTimeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "00:00" : aptTimeInput
+        let canRepeat = aptRepeatInput != .none && aptEndDateInput == nil
         let ok: Bool
         if let id = editingAppointmentId {
-            ok = store.updateAppointment(id, on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
+            let updated = store.updateAppointment(id, on: aptDateInput, hhmm: effectiveTime, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
+            if updated && canRepeat {
+                addRepeatingAppointments(hhmm: effectiveTime, excludingDay: aptDateInput)
+            }
+            ok = updated
+        } else if canRepeat {
+            ok = addRepeatingAppointments(hhmm: effectiveTime, excludingDay: nil)
         } else {
-            ok = store.addAppointment(on: aptDateInput, hhmm: aptTimeInput, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
+            ok = store.addAppointment(on: aptDateInput, hhmm: effectiveTime, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
         }
         if ok { resetAppointmentForm() }
+    }
+
+    /// Expand the form's single date into every matching date within
+    /// the month containing `aptDateInput` (weekly = same weekday,
+    /// monthly = same day-of-month). Days that don't exist (e.g. the
+    /// 31st in February) are skipped. `excludingDay` skips a specific
+    /// date — used in edit mode so the just-updated row isn't dupli-
+    /// cated.
+    @discardableResult
+    private func addRepeatingAppointments(hhmm: String, excludingDay: Date?) -> Bool {
+        let cal = Calendar(identifier: .gregorian)
+        let monthComps = cal.dateComponents([.year, .month], from: aptDateInput)
+        guard let firstOfMonth = cal.date(from: monthComps),
+              let range = cal.range(of: .day, in: .month, for: firstOfMonth) else { return false }
+
+        var targets: [Date] = []
+        switch aptRepeatInput {
+        case .weekly:
+            let weekday = cal.component(.weekday, from: aptDateInput)
+            for day in range {
+                var c = monthComps; c.day = day
+                if let d = cal.date(from: c), cal.component(.weekday, from: d) == weekday {
+                    targets.append(d)
+                }
+            }
+        case .monthly:
+            let dom = cal.component(.day, from: aptDateInput)
+            if range.contains(dom) {
+                var c = monthComps; c.day = dom
+                if let d = cal.date(from: c) { targets.append(d) }
+            }
+        case .none:
+            return false
+        }
+
+        var anyOk = false
+        for d in targets {
+            if let excl = excludingDay, cal.isDate(d, inSameDayAs: excl) { continue }
+            if store.addAppointment(on: d, hhmm: hhmm, endHHmm: aptEndTimeInput, endDay: nil, title: aptTitleInput, category: aptCategoryInput) {
+                anyOk = true
+            }
+        }
+        return anyOk
     }
 
     private func resetAppointmentForm() {
@@ -1168,6 +1244,7 @@ struct ContentView: View {
         aptEndDateInput = nil
         aptTitleInput = ""
         aptCategoryInput = .event
+        aptRepeatInput = .none
         aptTitleFocused = false
     }
 
