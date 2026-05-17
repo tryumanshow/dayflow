@@ -57,9 +57,90 @@ enum HolidayStore {
                 let h = Holiday(date: date, name: row.name, country: country)
                 out[row.date, default: []].append(h)
             }
+            for sub in computeKRSubstitutes(country: country, rows: rows) {
+                let key = DayflowDB.ymd(sub.date)
+                out[key, default: []].append(sub)
+            }
         }
         return out
     }()
+
+    /// Korean 대체공휴일법 (Substitute Holiday Act) computation.
+    /// Generates a substitute Monday-ish entry when a covered holiday
+    /// lands on a weekend, mirroring the gov't rule so we don't have
+    /// to hand-maintain every year's edge cases in JSON.
+    ///
+    /// Rules (as of 2023+):
+    /// - 3·1절 / 광복절 / 개천절 / 한글날 / 어린이날 / 부처님오신날 / 성탄절
+    ///   → if Saturday or Sunday, substitute on next non-holiday weekday.
+    /// - 설날 / 추석 (each 3 days) → if Sunday OR overlaps another
+    ///   public holiday, substitute on next non-holiday weekday.
+    /// - 새해, 현충일 → no substitute.
+    /// Skips generation when the source JSON already encodes the
+    /// substitute (same name appearing on a date within the following
+    /// 3 days), so manual entries don't get duplicated.
+    private static func computeKRSubstitutes(country: String, rows: [RawHoliday]) -> [Holiday] {
+        guard country == "KR" else { return [] }
+        let cal = Calendar(identifier: .gregorian)
+
+        var datesByKey: [String: [String]] = [:]
+        var dateOf: [String: Date] = [:]
+        for r in rows {
+            guard let d = DF.ymd.date(from: r.date) else { continue }
+            datesByKey[r.date, default: []].append(r.name)
+            dateOf[r.date] = d
+        }
+
+        let weekendRule: Set<String> = ["어린이날", "부처님 오신 날", "크리스마스", "3·1절", "광복절", "개천절", "한글날"]
+        let lunarRule: Set<String> = ["설날", "추석"]
+
+        func alreadyBaked(name: String, after origin: Date) -> Bool {
+            for offset in 1...3 {
+                guard let next = cal.date(byAdding: .day, value: offset, to: origin) else { continue }
+                let key = DayflowDB.ymd(next)
+                let names = datesByKey[key] ?? []
+                if names.contains(name) || names.contains("\(name) 대체") { return true }
+            }
+            return false
+        }
+
+        var occupied = Set(datesByKey.keys)
+        func nextFreeWeekday(after origin: Date) -> Date? {
+            var cur = origin
+            for _ in 0..<14 {
+                guard let next = cal.date(byAdding: .day, value: 1, to: cur) else { return nil }
+                cur = next
+                let wd = cal.component(.weekday, from: cur)
+                let key = DayflowDB.ymd(cur)
+                if wd != 1 && wd != 7 && !occupied.contains(key) { return cur }
+            }
+            return nil
+        }
+
+        var substitutes: [Holiday] = []
+        for key in datesByKey.keys.sorted() {
+            let names = datesByKey[key]!
+            let d = dateOf[key]!
+            let wd = cal.component(.weekday, from: d)
+            for name in names {
+                let needs: Bool
+                if weekendRule.contains(name) {
+                    needs = (wd == 1 || wd == 7)
+                } else if lunarRule.contains(name) {
+                    let overlap = names.contains(where: { $0 != name })
+                    needs = (wd == 1) || overlap
+                } else {
+                    needs = false
+                }
+                if !needs { continue }
+                if alreadyBaked(name: name, after: d) { continue }
+                guard let sub = nextFreeWeekday(after: d) else { continue }
+                occupied.insert(DayflowDB.ymd(sub))
+                substitutes.append(Holiday(date: sub, name: "\(name) 대체", country: country))
+            }
+        }
+        return substitutes
+    }
 
     private struct RawHoliday: Decodable {
         let date: String
