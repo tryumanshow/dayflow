@@ -159,7 +159,14 @@ struct ContentView: View {
                 .transition(.opacity)
         }
         .background(Color.dfCanvas)
-        .frame(minWidth: 600, minHeight: 500)
+        // Keep the floor BELOW the primary column's needs (grid 320 / day
+        // editor 360 + padding), not above grid+rail. A floor wider than
+        // the actual screen (e.g. on a scaled display) forces the content
+        // to lay out wider than the window and overflow both edges, with
+        // the GeometryReaders below seeing the inflated width so their
+        // rail auto-hide never triggers. With a low floor the readers see
+        // the real width and collapse the rail when it can't fit.
+        .frame(minWidth: 460, minHeight: 500)
         .onReceive(NotificationCenter.default.publisher(for: .dayflowZoomIn))    { _ in bumpEditorFontSize(by: +1) }
         .onReceive(NotificationCenter.default.publisher(for: .dayflowZoomOut))   { _ in bumpEditorFontSize(by: -1) }
         .onReceive(NotificationCenter.default.publisher(for: .dayflowZoomReset)) { _ in resetEditorFontSize() }
@@ -338,7 +345,18 @@ struct ContentView: View {
 
     private var dayView: some View {
         @Bindable var store = store
-        return HStack(alignment: .top, spacing: 0) {
+        return GeometryReader { geo in
+          // Same narrow-display guard as the month view: drop the rail
+          // (and its drag handle) when there isn't room for it at its own
+          // minimum width, so the editor takes the full width instead of
+          // the two columns overflowing the window on a scaled display.
+          let editorMin: CGFloat = 360
+          let handleW: CGFloat = 10
+          let railMin: CGFloat = 300
+          let railCap = max(0, geo.size.width - editorMin - handleW)
+          let railVisible = !sideRailHidden && railCap >= railMin
+          let railW = min(displayRailWidth, railCap)
+          HStack(alignment: .top, spacing: 0) {
             MarkdownWebEditor(
                 markdown: $store.dayBody,
                 markdownJSON: $store.dayBodyJSON,
@@ -353,7 +371,7 @@ struct ContentView: View {
             .padding(.bottom, DS.Space.lg)
             .layoutPriority(1)
 
-            if !sideRailHidden {
+            if railVisible {
                 // Draggable divider between editor and side rail (AppKit-backed).
                 HorizontalResizeHandle(
                     onDrag: { dx in
@@ -381,11 +399,12 @@ struct ContentView: View {
                     .frame(maxHeight: .infinity)
                     appCredit
                 }
-                .frame(width: displayRailWidth)
+                .frame(width: railW)
                 .frame(maxHeight: .infinity)
                 .background(Color.dfQuiet)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+          }
         }
     }
 
@@ -771,7 +790,20 @@ struct ContentView: View {
             Array(days[$0..<min($0 + 7, days.count)])
         }
 
-        return HStack(alignment: .top, spacing: 0) {
+        return GeometryReader { geo in
+          // On a narrow or scaled display, only keep the rail if it can be
+          // drawn at its own minimum width (300, the resize-handle floor)
+          // without pushing the grid below its minimum. If it can't, drop
+          // the rail entirely so the calendar takes the full width — far
+          // better than clipping the rail's text or overlapping the grid.
+          // The user's manual hide toggle still wins on top of this.
+          let gridMin: CGFloat = 320
+          let handleW: CGFloat = 10
+          let railMin: CGFloat = 300
+          let railCap = max(0, geo.size.width - gridMin - handleW)
+          let railVisible = !sideRailHidden && railCap >= railMin
+          let railW = min(displayRailWidth, railCap)
+          HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: DS.Space.md) {
                 HStack(spacing: 4) {
                     ForEach(weekdayHeaders, id: \.self) { wd in
@@ -816,7 +848,7 @@ struct ContentView: View {
             // updates fail to propagate visually during a drag.
             .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
 
-            if !sideRailHidden {
+            if railVisible {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.Space.breathe) {
@@ -832,7 +864,7 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
                 appCredit
             }
-            .frame(width: displayRailWidth)
+            .frame(width: railW)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
             // Handle as an overlay on the rail's leading edge instead of
@@ -857,6 +889,7 @@ struct ContentView: View {
             }
             .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+          }
         }
     }
 
