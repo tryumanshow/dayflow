@@ -38,6 +38,7 @@ dayflow/
 # Per-session dev tooling artifacts (gstack qa reports, learnings, etc).
 # These are local-only and shouldn't ship with the repo.
 .gstack/
+.omc/
 
 # OS
 .DS_Store
