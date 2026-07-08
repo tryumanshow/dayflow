@@ -65,7 +65,7 @@ struct Appointment: Identifiable, Equatable {
 final class DayflowDB: @unchecked Sendable {
     static let shared = DayflowDB()
 
-    private var db: OpaquePointer?
+    var db: OpaquePointer?
 
     /// macOS standard per-app user-data location. Resolves to
     /// `~/Library/Application Support/Dayflow/dayflow.db` for the current
@@ -297,7 +297,7 @@ final class DayflowDB: @unchecked Sendable {
 
     // MARK: - format helpers
 
-    private func nowISO() -> String {
+    func nowISO() -> String {
         DF.isoTimestamp.string(from: Date())
     }
 
@@ -311,7 +311,7 @@ final class DayflowDB: @unchecked Sendable {
         DF.monthKey.string(from: d)
     }
 
-    private func textCol(_ stmt: OpaquePointer?, _ idx: Int32) -> String {
+    func textCol(_ stmt: OpaquePointer?, _ idx: Int32) -> String {
         if let cstr = sqlite3_column_text(stmt, idx) {
             return String(cString: cstr)
         }
@@ -320,11 +320,11 @@ final class DayflowDB: @unchecked Sendable {
 
     private static let TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    private func bindText(_ stmt: OpaquePointer?, _ idx: Int32, _ value: String) {
+    func bindText(_ stmt: OpaquePointer?, _ idx: Int32, _ value: String) {
         sqlite3_bind_text(stmt, idx, value, -1, Self.TRANSIENT)
     }
 
-    private func bindTextOrNull(_ stmt: OpaquePointer?, _ idx: Int32, _ value: String?) {
+    func bindTextOrNull(_ stmt: OpaquePointer?, _ idx: Int32, _ value: String?) {
         if let value {
             sqlite3_bind_text(stmt, idx, value, -1, Self.TRANSIENT)
         } else {
@@ -338,7 +338,7 @@ final class DayflowDB: @unchecked Sendable {
     /// `day_notes` and `month_plans`. Both tables have the same
     /// `(key TEXT PK, body_md TEXT NOT NULL, body_json TEXT, updated_at TEXT)`
     /// shape so a single helper keeps them in lockstep.
-    private func getBodyRow(table: String, keyColumn: String, key: String) -> (body: String, bodyJSON: String?) {
+    func getBodyRow(table: String, keyColumn: String, key: String) -> (body: String, bodyJSON: String?) {
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, "SELECT body_md, body_json FROM \(table) WHERE \(keyColumn) = ?", -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }
@@ -353,7 +353,7 @@ final class DayflowDB: @unchecked Sendable {
     /// nulls the JSON slot — markdown-only callers (QuickThrow, Week
     /// checkbox toggle) rely on this to force the editor to re-derive
     /// blocks from markdown, dropping rich styles on the affected row.
-    private func upsertBodyRow(table: String, keyColumn: String, key: String, body: String, bodyJSON: String?) {
+    func upsertBodyRow(table: String, keyColumn: String, key: String, body: String, bodyJSON: String?) {
         let now = nowISO()
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
@@ -371,329 +371,4 @@ final class DayflowDB: @unchecked Sendable {
         sqlite3_finalize(stmt)
     }
 
-    // MARK: - day notes
-
-    /// Markdown-only read path — used by Week/Month aggregators,
-    /// QuickThrow, and the review generator, none of which care about
-    /// rich styles.
-    func getDayNote(date: Date) -> String {
-        getDayNoteFull(date: date).body
-    }
-
-    func getDayNoteFull(date: Date) -> (body: String, bodyJSON: String?) {
-        getBodyRow(table: "day_notes", keyColumn: "note_date", key: Self.ymd(date))
-    }
-
-    func saveDayNote(date: Date, body: String, bodyJSON: String? = nil) {
-        upsertBodyRow(table: "day_notes", keyColumn: "note_date", key: Self.ymd(date), body: body, bodyJSON: bodyJSON)
-    }
-
-    /// Bulk loader — pull every day note in [start, end] (inclusive) so the
-    /// month/week views can compute counts without N round-trips.
-    func loadDayNoteRange(start: Date, end: Date) -> [String: String] {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db,
-            "SELECT note_date, body_md FROM day_notes WHERE note_date BETWEEN ? AND ?",
-            -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, Self.ymd(start))
-        bindText(stmt, 2, Self.ymd(end))
-        var out: [String: String] = [:]
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let date = textCol(stmt, 0)
-            let body = textCol(stmt, 1)
-            out[date] = body
-        }
-        return out
-    }
-
-    /// Returns (open count, done count) for a markdown body.
-    static func parseCheckboxes(_ body: String) -> (open: Int, done: Int) {
-        var open = 0
-        var done = 0
-        for line in body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
-            guard case let .task(checked, _) = MarkdownLine.parse(String(line)) ?? .plain(text: "") else { continue }
-            if checked { done += 1 } else { open += 1 }
-        }
-        return (open, done)
-    }
-
-    // MARK: - month plan sections
-
-    func getMonthPlanSections(date: Date) -> [MonthPlanSection] {
-        let key = Self.monthKey(date)
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, """
-            SELECT id, title, sort_order, body_md, body_json
-            FROM month_plan_sections WHERE month_key = ?
-            ORDER BY sort_order
-        """, -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, key)
-        var rows: [MonthPlanSection] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let json = textCol(stmt, 4)
-            rows.append(MonthPlanSection(
-                id: sqlite3_column_int64(stmt, 0),
-                title: textCol(stmt, 1),
-                sortOrder: Int(sqlite3_column_int(stmt, 2)),
-                bodyMd: textCol(stmt, 3),
-                bodyJSON: json.isEmpty ? nil : json
-            ))
-        }
-        return rows
-    }
-
-    @discardableResult
-    func addMonthPlanSection(date: Date, title: String, sortOrder: Int) -> Int64 {
-        let key = Self.monthKey(date)
-        let now = nowISO()
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, """
-            INSERT INTO month_plan_sections (month_key, title, sort_order, body_md, body_json, updated_at)
-            VALUES (?,?,?,?,?,?)
-        """, -1, &stmt, nil)
-        bindText(stmt, 1, key)
-        bindText(stmt, 2, title)
-        sqlite3_bind_int(stmt, 3, Int32(sortOrder))
-        bindText(stmt, 4, "")
-        sqlite3_bind_null(stmt, 5)
-        bindText(stmt, 6, now)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
-        return sqlite3_last_insert_rowid(db)
-    }
-
-    func updateMonthPlanSection(id: Int64, body: String, bodyJSON: String?) {
-        let now = nowISO()
-        // Snapshot the current row into history BEFORE overwriting whenever
-        // we'd be dropping non-empty content into a different body. The
-        // BlockNote↔Swift binding race can flush an empty doc back to disk
-        // (see `month_plan_section_history` migration v8); this guarantees
-        // every prior version stays recoverable even if the editor wipes
-        // itself. Snapshot is skipped when body+JSON match exactly so
-        // idempotent re-saves (e.g. lossless markdown round-trip after
-        // initial load) don't churn history.
-        var existingMd: String = ""
-        var existingJSON: String? = nil
-        var read: OpaquePointer?
-        if sqlite3_prepare_v2(db, "SELECT body_md, body_json FROM month_plan_sections WHERE id = ?", -1, &read, nil) == SQLITE_OK {
-            sqlite3_bind_int64(read, 1, id)
-            if sqlite3_step(read) == SQLITE_ROW {
-                existingMd = textCol(read, 0)
-                let j = textCol(read, 1)
-                existingJSON = j.isEmpty ? nil : j
-            }
-            sqlite3_finalize(read)
-        }
-        let bodyChanged = existingMd != body || existingJSON != bodyJSON
-        let droppingContent = !existingMd.isEmpty && bodyChanged
-        if droppingContent {
-            let reason = body.isEmpty ? "wipe-guard" : "pre-overwrite"
-            var hist: OpaquePointer?
-            sqlite3_prepare_v2(db, """
-                INSERT INTO month_plan_section_history (section_id, body_md, body_json, saved_at, reason)
-                VALUES (?, ?, ?, ?, ?)
-            """, -1, &hist, nil)
-            sqlite3_bind_int64(hist, 1, id)
-            bindText(hist, 2, existingMd)
-            bindTextOrNull(hist, 3, existingJSON)
-            bindText(hist, 4, now)
-            bindText(hist, 5, reason)
-            sqlite3_step(hist)
-            sqlite3_finalize(hist)
-            // Bound history at 50 rows per section — older snapshots
-            // age out so a long-lived section doesn't grow unbounded.
-            var prune: OpaquePointer?
-            sqlite3_prepare_v2(db, """
-                DELETE FROM month_plan_section_history
-                WHERE section_id = ?
-                  AND id NOT IN (
-                    SELECT id FROM month_plan_section_history
-                    WHERE section_id = ?
-                    ORDER BY saved_at DESC, id DESC
-                    LIMIT 50
-                  )
-            """, -1, &prune, nil)
-            sqlite3_bind_int64(prune, 1, id)
-            sqlite3_bind_int64(prune, 2, id)
-            sqlite3_step(prune)
-            sqlite3_finalize(prune)
-        }
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, """
-            UPDATE month_plan_sections SET body_md = ?, body_json = ?, updated_at = ? WHERE id = ?
-        """, -1, &stmt, nil)
-        bindText(stmt, 1, body)
-        bindTextOrNull(stmt, 2, bodyJSON)
-        bindText(stmt, 3, now)
-        sqlite3_bind_int64(stmt, 4, id)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
-    }
-
-    struct MonthPlanSectionHistoryEntry {
-        let id: Int64
-        let bodyMd: String
-        let bodyJSON: String?
-        let savedAt: String
-        let reason: String
-    }
-
-    /// Most recent first. Used by the section "복구..." menu so the user
-    /// can roll back an accidental wipe without leaving the app.
-    func getMonthPlanSectionHistory(sectionId: Int64) -> [MonthPlanSectionHistoryEntry] {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, """
-            SELECT id, body_md, body_json, saved_at, reason
-            FROM month_plan_section_history
-            WHERE section_id = ?
-            ORDER BY saved_at DESC, id DESC
-        """, -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_int64(stmt, 1, sectionId)
-        var out: [MonthPlanSectionHistoryEntry] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let json = textCol(stmt, 2)
-            out.append(MonthPlanSectionHistoryEntry(
-                id: sqlite3_column_int64(stmt, 0),
-                bodyMd: textCol(stmt, 1),
-                bodyJSON: json.isEmpty ? nil : json,
-                savedAt: textCol(stmt, 3),
-                reason: textCol(stmt, 4)
-            ))
-        }
-        return out
-    }
-
-    func renameMonthPlanSection(id: Int64, title: String) {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "UPDATE month_plan_sections SET title = ?, updated_at = ? WHERE id = ?", -1, &stmt, nil)
-        bindText(stmt, 1, title)
-        bindText(stmt, 2, nowISO())
-        sqlite3_bind_int64(stmt, 3, id)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
-    }
-
-    func deleteMonthPlanSection(id: Int64) {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "DELETE FROM month_plan_sections WHERE id = ?", -1, &stmt, nil)
-        sqlite3_bind_int64(stmt, 1, id)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
-    }
-
-    // MARK: - appointments (scheduled items)
-
-    /// Read every appointment whose `start_at` day-part falls inside
-    /// `[start, end]` (inclusive). Ordered by start time.
-    func getAppointments(start: Date, end: Date) -> [Appointment] {
-        // Range is resolved inclusively at day granularity. Store uses
-        // `yyyy-MM-ddTHH:mm`, so a BETWEEN on stringified bounds works.
-        let startStr = Self.ymd(start) + "T00:00"
-        let endStr = Self.ymd(end) + "T23:59"
-        var stmt: OpaquePointer?
-        // Half-open overlap with the window — pulls in spans whose
-        // start_at sits before gridStart but still cross into it.
-        sqlite3_prepare_v2(db, """
-            SELECT id, start_at, end_at, title, note, category
-            FROM appointments
-            WHERE start_at <= ?
-              AND COALESCE(end_at, start_at) >= ?
-            ORDER BY start_at ASC, id ASC
-        """, -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, endStr)
-        bindText(stmt, 2, startStr)
-
-        var out: [Appointment] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let id = sqlite3_column_int64(stmt, 0)
-            let startAt = DF.appointmentStamp.date(from: textCol(stmt, 1)) ?? Date()
-            let endAtRaw = textCol(stmt, 2)
-            let endAt = endAtRaw.isEmpty ? nil : DF.appointmentStamp.date(from: endAtRaw)
-            let title = textCol(stmt, 3)
-            let noteRaw = textCol(stmt, 4)
-            let note = noteRaw.isEmpty ? nil : noteRaw
-            let catRaw = textCol(stmt, 5)
-            let category = AppointmentCategory(rawValue: catRaw) ?? .event
-            out.append(Appointment(id: id, startAt: startAt, endAt: endAt, title: title, note: note, category: category))
-        }
-        return out
-    }
-
-    /// Returns the newly-inserted row id, or -1 on failure.
-    @discardableResult
-    func insertAppointment(startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory = .event) -> Int64 {
-        let now = nowISO()
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, """
-            INSERT INTO appointments (start_at, end_at, title, note, category, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, DF.appointmentStamp.string(from: startAt))
-        bindTextOrNull(stmt, 2, endAt.map { DF.appointmentStamp.string(from: $0) })
-        bindText(stmt, 3, title)
-        bindTextOrNull(stmt, 4, note)
-        bindText(stmt, 5, category.rawValue)
-        bindText(stmt, 6, now)
-        bindText(stmt, 7, now)
-        guard sqlite3_step(stmt) == SQLITE_DONE else { return -1 }
-        return sqlite3_last_insert_rowid(db)
-    }
-
-    func deleteAppointment(id: Int64) {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "DELETE FROM appointments WHERE id = ?", -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_int64(stmt, 1, id)
-        sqlite3_step(stmt)
-    }
-
-    func updateAppointment(id: Int64, startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory) {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, """
-            UPDATE appointments
-            SET start_at = ?, end_at = ?, title = ?, note = ?, category = ?, updated_at = ?
-            WHERE id = ?
-        """, -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, DF.appointmentStamp.string(from: startAt))
-        bindTextOrNull(stmt, 2, endAt.map { DF.appointmentStamp.string(from: $0) })
-        bindText(stmt, 3, title)
-        bindTextOrNull(stmt, 4, note)
-        bindText(stmt, 5, category.rawValue)
-        bindText(stmt, 6, nowISO())
-        sqlite3_bind_int64(stmt, 7, id)
-        sqlite3_step(stmt)
-    }
-
-    // MARK: - reviews (LLM daily review)
-
-    func getReview(date: Date) -> String? {
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, "SELECT body_md FROM reviews WHERE review_date = ?", -1, &stmt, nil)
-        defer { sqlite3_finalize(stmt) }
-        bindText(stmt, 1, Self.ymd(date))
-        if sqlite3_step(stmt) == SQLITE_ROW {
-            return textCol(stmt, 0)
-        }
-        return nil
-    }
-
-    func saveReview(date: Date, body: String) {
-        let now = nowISO()
-        var stmt: OpaquePointer?
-        sqlite3_prepare_v2(db, """
-            INSERT INTO reviews (review_date, body_md, generated_at) VALUES (?,?,?)
-            ON CONFLICT(review_date) DO UPDATE SET body_md=excluded.body_md, generated_at=excluded.generated_at
-        """, -1, &stmt, nil)
-        bindText(stmt, 1, Self.ymd(date))
-        bindText(stmt, 2, body)
-        bindText(stmt, 3, now)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
-    }
 }
