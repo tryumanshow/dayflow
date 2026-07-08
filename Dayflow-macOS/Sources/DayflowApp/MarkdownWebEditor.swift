@@ -86,6 +86,10 @@ struct MarkdownWebEditor: NSViewRepresentable {
         userContent.add(context.coordinator, name: "dayflow")
         config.userContentController = userContent
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
+        // Serve the locally-vendored BlockNote assets over a private scheme so
+        // the editor no longer fetches from esm.sh at runtime. Must be set on
+        // the configuration before the web view is created.
+        config.setURLSchemeHandler(EditorSchemeHandler(), forURLScheme: EditorSchemeHandler.scheme)
 
         let web = ScrollForwardingWebView(frame: .zero, configuration: config)
         context.coordinator.scrollWebView = web
@@ -100,7 +104,11 @@ struct MarkdownWebEditor: NSViewRepresentable {
             web.isInspectable = true
         }
         #endif
-        web.loadHTMLString(Self.htmlContent, baseURL: URL(string: "https://localhost/"))
+        // Load the page itself through the scheme handler so the document and
+        // all its vendored modules share the `dayflow-asset://editor` origin —
+        // ES module imports need a real (non-opaque) origin, which loadHTMLString
+        // does not reliably provide.
+        web.load(URLRequest(url: EditorSchemeHandler.baseURL.appendingPathComponent("index.html")))
 
         context.coordinator.webView = web
         context.coordinator.pendingMarkdown = markdown
@@ -264,19 +272,4 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }
     }
 
-    // MARK: - HTML payload ---------------------------------------------------
-
-    /// The BlockNote editor page. Extracted from an inline string literal
-    /// into `EditorWeb/index.html` (bundled via SPM `.copy`) so the Swift
-    /// file stays readable and the same document can later be served from a
-    /// local scheme. Loaded once; content is injected post-load via
-    /// `evaluateJavaScript`, so the HTML itself carries no interpolation.
-    private static let htmlContent: String = {
-        guard let url = Bundle.module.url(forResource: "index", withExtension: "html", subdirectory: "EditorWeb"),
-              let s = try? String(contentsOf: url, encoding: .utf8) else {
-            assertionFailure("EditorWeb/index.html missing from bundle")
-            return ""
-        }
-        return s
-    }()
 }

@@ -6,15 +6,16 @@
 <!--
   Content-Security-Policy — defence-in-depth around the BlockNote editor.
   The editor mounts user markdown; BlockNote parses content structurally
-  (no innerHTML) so direct XSS from content is not possible today, but
-  CSP makes sure a future BlockNote regression, or a compromised CDN
-  response from esm.sh, cannot exfiltrate notes to arbitrary origins.
-  esm.sh is still allowed for script/style (pending a proper local
-  vendoring pass); every other origin is blocked, including `connect-src`
-  which would be the exfiltration channel of choice.
+  (no innerHTML) so direct XSS from content is not possible today, but CSP
+  makes sure a future BlockNote regression cannot exfiltrate notes to
+  arbitrary origins. BlockNote + ProseMirror are now vendored locally and
+  served from the private `dayflow-asset://editor/` origin (see
+  EditorSchemeHandler.swift), so no network origin is allowed at all:
+  `script-src`/`style-src` are `'self'` only, and `connect-src 'none'`
+  closes the exfiltration channel of choice.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline' https://esm.sh; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
-<link rel="stylesheet" href="https://esm.sh/@blocknote/core@0.22.0/style.css">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
+<link rel="stylesheet" href="dayflow-asset://editor/style.css">
 <style>
 html, body {
     margin: 0;
@@ -444,7 +445,7 @@ body {
 </div>
 <div id="editor"></div>
 <script type="module">
-import { BlockNoteEditor } from "https://esm.sh/@blocknote/core@0.22.0?deps=prosemirror-model@1.23.0,prosemirror-view@1.33.7,prosemirror-state@1.4.3,prosemirror-transform@1.10.2,prosemirror-tables@1.6.1,prosemirror-dropcursor@1.8.1";
+import { BlockNoteEditor } from "dayflow-asset://editor/blocknote-entry.mjs";
 
 let editor = null;
 let lastEmitted = "";
