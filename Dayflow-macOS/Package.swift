@@ -11,6 +11,7 @@ let package = Package(
             path: "Sources/DayflowApp",
             resources: [
                 .process("Resources"),
+                .copy("EditorWeb"),
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
