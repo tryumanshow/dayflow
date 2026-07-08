@@ -493,20 +493,20 @@ function makeCodeBlock(lines) {
     return {
         type: 'codeBlock',
         props: {},
-        content: [{ type: 'text', text: lines.join('\\n'), styles: {} }],
+        content: [{ type: 'text', text: lines.join('\n'), styles: {} }],
         children: [],
     };
 }
 
 function mdToBlocks(md) {
-    const lines = (md || '').replace(/\\r\\n?/g, '\\n').split('\\n');
+    const lines = (md || '').replace(/\r\n?/g, '\n').split('\n');
     const root = { children: [] };
     const stack = [{ indent: -1, block: root }];
     let inCodeBlock = false;
     let codeLines = [];
     for (const raw of lines) {
         // Skip HTML comments — no block representation in BlockNote.
-        if (!inCodeBlock && /^\\s*<!--.*-->\\s*$/.test(raw)) continue;
+        if (!inCodeBlock && /^\s*<!--.*-->\s*$/.test(raw)) continue;
         // Fenced code block handling (```...```)
         if (raw.trim().startsWith('```')) {
             if (!inCodeBlock) {
@@ -526,33 +526,33 @@ function mdToBlocks(md) {
             continue;
         }
         if (!raw.trim()) continue;
-        const leading = raw.match(/^(\\s*)/)[0].length;
+        const leading = raw.match(/^(\s*)/)[0].length;
         const indent = Math.floor(leading / 2);
         const text = raw.slice(leading);
         let block;
         let m;
-        if ((m = text.match(/^(#{1,3})\\s+(.*)$/))) {
+        if ((m = text.match(/^(#{1,3})\s+(.*)$/))) {
             block = {
                 type: 'heading',
                 props: { level: m[1].length },
                 content: [{ type: 'text', text: m[2], styles: {} }],
                 children: [],
             };
-        } else if ((m = text.match(/^[-*]\\s+\\[([ xX])\\]\\s+(.*)$/))) {
+        } else if ((m = text.match(/^[-*]\s+\[([ xX])\]\s+(.*)$/))) {
             block = {
                 type: 'checkListItem',
                 props: { checked: m[1].toLowerCase() === 'x' },
                 content: [{ type: 'text', text: m[2], styles: {} }],
                 children: [],
             };
-        } else if ((m = text.match(/^[-*]\\s+(.*)$/))) {
+        } else if ((m = text.match(/^[-*]\s+(.*)$/))) {
             block = {
                 type: 'bulletListItem',
                 props: {},
                 content: [{ type: 'text', text: m[1], styles: {} }],
                 children: [],
             };
-        } else if ((m = text.match(/^\\d+\\.\\s+(.*)$/))) {
+        } else if ((m = text.match(/^\d+\.\s+(.*)$/))) {
             block = {
                 type: 'numberedListItem',
                 props: {},
@@ -636,7 +636,7 @@ async function emitCurrentContent() {
         let json = JSON.stringify(editor.document);
         // Strip ZWSPs injected by the nested-list IME workaround
         // only when present — avoid an allocation on every emit.
-        const ZWSP = '\\u200B';
+        const ZWSP = '\u200B';
         if (md && md.indexOf(ZWSP) !== -1) md = md.split(ZWSP).join('');
         if (json.indexOf(ZWSP) !== -1) json = json.split(ZWSP).join('');
         postChange(md, json);
@@ -1316,7 +1316,7 @@ document.addEventListener('mousedown', (e) => {
 // ProseMirror/editor boundary rather than trusting a specific
 // BlockNote wrapper class, because those have renamed across
 // versions.
-const HR_TEXT_RE = /^(?:-{3,}|\\*{3,}|_{3,})$/;
+const HR_TEXT_RE = /^(?:-{3,}|\*{3,}|_{3,})$/;
 const HR_CLASS = 'dayflow-hr-marker';
 
 function findHrWrapper(p, root) {
@@ -1335,7 +1335,7 @@ function findHrWrapper(p, root) {
 function applyHrStyling() {
     if (!editorRootEl) return;
     for (const p of editorRootEl.querySelectorAll('[data-content-type="paragraph"]')) {
-        const t = (p.textContent || '').replace(/\\u200B/g, '').trim();
+        const t = (p.textContent || '').replace(/\u200B/g, '').trim();
         const isHr = HR_TEXT_RE.test(t);
         // Clear any stale marker that may have been set on an
         // ancestor when this paragraph was previously an HR.
@@ -1397,7 +1397,7 @@ function installNestedImeWorkaround() {
             // content.size === 0 = current block is empty (composition
             // is about to write its first character).
             if ($from.depth >= 2 && $from.parent.content.size === 0) {
-                tt.commands.insertContent('\\u200B');
+                tt.commands.insertContent('\u200B');
             }
         } catch (e) { console.log('nested-IME workaround error: ' + e.message); }
     }, true);
