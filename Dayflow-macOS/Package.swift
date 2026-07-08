@@ -16,5 +16,13 @@ let package = Package(
                 .linkedLibrary("sqlite3"),
             ]
         ),
+        .testTarget(
+            name: "DayflowAppTests",
+            dependencies: ["DayflowApp"],
+            path: "Tests/DayflowAppTests",
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
+            ]
+        ),
     ]
 )
