@@ -15,6 +15,7 @@
 - **Tables** — pick "Table" from the slash menu and choose dimensions from a Notion-style grid picker (up to 6 × 6). Backspace on an empty cell removes the entire table.
 - **Monthly plan** — a separate editor per month for the TODOs that belong to the month as a whole, not to any single day. Shown in the Month view right rail.
 - **Appointments** — time-stamped items (meetings, reminders) stored in a dedicated `appointments` table. Surfaced in every view: inline add/delete form in the Day rail, chips above the task preview in Week columns, and a sorted "this month" list in the Month rail. Quick Throw (`⌘⇧I`) has a Task / Appointment tab so you can jot either one without leaving your current app.
+- **Images** — paste or drop a picture straight into a note. The bytes are copied into `~/Library/Application Support/Dayflow/attachments/` and the note keeps only a reference, so images survive restarts without bloating the database. Copying an image out of a web page stores the picture itself rather than a link to someone else's server.
 - **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain, nothing is synced.
 - **Optional LLM daily review** — OpenAI or Anthropic, picked and configured entirely inside the app.
 - **Bilingual** — English or Korean, switchable in Settings, no relaunch-from-terminal needed.
