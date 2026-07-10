@@ -211,6 +211,8 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 let down = (body["canScrollDown"] as? Bool) ?? false
                 scrollWebView?.canScrollUp = up
                 scrollWebView?.canScrollDown = down
+            case "uploadFile":
+                handleUpload(body)
             case "change":
                 let md = (body["md"] as? String) ?? ""
                 let json = body["json"] as? String
@@ -228,6 +230,38 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 }
             default:
                 break
+            }
+        }
+
+        /// Write a pasted/dropped file to `AttachmentStore` and hand the editor
+        /// back a URL it can put in an image block's `url` prop. BlockNote's
+        /// `uploadFile` option is a promise, so the JS side parks the caller in
+        /// `pendingUploads[token]` and we resolve it by token here.
+        ///
+        /// The bytes cross the bridge base64-encoded: `WKScriptMessage` bodies
+        /// are JSON-ish and cannot carry an `ArrayBuffer`.
+        private func handleUpload(_ body: [String: Any]) {
+            guard let token = body["token"] as? String else { return }
+            let name = body["name"] as? String
+            let mime = body["mime"] as? String
+            let base64 = (body["data"] as? String) ?? ""
+
+            func reject(_ message: String) {
+                let js = "window.dayflowRejectUpload(\(Self.jsStringLiteral(token)), \(Self.jsStringLiteral(message)))"
+                webView?.evaluateJavaScript(js, completionHandler: nil)
+            }
+
+            guard let data = Data(base64Encoded: base64), !data.isEmpty else {
+                reject("Attachment payload was empty or malformed.")
+                return
+            }
+            do {
+                let stored = try AttachmentStore.save(data, mimeType: mime, originalName: name)
+                let url = AttachmentStore.assetURL(forName: stored)
+                let js = "window.dayflowResolveUpload(\(Self.jsStringLiteral(token)), \(Self.jsStringLiteral(url)))"
+                webView?.evaluateJavaScript(js, completionHandler: nil)
+            } catch {
+                reject(error.localizedDescription)
             }
         }
 

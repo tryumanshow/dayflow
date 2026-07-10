@@ -17,6 +17,10 @@ final class EditorSchemeHandler: NSObject, WKURLSchemeHandler {
     /// Origin the editor page is loaded under. `'self'` in the page CSP equals
     /// this origin, which is why `script-src 'self'` covers every vendored module.
     static let baseURL = URL(string: "\(scheme)://editor/")!
+    /// Second host on the same scheme, serving files from `AttachmentStore`.
+    /// It is *not* `'self'`, so the page CSP names the scheme explicitly in
+    /// `img-src` — see the comment at the top of `EditorWeb/index.html`.
+    static let attachmentHost = "attachment"
 
     /// The copied `EditorWeb` resource directory inside the SPM bundle.
     private static let editorRoot: URL? =
@@ -29,14 +33,29 @@ final class EditorSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
-        // The page itself is `dayflow-asset://editor/index.html`; every module
-        // and the stylesheet resolve to `dayflow-asset://editor/<path>` which
-        // maps onto the mirrored `EditorWeb/vendor/esm/<path>` tree.
         var rel = url.path
         if rel.hasPrefix("/") { rel.removeFirst() }
-        let fileURL: URL = (rel.isEmpty || rel == "index.html")
-            ? root.appendingPathComponent("index.html")
-            : root.appendingPathComponent("vendor/esm").appendingPathComponent(rel)
+
+        // Two hosts, two trust levels. `editor` is the read-only bundle of
+        // vendored JS/CSS that the page itself loads from; `attachment` is
+        // user data written by AttachmentStore. Keeping them on separate
+        // origins means a compromised note image can't reach the module tree.
+        let fileURL: URL
+        if url.host == Self.attachmentHost {
+            guard let resolved = AttachmentStore.fileURL(forName: rel) else {
+                NSLog("dayflow: rejected attachment request \(url.absoluteString)")
+                task.didFailWithError(URLError(.fileDoesNotExist))
+                return
+            }
+            fileURL = resolved
+        } else {
+            // The page itself is `dayflow-asset://editor/index.html`; every module
+            // and the stylesheet resolve to `dayflow-asset://editor/<path>` which
+            // maps onto the mirrored `EditorWeb/vendor/esm/<path>` tree.
+            fileURL = (rel.isEmpty || rel == "index.html")
+                ? root.appendingPathComponent("index.html")
+                : root.appendingPathComponent("vendor/esm").appendingPathComponent(rel)
+        }
 
         guard let data = try? Data(contentsOf: fileURL) else {
             NSLog("dayflow: editor asset not found for \(url.absoluteString) -> \(fileURL.path)")
@@ -65,7 +84,9 @@ final class EditorSchemeHandler: NSObject, WKURLSchemeHandler {
         case "json":      return "application/json; charset=utf-8"
         case "map":       return "application/json; charset=utf-8"
         case "wasm":      return "application/wasm"
-        default:          return "application/octet-stream"
+        // Attachments are arbitrary user files; let the system name the type
+        // so `<img>` and `<video>` get a decodable Content-Type.
+        default:          return AttachmentStore.mimeType(forExtension: ext)
         }
     }
 }

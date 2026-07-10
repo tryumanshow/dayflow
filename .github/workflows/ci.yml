@@ -82,6 +82,18 @@ jobs:
       - name: Install Pillow
         run: python3 -m pip install --upgrade pip && python3 -m pip install Pillow
 
+      # The test target uses Swift Testing (`import Testing`), which SwiftPM only
+      # provides on the Swift 6 toolchain. The macos-14 runner defaults to
+      # Xcode 15.4 (Swift 5.10), where `swift test` fails with
+      # `no such module 'Testing'`. Point at the newest Xcode 16.x on the image.
+      - name: Select Xcode 16 (Swift 6 — required for Swift Testing)
+        run: |
+          latest=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$latest" ]; then
+            echo "::error::no Xcode 16 found on the runner"; exit 1
+          fi
+          sudo xcode-select -s "$latest/Contents/Developer"
+
       - name: Show toolchain
         run: |
           swift --version
@@ -96,14 +108,7 @@ jobs:
       - name: swift test
         working-directory: Dayflow-macOS
         run: |
-          # The project has no test target yet. When one is added, this step
-          # fails loud if tests start regressing. Until then, surface a
-          # notice so we don't forget to wire it up.
-          if swift package describe --type text 2>/dev/null | grep -q "test"; then
-            swift test -c release
-          else
-            echo "::notice::no test target yet — add one to Package.swift"
-          fi
+          swift test -c release
 
       - name: End-to-end bundle check
         working-directory: Dayflow-macOS

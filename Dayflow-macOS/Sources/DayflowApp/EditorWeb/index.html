@@ -13,8 +13,14 @@
   EditorSchemeHandler.swift), so no network origin is allowed at all:
   `script-src`/`style-src` are `'self'` only, and `connect-src 'none'`
   closes the exfiltration channel of choice.
+
+  `img-src` additionally names the bare `dayflow-asset:` scheme: pasted
+  images are served from a *second* host on it
+  (`dayflow-asset://attachment/<name>`, see AttachmentStore), which is a
+  different origin than `'self'`. Remote origins stay barred, so an `<img>`
+  smuggled in through pasted HTML still cannot phone home.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: dayflow-asset:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
 <link rel="stylesheet" href="dayflow-asset://editor/style.css">
 <style>
 html, body {
@@ -174,6 +180,15 @@ body {
     font-size: 1.2em !important; font-weight: 600 !important;
 }
 .bn-inline-content { color: rgba(255,255,255,0.92); }
+/* BlockNote stores a pixel `previewWidth` (512 by default) on image blocks.
+   The Month-plan rail is ~300px wide, so honour the stored width only up to
+   the container and let the image scale down rather than overflow. */
+.bn-block-content[data-content-type="image"] img,
+.bn-block-content[data-content-type="image"] .bn-visual-media {
+    max-width: 100% !important;
+    height: auto !important;
+    border-radius: 6px;
+}
 .bn-block-outer { padding: 1px 0; }
 .bn-block .bn-block-content { padding-left: 0 !important; }
 .bn-block-content[data-content-type="bulletListItem"]::before,
@@ -483,6 +498,103 @@ function postScrollState() {
     } catch (e) {}
 }
 
+// Pasted/dropped files. BlockNote calls `uploadFile` and waits on the promise
+// before it fills in the block's `url` prop; without the option it drops the
+// file on the floor with a console warning. Bytes go to Swift base64-encoded
+// (a WKScriptMessage body can't hold an ArrayBuffer) and come back as a
+// `dayflow-asset://attachment/...` URL that outlives the app session — a
+// `blob:` URL would die on the next reload and a `data:` URL would bloat the
+// note body.
+const pendingUploads = new Map();
+let uploadSeq = 0;
+
+window.dayflowResolveUpload = function(token, url) {
+    const entry = pendingUploads.get(token);
+    if (!entry) return;
+    pendingUploads.delete(token);
+    entry.resolve(url);
+};
+window.dayflowRejectUpload = function(token, message) {
+    const entry = pendingUploads.get(token);
+    if (!entry) return;
+    pendingUploads.delete(token);
+    entry.reject(new Error(message || 'Attachment could not be saved.'));
+};
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Could not read the pasted file.'));
+        // `readAsDataURL` gives "data:<mime>;base64,<payload>" — take the tail.
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : '');
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function uploadFile(file) {
+    const token = 'up' + (++uploadSeq);
+    const data = await fileToBase64(file);
+    const promise = new Promise((resolve, reject) => {
+        pendingUploads.set(token, { resolve, reject });
+    });
+    window.webkit.messageHandlers.dayflow.postMessage({
+        type: 'uploadFile',
+        token: token,
+        name: file.name || '',
+        mime: file.type || '',
+        data: data,
+    });
+    return promise;
+}
+
+// BlockNote's paste plugin checks clipboard flavours in the order
+// [vscode-editor-data, blocknote/html, text/html, text/plain, Files] and stops
+// at the first hit. Browsers put *both* `text/html` and the image bytes on the
+// clipboard when you copy a picture off a page, so `text/html` wins and the
+// editor ends up with `<img src="https://…">`: a note that renders nothing (the
+// page CSP refuses remote images, by design) and silently depends on someone
+// else's server. Whenever the clipboard actually carries image bytes, claim the
+// paste first and store them in the attachments directory instead.
+//
+// `stopImmediatePropagation` in the capture phase is what keeps BlockNote's own
+// handler — registered on the ProseMirror node, i.e. later — from running too.
+function installImagePasteHandler() {
+    document.addEventListener('paste', (e) => {
+        if (!editor || !e.clipboardData) return;
+        // A paste aimed at the find field is not a paste into the document.
+        if (document.activeElement === findInputEl) return;
+        const files = Array.from(e.clipboardData.files || []);
+        const images = files.filter((f) => f.type && f.type.startsWith('image/'));
+        // Non-image files still belong to BlockNote: it picks the right block
+        // type (video/audio/file) from its own schema.
+        if (images.length === 0 || images.length !== files.length) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        insertImageFiles(images);
+    }, true);
+}
+
+async function insertImageFiles(files) {
+    for (const file of files) {
+        try {
+            const url = await uploadFile(file);
+            const cursor = editor.getTextCursorPosition();
+            editor.insertBlocks(
+                [{ type: 'image', props: { url: url, name: file.name || '' } }],
+                cursor.block,
+                'after'
+            );
+        } catch (err) {
+            console.log('image paste failed: ' + err.message);
+        }
+    }
+    scheduleEmit();
+}
+
 // Line-based markdown parser. BlockNote 0.15.11's tryParseMarkdownToBlocks
 // chokes on GFM task lists (`- [ ] foo` becomes [empty checkListItem, "foo"
 // paragraph]), so we parse ourselves. Indentation (2-space unit) turns into
@@ -496,6 +608,22 @@ function makeCodeBlock(lines) {
         content: [{ type: 'text', text: lines.join('\n'), styles: {} }],
         children: [],
     };
+}
+
+/// Returns one image block per `![name](url)` token when `text` consists of
+/// nothing else, otherwise null (so `![x](y)` inside a sentence stays prose).
+function matchImageOnlyLine(text) {
+    const token = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
+    const blocks = [];
+    let cursor = 0;
+    let m;
+    while ((m = token.exec(text)) !== null) {
+        if (m.index !== cursor) return null;
+        cursor = token.lastIndex;
+        blocks.push({ type: 'image', props: { url: m[2], name: m[1] }, children: [] });
+    }
+    if (blocks.length === 0 || cursor !== text.length) return null;
+    return blocks;
 }
 
 function mdToBlocks(md) {
@@ -531,6 +659,22 @@ function mdToBlocks(md) {
         const text = raw.slice(leading);
         let block;
         let m;
+        // Images. `blocksToMarkdownLossy` writes each image block as
+        // `![name](url)` and runs consecutive ones together on a single line,
+        // so a line is an image line when it is *nothing but* image tokens.
+        // The alt slot carries `props.name` (the original file name), not the
+        // caption — markdown has nowhere to put a caption. Parsing these keeps
+        // images alive for notes that only ever kept their markdown body
+        // (backups, rows predating `body_json`).
+        const imageTokens = matchImageOnlyLine(text);
+        if (imageTokens) {
+            while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
+            for (const token of imageTokens) {
+                stack[stack.length - 1].block.children.push(token);
+            }
+            stack.push({ indent, block: imageTokens[imageTokens.length - 1] });
+            continue;
+        }
         if ((m = text.match(/^(#{1,3})\s+(.*)$/))) {
             block = {
                 type: 'heading',
@@ -1436,11 +1580,13 @@ function installCheckboxToggle() {
         editor = BlockNoteEditor.create({
             domAttributes: { editor: { class: 'bn-editor' } },
             initialContent: undefined,
+            uploadFile: uploadFile,
         });
         editor.mount(document.getElementById('editor'));
         installHrObserver();
         installNestedImeWorkaround();
         installCheckboxToggle();
+        installImagePasteHandler();
         installScrollStateBridge();
         editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); postScrollState(); });
         if (editor.onEditorSelectionChange) {

@@ -15,6 +15,7 @@
 - **표** — 슬래시 메뉴에서 "Table" 선택 후 Notion 스타일 그리드 피커로 크기 지정 (최대 6 × 6). 빈 셀에서 Backspace 누르면 표 전체 삭제.
 - **이달 계획** — 월 단위 TODO 전용 에디터. 특정 일자에 얽매이지 않는 한 달짜리 목록을 Month 뷰 오른쪽 레일에서 따로 편집.
 - **약속** — 시각이 찍힌 항목 (미팅, 리마인더) 을 전용 `appointments` 테이블에 저장. 세 뷰 모두에 노출: Day 오른쪽 레일의 인라인 추가/삭제, Week 컬럼에서 task 프리뷰 위에 칩 형태, Month 오른쪽 레일에 "이 달의 일정" 목록 (시간순 정렬). Quick Throw (`⌘⇧I`) 에 Task / Appointment 탭 토글이 있어서 어느 쪽이든 다른 앱 떠나지 않고 넣을 수 있음.
+- **이미지** — 노트에 그림을 바로 붙여넣거나 끌어다 놓을 수 있음. 파일은 `~/Library/Application Support/Dayflow/attachments/` 로 복사되고 본문에는 참조만 남으므로, 재시작 후에도 살아있으면서 DB 를 불리지 않음. 웹 페이지에서 복사한 이미지도 남의 서버 링크가 아니라 그림 자체를 저장함.
 - **완전 로컬** — 노트와 회고는 `~/Library/Application Support/Dayflow/`, API 키는 macOS Keychain, 동기화 없음.
 - **선택형 LLM 일일 회고** — OpenAI 또는 Anthropic, 제공자 / 모델 / 키 / 프롬프트 모두 앱 안에서 설정.
 - **이중 언어 지원** — 영어, 한국어. Settings 에서 전환 가능.

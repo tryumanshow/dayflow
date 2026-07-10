@@ -102,6 +102,12 @@ extension ContentView {
             .frame(width: railW)
             .frame(maxHeight: .infinity)
             .background(Color.dfQuiet)
+            // Backstop for the `ViewThatFits` sizing above: a fixed-width
+            // column does not clip an over-wide child, it centers it, so any
+            // future control that outgrows the rail would silently paint over
+            // the calendar grid rather than truncate. Clip before the overlay
+            // so the resize handle (offset -5) still straddles the boundary.
+            .clipped()
             // Handle as an overlay on the rail's leading edge instead of
             // an HStack sibling. Month grid's `maxWidth: .infinity` +
             // inner GeometryReader (`spanOverlay`) confuses HStack hit
@@ -193,71 +199,10 @@ extension ContentView {
                 .frame(maxHeight: 280)
             }
 
-            let isMultiDay = aptEndDateInput != nil
-            HStack(spacing: 6) {
-                DatePicker("", selection: $aptDateInput, displayedComponents: [.date])
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                if isMultiDay {
-                    Text("→")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                    DatePicker(
-                        "",
-                        selection: Binding(
-                            get: { aptEndDateInput ?? aptDateInput },
-                            set: { aptEndDateInput = $0 }
-                        ),
-                        in: aptDateInput...,
-                        displayedComponents: [.date]
-                    )
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                    Button {
-                        aptEndDateInput = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .help(L("appointments.end_date_remove"))
-                } else {
-                    timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
-                    Text("–")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.tertiary)
-                    timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
-                    Button {
-                        aptEndDateInput = Calendar.current.date(byAdding: .day, value: 1, to: aptDateInput) ?? aptDateInput
-                    } label: {
-                        Text(L("appointments.end_date_add"))
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(Color.dfHairlineSoft, lineWidth: 0.7)
-                            )
-                    }
-                    .buttonStyle(.plain)
+            appointmentScheduleControls
+                .onChange(of: aptDateInput) { _, new in
+                    if let end = aptEndDateInput, end < new { aptEndDateInput = new }
                 }
-                Spacer()
-                if !isMultiDay {
-                    Picker("", selection: $aptRepeatInput) {
-                        ForEach(AppointmentRepeat.allCases) { r in
-                            Text(L(r.labelKey)).tag(r)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .fixedSize()
-                    .help(L("appointments.repeat.help"))
-                }
-            }
-            .onChange(of: aptDateInput) { _, new in
-                if let end = aptEndDateInput, end < new { aptEndDateInput = new }
-            }
             HStack(spacing: 6) {
                 Picker("", selection: $aptCategoryInput) {
                     ForEach(AppointmentCategory.allCases) { cat in
@@ -301,6 +246,119 @@ extension ContentView {
                     .buttonStyle(.plain)
                 }
             }
+        }
+    }
+
+    /// Date / time / repeat controls of the month rail's appointment form.
+    ///
+    /// On one line these measure ~441pt: a compact `DatePicker` is 105pt, each
+    /// `HH:MM` field 68pt, and the repeat `Picker` is `.fixedSize()`. The rail
+    /// bottoms out at 300pt, which leaves 252pt after `DS.Space.xl` padding —
+    /// and SwiftUI does not clip an over-wide child of a fixed-width column, so
+    /// the controls used to paint straight across the calendar grid. Let
+    /// `ViewThatFits` choose the first arrangement that actually fits: one line
+    /// on a wide rail, then the end-date/repeat pair on its own line, then the
+    /// date and the times split apart. The last candidate is the fallback when
+    /// nothing fits, so it must survive 252pt (its widest row is 170pt).
+    @ViewBuilder
+    private var appointmentScheduleControls: some View {
+        if aptEndDateInput != nil {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { aptStartDatePicker; aptEndDateControls; Spacer(minLength: 0) }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) { aptStartDatePicker; Spacer(minLength: 0) }
+                    HStack(spacing: 6) { aptEndDateControls; Spacer(minLength: 0) }
+                }
+            }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { aptStartDatePicker; aptTimeFields; aptScheduleExtras }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) { aptStartDatePicker; aptTimeFields; Spacer(minLength: 0) }
+                    HStack(spacing: 6) { aptScheduleExtras }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) { aptStartDatePicker; Spacer(minLength: 0) }
+                    HStack(spacing: 6) { aptTimeFields; Spacer(minLength: 0) }
+                    HStack(spacing: 6) { aptScheduleExtras }
+                }
+            }
+        }
+    }
+
+    private var aptStartDatePicker: some View {
+        DatePicker("", selection: $aptDateInput, displayedComponents: [.date])
+            .datePickerStyle(.compact)
+            .labelsHidden()
+    }
+
+    /// Shown once the appointment spans days: the end date, plus the escape
+    /// hatch back to a single-day (time-bearing) appointment.
+    private var aptEndDateControls: some View {
+        Group {
+            Text("→")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            DatePicker(
+                "",
+                selection: Binding(
+                    get: { aptEndDateInput ?? aptDateInput },
+                    set: { aptEndDateInput = $0 }
+                ),
+                in: aptDateInput...,
+                displayedComponents: [.date]
+            )
+            .datePickerStyle(.compact)
+            .labelsHidden()
+            Button {
+                aptEndDateInput = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help(L("appointments.end_date_remove"))
+        }
+    }
+
+    private var aptTimeFields: some View {
+        Group {
+            timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
+            Text("–")
+                .font(.system(size: 12))
+                .foregroundStyle(.tertiary)
+            timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
+        }
+    }
+
+    /// The two controls that modify an otherwise-plain appointment. Grouped so
+    /// they wrap together onto a line of their own on a narrow rail.
+    private var aptScheduleExtras: some View {
+        Group {
+            Button {
+                aptEndDateInput = Calendar.current.date(byAdding: .day, value: 1, to: aptDateInput) ?? aptDateInput
+            } label: {
+                Text(L("appointments.end_date_add"))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color.dfHairlineSoft, lineWidth: 0.7)
+                    )
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 0)
+            Picker("", selection: $aptRepeatInput) {
+                ForEach(AppointmentRepeat.allCases) { r in
+                    Text(L(r.labelKey)).tag(r)
+                }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            .help(L("appointments.repeat.help"))
         }
     }
 
