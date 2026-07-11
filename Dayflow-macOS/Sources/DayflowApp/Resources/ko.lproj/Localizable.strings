@@ -171,6 +171,7 @@
 "gcal.client_id.hint" = "본인 Google Cloud 프로젝트에서 만든 데스크탑 앱 OAuth 클라이언트 값.";
 "gcal.client_secret" = "OAuth 클라이언트 시크릿";
 "gcal.client_secret.hint" = "LLM API 키와 동일하게 macOS 키체인에 저장돼.";
+"gcal.client_secret.hint_existing" = "이미 키체인에 저장된 시크릿이 있어. 그대로 쓰려면 빈 칸으로 둬.";
 "gcal.connect" = "Google 캘린더 연결";
 "gcal.connecting" = "브라우저에서 동의 대기 중…";
 "gcal.setup_guide" = "Google Cloud 사용자 인증 정보 열기";

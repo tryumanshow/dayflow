@@ -171,6 +171,7 @@
 "gcal.client_id.hint" = "From a Desktop app OAuth client in your own Google Cloud project.";
 "gcal.client_secret" = "OAuth Client Secret";
 "gcal.client_secret.hint" = "Stored in the macOS Keychain, same as your LLM API key.";
+"gcal.client_secret.hint_existing" = "A secret is already saved in the Keychain. Leave this blank to keep it.";
 "gcal.connect" = "Connect Google Calendar";
 "gcal.connecting" = "Waiting for consent…";
 "gcal.setup_guide" = "Open Google Cloud credentials";
