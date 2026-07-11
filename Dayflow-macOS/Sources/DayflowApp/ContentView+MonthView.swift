@@ -179,9 +179,28 @@ extension ContentView {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel(text: L("appointments.month_header"))
                 Spacer()
-                Text(L("appointments.month_hint"))
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(.tertiary)
+                // The form used to sit open at all times, and its date picker,
+                // two time fields, repeat menu, category menu and title field
+                // together are wider than the rail — so it crushed itself into
+                // the bottom of the panel. It's a thing you do occasionally,
+                // not a thing you look at, so it hides behind this.
+                Button {
+                    if isAppointmentFormOpen {
+                        cancelAppointmentEdit()
+                        showAptForm = false
+                    } else {
+                        showAptForm = true
+                        aptTitleFocused = true
+                    }
+                } label: {
+                    Label(
+                        isAppointmentFormOpen ? L("appointments.close_form") : L("appointments.new"),
+                        systemImage: isAppointmentFormOpen ? "xmark" : "plus"
+                    )
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.dfAccent)
+                }
+                .buttonStyle(.plain)
             }
             if items.isEmpty {
                 Text(L("appointments.empty"))
@@ -199,6 +218,22 @@ extension ContentView {
                 .frame(maxHeight: 280)
             }
 
+            if isAppointmentFormOpen {
+                appointmentForm
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeOut(duration: 0.14), value: isAppointmentFormOpen)
+    }
+
+    /// Open whenever the user asked for it, and forced open while a row is
+    /// being edited — the pencil on a row has to reveal the form it binds to.
+    private var isAppointmentFormOpen: Bool {
+        showAptForm || editingAppointmentId != nil
+    }
+
+    private var appointmentForm: some View {
+        VStack(alignment: .leading, spacing: DS.Space.sm) {
             appointmentScheduleControls
                 .onChange(of: aptDateInput) { _, new in
                     if let end = aptEndDateInput, end < new { aptEndDateInput = new }
@@ -381,17 +416,14 @@ extension ContentView {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .fixedSize()
+                // Same reason as the Week columns: date + time + "1h 30m" +
+                // title in a 340pt rail left the title with about eight
+                // characters. The duration goes, the title stays readable.
                 if !apt.isMultiDay {
                     Text(apt.timeLabel)
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
                         .foregroundStyle(Color.dfAccent)
                         .fixedSize()
-                    if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
-                        Text(pill)
-                            .font(.system(size: 10, weight: .medium).monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                            .fixedSize()
-                    }
                 }
                 if apt.source == .google {
                     Image(systemName: "g.circle.fill")

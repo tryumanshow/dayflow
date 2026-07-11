@@ -16,6 +16,7 @@ struct GoogleCalendarSettings: View {
     @State private var clientID: String = GoogleCredentials.clientID
     @State private var clientSecret: String = ""
     @State private var connecting = false
+    @State private var showSetupGuide = false
     @State private var selected: Set<String> = Set(GoogleCalendarPreference.selectedCalendars)
 
     private var isConnected: Bool { GoogleCredentials.isConnected }
@@ -73,7 +74,7 @@ struct GoogleCalendarSettings: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 Button {
                     Task { await connect() }
                 } label: {
@@ -83,24 +84,63 @@ struct GoogleCalendarSettings: View {
                             Text(L("gcal.connecting"))
                         }
                     } else {
-                        Text(L("gcal.connect"))
+                        Label(L("gcal.connect"), systemImage: "safari")
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(connecting || clientID.trimmingCharacters(in: .whitespaces).isEmpty
                           || clientSecret.trimmingCharacters(in: .whitespaces).isEmpty)
 
-                Link(L("gcal.setup_guide"),
-                     destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
+                // Pressing this throws you out to a browser with no warning,
+                // which is exactly the thing nobody expects from a Settings
+                // pane. Say so before it happens.
+                Text(L("gcal.connect.hint"))
                     .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
 
-            Text(L("gcal.setup_steps"))
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            // Five lines of grey prose is a wall nobody reads. It's needed
+            // exactly once, so it hides until asked for.
+            DisclosureGroup(isExpanded: $showSetupGuide) {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(Array(Self.setupSteps.enumerated()), id: \.offset) { idx, step in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("\(idx + 1)")
+                                .font(.system(size: 10, weight: .bold).monospacedDigit())
+                                .foregroundStyle(Color.dfAccent)
+                                .frame(width: 14, alignment: .trailing)
+                            Text(L(step))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Link(L("gcal.setup_guide"),
+                         destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
+                        .font(.caption)
+                        .padding(.top, 2)
+                    Text(L("gcal.byo_reason"))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                }
+                .padding(.top, 8)
+            } label: {
+                Text(L("gcal.setup_title"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
+
+    private static let setupSteps = [
+        "gcal.step.project",
+        "gcal.step.enable_api",
+        "gcal.step.create_client",
+        "gcal.step.paste",
+        "gcal.step.connect",
+    ]
 
     private var connectedBody: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -141,25 +181,34 @@ struct GoogleCalendarSettings: View {
                 }
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    Task { await sync.syncNow() }
-                } label: {
-                    if sync.isSyncing {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small)
-                            Text(L("gcal.syncing"))
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 12) {
+                    Button {
+                        Task { await sync.syncNow() }
+                    } label: {
+                        if sync.isSyncing {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text(L("gcal.syncing"))
+                            }
+                        } else {
+                            Label(L("gcal.sync_now"), systemImage: "arrow.clockwise")
                         }
-                    } else {
-                        Text(L("gcal.sync_now"))
+                    }
+                    .disabled(sync.isSyncing)
+
+                    if let last = sync.lastSyncAt {
+                        Text(L("gcal.last_synced", DF.hourMinute.string(from: last)))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .disabled(sync.isSyncing)
-
-                if let last = sync.lastSyncAt {
-                    Text(L("gcal.last_synced", DF.hourMinute.string(from: last)))
+                // "Connected" alone doesn't tell you whether anything actually
+                // came across. The count does.
+                if sync.lastSyncAt != nil {
+                    Text(L("gcal.imported_count", sync.importedCount))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
             }
 

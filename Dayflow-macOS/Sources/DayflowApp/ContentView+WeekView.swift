@@ -103,20 +103,23 @@ extension ContentView {
             if !dayAppointments.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(dayAppointments) { apt in
-                        HStack(spacing: 4) {
+                        // No duration pill here. A week column is ~140pt wide,
+                        // and time + "1h 30m" + title all competing for it is
+                        // what truncated every title to "Dentist foll…". The
+                        // duration is the least useful of the three at a
+                        // glance, so it stays in the Day rail only and the
+                        // title gets the room back.
+                        HStack(alignment: .top, spacing: 4) {
                             Text(apt.timeLabel)
                                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
                                 .fixedSize()
-                            if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
-                                Text(pill)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                            }
                             Text(apt.title)
                                 .font(DS.FontStyle.caption)
                                 .foregroundStyle(.primary)
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
                                 .background(

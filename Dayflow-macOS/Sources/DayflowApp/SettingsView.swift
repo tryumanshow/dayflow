@@ -41,7 +41,44 @@ struct SettingsView: View {
 
     @State private var showRestartAlert = false
 
+    /// Grouped rather than a flat stack: language, two font sliders, holidays,
+    /// reminders and a start date sitting in one undifferentiated column gave
+    /// no clue which knob belonged to what.
     private var generalTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                settingsGroup(L("settings.group.appearance")) {
+                    appearanceFields
+                }
+                settingsGroup(L("settings.group.alerts")) {
+                    notificationsField
+                }
+                settingsGroup(L("settings.group.data")) {
+                    startDateField
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(24)
+        }
+    }
+
+    @ViewBuilder
+    private func settingsGroup<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+                .kerning(0.6)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var appearanceFields: some View {
         VStack(alignment: .leading, spacing: 18) {
             field(
                 label: L("settings.language"),
@@ -92,32 +129,29 @@ struct SettingsView: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
             }
+        }
+    }
 
-            notificationsField
-
-            field(
-                label: L("settings.start_date"),
-                hint: L("settings.start_date.hint")
-            ) {
-                HStack(spacing: 8) {
-                    DatePicker("", selection: Binding(
-                        get: { startDateEpoch > 0 ? Date(timeIntervalSince1970: startDateEpoch) : Date() },
-                        set: { startDateEpoch = $0.timeIntervalSince1970 }
-                    ), displayedComponents: [.date])
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                    if startDateEpoch > 0 {
-                        let days = Calendar.current.dateComponents([.day], from: Date(timeIntervalSince1970: startDateEpoch), to: Date()).day ?? 0
-                        Text(L("settings.start_date.days_format", days))
-                            .font(DS.FontStyle.caption)
-                            .foregroundStyle(.secondary)
-                    }
+    private var startDateField: some View {
+        field(
+            label: L("settings.start_date"),
+            hint: L("settings.start_date.hint")
+        ) {
+            HStack(spacing: 8) {
+                DatePicker("", selection: Binding(
+                    get: { startDateEpoch > 0 ? Date(timeIntervalSince1970: startDateEpoch) : Date() },
+                    set: { startDateEpoch = $0.timeIntervalSince1970 }
+                ), displayedComponents: [.date])
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                if startDateEpoch > 0 {
+                    let days = Calendar.current.dateComponents([.day], from: Date(timeIntervalSince1970: startDateEpoch), to: Date()).day ?? 0
+                    Text(L("settings.start_date.days_format", days))
+                        .font(DS.FontStyle.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-
-            Spacer()
         }
-        .padding(24)
     }
 
     /// Reminders are off until asked for. Flipping the toggle on is what

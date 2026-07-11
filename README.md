@@ -33,7 +33,7 @@ Obsidian is where my work lives — project notes, references, anything that has
 ### Day view
 - Markdown editor on the left, today's completion ratio on the right.
 - Checklists, memos, and nested lists all live in one body per day.
-- Top toolbar: **B** / *I* / <u>U</u> / ~~S~~ / `{ }`, plus text and background color swatches. Select text, click a button.
+- Top toolbar: **B** / *I* / <u>U</u> / ~~S~~ / `{ }`, plus text colour and highlight. Select text, click a button. The colour swatches stay folded behind their two buttons — the underline on each one shows the colour the selection already carries.
 - Slash menu (`/` on an empty line): headings, lists, code blocks, tables, and more.
 
 ![Day view](Dayflow-macOS/docs/screenshots/en/day.png)

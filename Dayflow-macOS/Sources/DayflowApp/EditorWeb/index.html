@@ -77,36 +77,57 @@ body {
     /* Never break a group across rows. */
     flex: 0 0 auto;
 }
-#dayflow-toolbar .tb-group.colors {
-    gap: 6px;
+/* The twelve colour swatches used to sit open on the bar, which made a
+   note-taking app open on a wall of controls. They live behind two trigger
+   buttons now, and expand into a row of their own when one is pressed. */
+/* Trigger: a glyph with a thin bar underneath showing the colour that
+   is currently applied, the way Word/Docs mark theirs. */
+#dayflow-toolbar .tb-pop {
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 5px;
 }
-/* Swatch row is a nested flex so its circles share a 7px gap
-   regardless of the parent group's gap. */
-#dayflow-toolbar [data-row] {
+#dayflow-toolbar .tb-pop .glyph {
+    font-size: 12px;
+    line-height: 11px;
+}
+#dayflow-toolbar .tb-pop .ink {
+    width: 14px;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.22);
+}
+/* The swatch panel expands INSIDE the toolbar — it takes a full flex row and
+   pushes the editor down, rather than floating over it.
+   A floating panel was the obvious design and it did not work: it painted
+   correctly, but BlockNote lays invisible overlays across the editor surface,
+   and those swallowed the mousedown and handed it to ProseMirror. The panel
+   looked open, you clicked a colour, and the caret jumped instead. Staying in
+   the toolbar's own flow sidesteps hit-testing against the editor entirely —
+   the B/I/U buttons next to it have always received clicks reliably. */
+#dayflow-color-pop {
+    flex-basis: 100%;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 2px 1px;
+}
+#dayflow-color-pop[hidden] {
+    display: none;
+}
+#dayflow-color-pop [data-row][hidden] {
+    display: none;
+}
+#dayflow-color-pop [data-row] {
     display: inline-flex;
     align-items: center;
     gap: 7px;
 }
-#dayflow-toolbar .label {
-    /* Fixed width so the `A` and `▨` labels stack vertically
-       with their color swatches lining up perfectly when the
-       narrow-width layout wraps each color group onto its own
-       row. Without this the glyphs have different widths and
-       the swatch rows visually drift. */
-    font-size: 11px;
-    width: 14px;
-    text-align: center;
-    color: rgba(255, 255, 255, 0.45);
-}
-/* Narrow containers (Month plan rail ~440px and below): force
-   every logical group onto its own row so [B I U S] sits
-   alone, and the two color rows stack with their labels
-   aligned at the same left margin. Body font is user-
-   controlled via Settings → Editor font size, so we no longer
-   hard-shrink it here. */
+/* Narrow containers (Month plan rail ~440px and below): keep the two
+   groups from splitting mid-group. */
 @media (max-width: 540px) {
     #dayflow-toolbar .tb-group {
-        flex-basis: 100%;
+        flex-basis: auto;
     }
 }
 #dayflow-toolbar button {
@@ -443,13 +464,17 @@ body {
     <button data-cmd="strike" class="strike" title="Strikethrough">S</button>
     <button data-cmd="code" class="code" title="Inline Code">{ }</button>
   </div>
-  <div class="tb-group colors">
-    <span class="label">A</span>
-    <span data-row="textColor"></span>
+  <div class="tb-group">
+    <button class="tb-pop" data-pop="textColor" title="Text color">
+      <span class="glyph">A</span><span class="ink"></span>
+    </button>
+    <button class="tb-pop" data-pop="backgroundColor" title="Highlight">
+      <span class="glyph">▨</span><span class="ink"></span>
+    </button>
   </div>
-  <div class="tb-group colors">
-    <span class="label">▨</span>
-    <span data-row="backgroundColor"></span>
+  <div id="dayflow-color-pop" hidden>
+    <span data-row="textColor" hidden></span>
+    <span data-row="backgroundColor" hidden></span>
   </div>
 </div>
 <div id="dayflow-find-bar" role="search" aria-label="Find in page">
@@ -832,7 +857,11 @@ const COLORS = [
 // would burn DOM work.
 let cmdButtons = [];
 let colorButtons = { textColor: [], backgroundColor: [] };
+let popButtons = [];
+let openPop = null;
 let lastActiveSig = "";
+
+const COLOR_HEX = Object.fromEntries(COLORS);
 
 function buildSwatches() {
     const bar = document.getElementById('dayflow-toolbar');
@@ -860,6 +889,28 @@ function buildSwatches() {
         colorButtons[prop] = Array.from(row.querySelectorAll('button'));
     }
     cmdButtons = Array.from(bar.querySelectorAll('button[data-cmd]'));
+    popButtons = Array.from(bar.querySelectorAll('button[data-pop]'));
+}
+
+/// Expand the swatch row for one property, collapsing the other.
+function toggleColorPop(prop) {
+    const pop = document.getElementById('dayflow-color-pop');
+    if (!pop) return;
+    if (openPop === prop) { closeColorPop(); return; }
+    openPop = prop;
+    for (const p of ['textColor', 'backgroundColor']) {
+        const row = pop.querySelector('[data-row="' + p + '"]');
+        if (row) row.hidden = (p !== prop);
+    }
+    pop.hidden = false;
+    for (const b of popButtons) b.classList.toggle('active', b.dataset.pop === prop);
+}
+
+function closeColorPop() {
+    const pop = document.getElementById('dayflow-color-pop');
+    if (pop) pop.hidden = true;
+    openPop = null;
+    for (const b of popButtons) b.classList.remove('active');
 }
 
 // mousedown + preventDefault keeps the editor's text selection
@@ -872,6 +923,10 @@ function bindToolbar() {
         const btn = e.target.closest('button');
         if (!btn) return;
         e.preventDefault();
+        if (btn.dataset.pop) {
+            toggleColorPop(btn.dataset.pop);
+            return;
+        }
         if (!editor) return;
         try {
             const cmd = btn.dataset.cmd;
@@ -894,8 +949,21 @@ function bindToolbar() {
         } catch (err) {
             console.log('toolbar cmd error: ' + err.message);
         }
+        // A colour pick is a complete action — leaving the panel open just
+        // covers the text you were looking at.
+        closeColorPop();
         refreshToolbarState();
         scheduleEmit();
+    });
+
+    // Click anywhere else, or press Escape, and the panel goes away. No
+    // preventDefault here: this must not swallow ordinary clicks into the
+    // document body.
+    document.addEventListener('mousedown', (e) => {
+        if (openPop && !e.target.closest('#dayflow-toolbar')) closeColorPop();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (openPop && e.key === 'Escape') closeColorPop();
     });
 }
 
@@ -926,6 +994,14 @@ function refreshToolbarState() {
             const isActive = (val !== 'default') && (val === current);
             b.classList.toggle('active', isActive);
         }
+    }
+    // With the swatches folded away, the trigger's underline is the only
+    // thing that says which colour the selection already carries.
+    for (const b of popButtons) {
+        const ink = b.querySelector('.ink');
+        if (!ink) continue;
+        const current = active[b.dataset.pop];
+        ink.style.background = COLOR_HEX[current] || 'rgba(255, 255, 255, 0.22)';
     }
 }
 

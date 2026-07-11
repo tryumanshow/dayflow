@@ -55,7 +55,8 @@
 "appointments.end_time_placeholder" = "종료";
 "appointments.title_placeholder" = "제목";
 "appointments.month_header" = "이 달의 일정";
-"appointments.month_hint" = "여기서 관리";
+"appointments.new" = "일정 추가";
+"appointments.close_form" = "닫기";
 "appointments.end_date_add" = "+ 종료일";
 "appointments.end_date_remove" = "종료일 제거";
 "appointments.manage_in_month" = "월간 뷰에서 관리";
@@ -105,6 +106,9 @@
 /* Settings — window */
 "settings.title" = "환경설정";
 "settings.subtitle" = "Dayflow 설정과 AI 회고 기능을 관리해.";
+"settings.group.appearance" = "표시";
+"settings.group.alerts" = "알림";
+"settings.group.data" = "데이터";
 "settings.general_tab" = "일반";
 "settings.llm_tab" = "AI 회고";
 "settings.provider" = "Provider";
@@ -170,7 +174,15 @@
 "gcal.connect" = "Google 캘린더 연결";
 "gcal.connecting" = "브라우저에서 동의 대기 중…";
 "gcal.setup_guide" = "Google Cloud 사용자 인증 정보 열기";
-"gcal.setup_steps" = "프로젝트 생성 → API 및 서비스 → Google Calendar API 사용 설정 → 사용자 인증 정보 → OAuth 클라이언트 ID 만들기 → 애플리케이션 유형 ‘데스크톱 앱’. 위 두 값을 붙여넣으면 돼. Dayflow 는 자체 자격증명을 넣어 배포하지 않아 — 오픈소스 바이너리 안의 OAuth 클라이언트는 비밀로 유지할 수 없고, 할당량도 그 소유자에게 청구되니까.";
+"gcal.connect.hint" = "누르면 브라우저에서 구글 동의 화면이 열려. 거기서 허용하고 돌아오면 끝 — 따로 설치할 건 없어.";
+"gcal.setup_title" = "이 값 어디서 받아?";
+"gcal.step.project" = "Google Cloud Console 에서 프로젝트 생성.";
+"gcal.step.enable_api" = "API 및 서비스 → Google Calendar API 사용 설정.";
+"gcal.step.create_client" = "사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID → 애플리케이션 유형 ‘데스크톱 앱’.";
+"gcal.step.paste" = "클라이언트 ID 와 보안 비밀번호를 위 두 칸에 붙여넣기.";
+"gcal.step.connect" = "연결 버튼 누르기. 브라우저에 구글 동의 화면이 뜨고, 허용하면 앱으로 돌아가라고 알려줘.";
+"gcal.byo_reason" = "Dayflow 는 자체 자격증명을 넣어 배포하지 않아 — 오픈소스 바이너리 안의 OAuth 클라이언트는 비밀로 유지할 수 없고, API 할당량도 소유자에게 청구되니까.";
+"gcal.imported_count" = "가져온 일정 %d개";
 "gcal.connected" = "연결됨";
 "gcal.disconnect" = "연결 해제";
 "gcal.calendars" = "가져올 캘린더";

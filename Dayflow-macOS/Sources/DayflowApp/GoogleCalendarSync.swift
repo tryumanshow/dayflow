@@ -219,6 +219,9 @@ final class GoogleCalendarSync {
     private(set) var lastError: String?
     private(set) var lastSyncAt: Date? = GoogleCalendarPreference.lastSyncAt
     private(set) var calendars: [GoogleCalendarInfo] = []
+    /// How many mirrored events are on file. "Connected" on its own doesn't
+    /// say whether anything actually came across.
+    private(set) var importedCount = 0
 
     @ObservationIgnored private weak var store: DayflowStore?
     @ObservationIgnored private var timer: Timer?
@@ -226,6 +229,7 @@ final class GoogleCalendarSync {
     func bootstrap(store: DayflowStore) {
         self.store = store
         guard GoogleCalendarPreference.enabled, GoogleCredentials.isConnected else { return }
+        importedCount = store.db.mirroredAppointmentCount(source: .google)
         Task { await syncNow() }
         startTimer()
     }
@@ -281,6 +285,7 @@ final class GoogleCalendarSync {
         calendars = []
         lastSyncAt = nil
         lastError = nil
+        importedCount = 0
     }
 
     func refreshCalendarList() async {
@@ -323,6 +328,9 @@ final class GoogleCalendarSync {
         store.db.replaceMirroredAppointments(collected, source: .google, windowStart: from, windowEnd: to)
         store.reloadAppointments()
 
+        // Count from the DB, not from `collected` — events outside the synced
+        // window are still on file and still showing up in the app.
+        importedCount = store.db.mirroredAppointmentCount(source: .google)
         let now = Date()
         GoogleCalendarPreference.lastSyncAt = now
         lastSyncAt = now
