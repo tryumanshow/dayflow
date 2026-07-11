@@ -32,6 +32,9 @@ extension Notification.Name {
     static let dayflowUndo      = Notification.Name("dayflowUndo")
     static let dayflowRedo      = Notification.Name("dayflowRedo")
     static let dayflowFind      = Notification.Name("dayflowFind")
+    /// Opens the global search overlay (⌘⇧F). Distinct from `dayflowFind`
+    /// (⌘F), which is in-editor find within the current note.
+    static let dayflowOpenSearch = Notification.Name("dayflowOpenSearch")
     /// Editor zoom — bumps `dayEditorFontSize` or
     /// `monthPlanEditorFontSize` in `ContentView` based on the active
     /// view mode. Mirrors the macOS `View → Zoom In/Out/Reset` triplet.

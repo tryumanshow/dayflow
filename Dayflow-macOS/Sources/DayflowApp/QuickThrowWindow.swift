@@ -91,12 +91,12 @@ private struct QuickThrowView: View {
     private func submit() {
         let v = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !v.isEmpty else { onDone(); return }
-        var body = DayflowDB.shared.getDayNote(date: date)
+        var body = store.db.getDayNote(date: date)
         if !body.isEmpty && !body.hasSuffix("\n") {
             body.append("\n")
         }
         body.append("- [ ] \(v)\n")
-        DayflowDB.shared.saveDayNote(date: date, body: body)
+        store.db.saveDayNote(date: date, body: body)
         // Hand the new body to the store so the in-memory cache stays in
         // sync with the DB. Cheap path — avoids the month-range SQL query
         // that `refresh(force:)` would re-run on every toss.

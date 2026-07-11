@@ -51,9 +51,14 @@ final class DayflowStore {
     /// the user navigates within the same month.
     var monthRangeLoadedFor: String = ""
 
-    let db = DayflowDB.shared
+    let db: DayflowDB
 
-    init() {
+    /// The app always runs on `DayflowDB.shared`. The parameter exists so
+    /// tests can drive a store against a throwaway DB — without it they'd
+    /// read and (for carry-over, which deletes lines) *write* the real
+    /// notes in `~/Library/Application Support`.
+    init(db: DayflowDB = .shared) {
+        self.db = db
         refresh()
     }
 
@@ -147,6 +152,12 @@ final class DayflowStore {
         // bound to `appointmentsByDay`.
         if byDay != appointmentsByDay {
             appointmentsByDay = byDay
+        }
+        // Every appointment mutation funnels through here, so this is the one
+        // place the pending reminders have to be rebuilt. It's a no-op unless
+        // the user opted in.
+        if NotificationPreference.enabled {
+            Task { await AppointmentNotifier.shared.rescheduleAll() }
         }
     }
 

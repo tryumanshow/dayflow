@@ -11,10 +11,28 @@
 "nav.tooltip.refresh" = "새로고침";
 "nav.tooltip.toggle_rail_hide" = "사이드 패널 숨기기";
 "nav.tooltip.toggle_rail_show" = "사이드 패널 보이기";
+"nav.tooltip.search" = "전체 검색 (⌘⇧F)";
+
+/* Search */
+"search.placeholder" = "노트·약속·계획 검색";
+"search.hint" = "모든 일별 노트, 약속, 이달 계획에서 검색해요.";
+"search.empty" = "검색 결과가 없어요.";
+"search.footer" = "↑↓ 이동 · ↵ 열기 · esc 닫기";
+"search.count" = "결과 %d개";
 "menu.previous" = "이전";
 "menu.next" = "다음";
 "menu.today" = "오늘";
 "menu.toggle_side_panel" = "사이드 패널 토글";
+
+/* Carryover */
+"carryover.banner" = "지난 날에 안 끝난 할 일 %d개가 남아 있어";
+"carryover.review" = "보기";
+"carryover.dismiss" = "오늘은 그만 보기";
+"carryover.title" = "안 끝난 할 일 이월";
+"carryover.hint" = "고른 항목은 오늘로 옮겨져. 원래 있던 날짜에서는 사라져.";
+"carryover.select_all" = "전체 선택";
+"carryover.select_none" = "전체 해제";
+"carryover.confirm" = "%d개 이월";
 
 /* Header labels */
 "header.day_format" = "yyyy년 M월 d일 (E)";
@@ -131,6 +149,17 @@
 "settings.holidays.kr" = "한국";
 "settings.holidays.us" = "미국";
 "settings.holidays.both" = "둘 다";
+
+/* Notifications */
+"settings.notifications" = "약속 알림";
+"settings.notifications.hint" = "약속 시작 전에 알림을 보내. macOS 알림 권한이 필요해.";
+"settings.notifications.enable" = "약속 알림 켜기";
+"settings.notifications.lead" = "미리 알림";
+"settings.notifications.lead.at_start" = "시작할 때";
+"settings.notifications.lead.minutes" = "%d분 전";
+"settings.notifications.denied" = "알림 권한이 거부됐어. 시스템 설정 → 알림 → Dayflow 에서 허용해줘.";
+"notify.lead_body" = "%d분 뒤 시작";
+"notify.starting_now" = "지금 시작";
 
 /* Start date */
 "settings.start_date" = "시작 날짜";
