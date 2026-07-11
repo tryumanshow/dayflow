@@ -18,7 +18,7 @@ Obsidian is where my work lives — project notes, references, anything that has
 - **Code blocks** — type `` ``` `` + Space on an empty line, or pick "Code Block" from the slash menu. Monospaced, dark-themed, with fenced markdown round-tripping.
 - **Tables** — pick "Table" from the slash menu and choose dimensions from a Notion-style grid picker (up to 6 × 6). Backspace on an empty cell removes the entire table.
 - **Monthly plan** — a separate editor per month for the TODOs that belong to the month as a whole, not to any single day. Shown in the Month view right rail.
-- **Appointments** — time-stamped items (meetings, reminders) stored in a dedicated `appointments` table. Surfaced in every view: inline add/delete form in the Day rail, chips above the task preview in Week columns, and a sorted "this month" list in the Month rail. Quick Throw (`⌘⇧I`) has a Task / Appointment tab so you can jot either one without leaving your current app.
+- **Appointments** — time-stamped items (meetings, reminders) stored in a dedicated `appointments` table. Surfaced in every view: a read-only list in the Day rail, chips above the task preview in Week columns, and a sorted "this month" list in the Month rail, which is the one place they're created and edited. Quick Throw (`⌘⇧I`) has a Task / Appointment tab so you can jot either one without leaving your current app.
 - **Images** — paste or drop a picture straight into a note. The bytes are copied into `~/Library/Application Support/Dayflow/attachments/` and the note keeps only a reference, so images survive restarts without bloating the database. Copying an image out of a web page stores the picture itself rather than a link to someone else's server.
 - **Global search** (`⌘⇧F`) — one palette over every day note, appointment, and month-plan section. Matching is substring-based, so a Korean query lands mid-word too. `↑`/`↓` to move, `↵` to jump to whichever view the hit lives on.
 - **Task carry-over** — whatever you left unchecked in the past week shows up as a banner on today. Review the list, keep what still matters, and those tasks *move*: appended to today and removed from the day they were written on, so nothing is counted twice.
@@ -31,23 +31,25 @@ Obsidian is where my work lives — project notes, references, anything that has
 ## Screenshots
 
 ### Day view
-- Markdown editor on the left, today's completion ratio on the right.
+- Markdown editor on the left. On the right: today's completion ratio, the day's appointments, and the AI review panel.
 - Checklists, memos, and nested lists all live in one body per day.
+- A banner appears at the top when earlier days still hold unchecked tasks — see [Task carry-over](#task-carry-over).
 - Top toolbar: **B** / *I* / <u>U</u> / ~~S~~ / `{ }`, plus text colour and highlight. Select text, click a button. The colour swatches stay folded behind their two buttons — the underline on each one shows the colour the selection already carries.
 - Slash menu (`/` on an empty line): headings, lists, code blocks, tables, and more.
 
 ![Day view](Dayflow-macOS/docs/screenshots/en/day.png)
 
 ### Week view
-- Seven columns, one per weekday.
-- Each column previews the **open tasks only**, grouped by their nearest heading (up to 2 headings, 3 tasks each). Done work is summarized in the column header's done/total ratio instead of taking preview slots.
+- Seven columns, one per weekday. Each column shows the day's appointments as chips, then its open tasks.
+- The task preview shows the **open tasks only**, grouped by their nearest heading (up to 2 headings, 3 tasks each). Done work is summarized in the column header's done/total ratio instead of taking preview slots.
 - Checkboxes are tappable in place — toggling a box does not navigate away from the week.
 
 ![Week view](Dayflow-macOS/docs/screenshots/en/week.png)
 
 ### Month view
 - Heatmap colored by how much you actually did each day.
-- Right rail: month metrics (completion rate, longest streak, busiest weekday), a **Month plan** editor for month-scoped TODOs, and "Line of the month" surfaced from your highest-activity day.
+- Right rail, top to bottom: month metrics (completion rate, longest streak, busiest weekday), every appointment in the month, and a **Month plan** editor for month-scoped TODOs.
+- Month view is where scheduling happens. The add form stays collapsed behind **New** — it's wider than the rail, and you schedule occasionally rather than constantly. The pencil on a row opens it pre-filled.
 
 ![Month view](Dayflow-macOS/docs/screenshots/en/month.png)
 
@@ -66,7 +68,8 @@ Obsidian is where my work lives — project notes, references, anything that has
 ![Task carry-over](Dayflow-macOS/docs/screenshots/en/carryover.png)
 
 ### Settings
-- **General** — app language, editor font sizes, public-holiday overlays (Korea / US / both, bundled with the app, no network), appointment reminders and how far ahead they fire, and the date you started using Dayflow.
+- **General** — grouped into *Appearance* (language, editor font sizes, public-holiday overlays for Korea / US / both — bundled with the app, no network), *Alerts* (appointment reminders and how far ahead they fire), and *Data* (the date you started using Dayflow).
+- **Calendar** — connect a Google Calendar and pick which calendars to mirror. Read-only. See [Google Calendar](#google-calendar-optional-read-only) below.
 - **AI Review** — provider (OpenAI or Anthropic), API key, model, and the system prompt that drives the daily review.
 
 ![Settings](Dayflow-macOS/docs/screenshots/en/settings.png)
@@ -155,10 +158,15 @@ Key issue pages:
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+N` | Open Quick Throw |
-| `Cmd+Shift+F` | Search all notes, appointments, and month plans |
-| `Cmd+R` | Refresh data |
-| `Cmd+,` | Preferences window |
 | `Cmd+Shift+I` | Global Quick Throw (works even when Dayflow is in the background) |
+| `Cmd+Shift+F` | Search all notes, appointments, and month plans |
+| `Cmd+F` | Find inside the current editor |
+| `Cmd+←` / `Cmd+→` | Previous / next — a day, a week, or a month, matching the view you're in |
+| `Cmd+T` | Jump back to today |
+| `Cmd+Option+S` | Show or hide the side rail |
+| `Cmd+=` / `Cmd+-` / `Cmd+0` | Editor zoom in / out / reset |
+| `Cmd+R` | Refresh data |
+| `Cmd+,` | Settings |
 
 ### Checklists
 
