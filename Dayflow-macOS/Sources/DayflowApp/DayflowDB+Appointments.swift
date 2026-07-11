@@ -41,6 +41,38 @@ extension DayflowDB {
         return out
     }
 
+    /// Appointments starting after `after`, soonest first. Drives the
+    /// notification scheduler, which needs the next few regardless of which
+    /// month the UI happens to be showing.
+    func upcomingAppointments(after: Date, limit: Int) -> [Appointment] {
+        var stmt: OpaquePointer?
+        sqlite3_prepare_v2(db, """
+            SELECT id, start_at, end_at, title, note, category
+            FROM appointments
+            WHERE start_at > ?
+            ORDER BY start_at ASC, id ASC
+            LIMIT ?
+        """, -1, &stmt, nil)
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, DF.appointmentStamp.string(from: after))
+        sqlite3_bind_int(stmt, 2, Int32(limit))
+
+        var out: [Appointment] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let endAtRaw = textCol(stmt, 2)
+            let noteRaw = textCol(stmt, 4)
+            out.append(Appointment(
+                id: sqlite3_column_int64(stmt, 0),
+                startAt: DF.appointmentStamp.date(from: textCol(stmt, 1)) ?? Date(),
+                endAt: endAtRaw.isEmpty ? nil : DF.appointmentStamp.date(from: endAtRaw),
+                title: textCol(stmt, 3),
+                note: noteRaw.isEmpty ? nil : noteRaw,
+                category: AppointmentCategory(rawValue: textCol(stmt, 5)) ?? .event
+            ))
+        }
+        return out
+    }
+
     /// Returns the newly-inserted row id, or -1 on failure.
     @discardableResult
     func insertAppointment(startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory = .event) -> Int64 {

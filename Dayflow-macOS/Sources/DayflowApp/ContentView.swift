@@ -96,6 +96,26 @@ struct ContentView: View {
     @State var sectionTitleDraft: String = ""
     @State var historySectionId: Int64? = nil
 
+    /// Global search overlay (⌘⇧F). Distinct from the in-editor ⌘F find.
+    @State var showSearch: Bool = false
+
+    /// Carry-over of unfinished tasks from earlier days.
+    ///
+    /// `carryoverPending` is a cache: `pendingCarryovers` runs SQL, and the
+    /// Day view re-renders far more often than the underlying notes change,
+    /// so the banner reads this instead of querying per render. Recomputed
+    /// when the selected day changes.
+    @State var carryoverPending: [CarryoverItem] = []
+    /// Presented via `.sheet(item:)` rather than `.sheet(isPresented:)` — the
+    /// boolean form captures the view *before* the same-transaction write to
+    /// the items array lands, so the sheet came up empty ("0 to carry"). The
+    /// item form hands the batch to the sheet directly.
+    @State var carryoverBatch: CarryoverBatch? = nil
+    /// Reactive mirror of the persisted per-day dismissal. UserDefaults is
+    /// the durable record but SwiftUI doesn't observe it, so hiding the
+    /// banner on tap needs state the view actually tracks.
+    @State var carryoverDismissed: Set<String> = []
+
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
@@ -104,6 +124,15 @@ struct ContentView: View {
                 .transition(.opacity)
         }
         .background(Color.dfCanvas)
+        .overlay {
+            if showSearch {
+                SearchOverlay(isPresented: $showSearch)
+                    .transition(.opacity)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dayflowOpenSearch)) { _ in
+            showSearch = true
+        }
         // Keep the floor BELOW the primary column's needs (grid 320 / day
         // editor 360 + padding), not above grid+rail. A floor wider than
         // the actual screen (e.g. on a scaled display) forces the content
@@ -201,6 +230,10 @@ struct ContentView: View {
 
             if startDateEpoch > 0 {
                 daysBadge
+            }
+
+            navIconButton("magnifyingglass", tooltip: L("nav.tooltip.search")) {
+                showSearch = true
             }
 
             if store.viewMode != .week {

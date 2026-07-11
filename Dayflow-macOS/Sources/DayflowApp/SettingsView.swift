@@ -17,6 +17,9 @@ struct SettingsView: View {
     @AppStorage(AppStorageKeys.monthPlanEditorFontSize) private var monthPlanEditorFontSize: Double = AppStorageKeys.monthPlanEditorFontSizeDefault
     @AppStorage(AppStorageKeys.holidaysMode) private var holidaysMode: HolidayDisplayMode = .off
     @AppStorage(AppStorageKeys.startDate) private var startDateEpoch: Double = 0
+    @AppStorage(NotificationPreference.enabledKey) private var notificationsEnabled: Bool = false
+    @AppStorage(NotificationPreference.leadMinutesKey) private var notificationLeadMinutes: Int = NotificationPreference.leadMinutesDefault
+    @State private var notificationsDenied: Bool = false
     @State private var saved: Bool = false
     @State private var hasExisting: Bool = false
     @State private var errorMessage: String?
@@ -88,6 +91,8 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
             }
 
+            notificationsField
+
             field(
                 label: L("settings.start_date"),
                 hint: L("settings.start_date.hint")
@@ -111,6 +116,53 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(24)
+    }
+
+    /// Reminders are off until asked for. Flipping the toggle on is what
+    /// triggers the macOS permission prompt — and if the user declines there,
+    /// the toggle snaps back off rather than sitting on while nothing fires.
+    private var notificationsField: some View {
+        field(
+            label: L("settings.notifications"),
+            hint: L("settings.notifications.hint")
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(L("settings.notifications.enable"), isOn: $notificationsEnabled)
+                    .onChange(of: notificationsEnabled) { _, on in
+                        Task {
+                            if on {
+                                let granted = await AppointmentNotifier.shared.requestAuthorization()
+                                if !granted {
+                                    notificationsEnabled = false
+                                    notificationsDenied = true
+                                }
+                            } else {
+                                await AppointmentNotifier.shared.syncAuthorization()
+                            }
+                        }
+                    }
+
+                if notificationsEnabled {
+                    Picker(L("settings.notifications.lead"), selection: $notificationLeadMinutes) {
+                        ForEach(NotificationPreference.leadChoices, id: \.self) { m in
+                            Text(m == 0 ? L("settings.notifications.lead.at_start")
+                                        : L("settings.notifications.lead.minutes", m))
+                                .tag(m)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: notificationLeadMinutes) { _, _ in
+                        Task { await AppointmentNotifier.shared.rescheduleAll() }
+                    }
+                }
+
+                if notificationsDenied {
+                    Text(L("settings.notifications.denied"))
+                        .font(DS.FontStyle.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
     }
 
     private var llmTab: some View {

@@ -43,19 +43,25 @@ mkdir -p "${APP_DIR}/Contents/Resources"
 
 cp ".build/release/${EXEC_NAME}" "${APP_DIR}/Contents/MacOS/${EXEC_NAME}"
 
-# Copy SwiftPM-generated resource bundle (localized strings, anything
-# placed under Sources/DayflowApp/Resources/) into the .app. The wrinkle
-# is WHERE. SwiftPM's generated `Bundle.module` accessor looks for the
-# bundle via `Bundle.main.bundleURL.appendingPathComponent(name)`. For a
-# `.app` that resolves to `Dayflow.app/<name>.bundle` — i.e. at the root
-# of the .app, NOT inside `Contents/Resources/`. If we only put it in
-# Contents/Resources the accessor falls through to the hardcoded build-
-# dir path and we miss localizations on a clean install. So we place it
-# at the root. macOS tolerates this; Finder just doesn't enumerate it.
+# Copy the SwiftPM-generated resource bundle (localized strings, anything
+# under Sources/DayflowApp/Resources/) into Contents/Resources — the only
+# place a .app may legally hold resources.
+#
+# It used to go at the ROOT of the .app (Dayflow.app/<name>.bundle) because
+# SwiftPM's `Bundle.module` accessor probes `Bundle.main.bundleURL`. That does
+# find it, but it makes the bundle structurally invalid: `codesign --verify
+# --deep --strict` then fails with "code has no resources but signature
+# indicates they must be present", and macOS refuses to hand an app with a
+# broken signature any of the capabilities it gates on identity — notification
+# authorization comes back `UNErrorDomain Code=1 notificationsNotAllowed`
+# without so much as a prompt.
+#
+# `Bundle.module` probes `Bundle.main.resourceURL` FIRST, and for a .app that
+# is exactly Contents/Resources, so localization keeps working from the
+# correct location.
 SPM_RESOURCE_BUNDLE=".build/release/${APP_NAME}App_${EXEC_NAME}.bundle"
 if [ -d "$SPM_RESOURCE_BUNDLE" ]; then
-    rm -rf "${APP_DIR}/${APP_NAME}App_${EXEC_NAME}.bundle"
-    cp -R "$SPM_RESOURCE_BUNDLE" "${APP_DIR}/${APP_NAME}App_${EXEC_NAME}.bundle"
+    cp -R "$SPM_RESOURCE_BUNDLE" "${APP_DIR}/Contents/Resources/${APP_NAME}App_${EXEC_NAME}.bundle"
 fi
 
 # Regenerate .icns from the Pillow-based renderer and copy into Resources.
@@ -104,6 +110,17 @@ PLIST
 
 # ad-hoc sign so the binary launches without quarantine fuss
 codesign --force --deep --sign - "${APP_DIR}" >/dev/null 2>&1 || true
+
+# A signature that doesn't verify silently costs the app every capability macOS
+# gates on identity (notification authorization, Keychain ACLs). The bundle
+# shipped with a broken one for a long time because nothing ever checked. Now
+# it's a hard build failure.
+if ! codesign --verify --deep --strict "${APP_DIR}" 2>/tmp/dayflow-codesign.err; then
+    echo "!! code signature does not verify:"
+    sed 's/^/     /' /tmp/dayflow-codesign.err
+    exit 1
+fi
+echo "==> signature verified"
 
 echo "==> built ${APP_DIR}"
 

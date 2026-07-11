@@ -6,6 +6,63 @@ extension ContentView {
     // MARK: - day view (asymmetric: editor left, small rail right) ----------
 
     var dayView: some View {
+        VStack(spacing: 0) {
+            carryoverBanner
+            dayColumns
+        }
+        .task(id: DayflowDB.ymd(store.selectedDate)) {
+            let key = DayflowDB.ymd(store.selectedDate)
+            if store.carryoverBannerDismissed(for: store.selectedDate) {
+                carryoverDismissed.insert(key)
+            }
+            carryoverPending = store.pendingCarryovers(into: store.selectedDate)
+        }
+        .sheet(item: $carryoverBatch) { batch in
+            CarryoverSheet(
+                items: batch.items,
+                onCarry: { picked in
+                    store.carryOver(picked, into: store.selectedDate)
+                    carryoverBatch = nil
+                    carryoverPending = store.pendingCarryovers(into: store.selectedDate)
+                    // Whatever the user left unticked, they left on purpose —
+                    // re-prompting on the same day would just nag.
+                    dismissCarryover()
+                },
+                onCancel: { carryoverBatch = nil }
+            )
+        }
+    }
+
+    /// Only surfaces on today: carrying a task into a day that has already
+    /// passed (or hasn't arrived yet) isn't something the user means to do.
+    @ViewBuilder
+    private var carryoverBanner: some View {
+        let key = DayflowDB.ymd(store.selectedDate)
+        if Calendar.current.isDateInToday(store.selectedDate),
+           !carryoverDismissed.contains(key),
+           !carryoverPending.isEmpty {
+            CarryoverBanner(
+                count: carryoverPending.count,
+                onReview: {
+                    // Re-read at open time rather than trusting the cache —
+                    // the notes may have moved since the day was loaded, and
+                    // this list is about to authorize deletions.
+                    let fresh = store.pendingCarryovers(into: store.selectedDate)
+                    carryoverPending = fresh
+                    guard !fresh.isEmpty else { return }
+                    carryoverBatch = CarryoverBatch(items: fresh)
+                },
+                onDismiss: { dismissCarryover() }
+            )
+        }
+    }
+
+    private func dismissCarryover() {
+        store.dismissCarryoverBanner(for: store.selectedDate)
+        carryoverDismissed.insert(DayflowDB.ymd(store.selectedDate))
+    }
+
+    private var dayColumns: some View {
         @Bindable var store = store
         return GeometryReader { geo in
           // Same narrow-display guard as the month view: drop the rail

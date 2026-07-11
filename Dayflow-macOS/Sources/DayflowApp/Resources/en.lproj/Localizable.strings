@@ -11,10 +11,28 @@
 "nav.tooltip.refresh" = "Refresh";
 "nav.tooltip.toggle_rail_hide" = "Hide side panel";
 "nav.tooltip.toggle_rail_show" = "Show side panel";
+"nav.tooltip.search" = "Search all notes (⌘⇧F)";
+
+/* Search */
+"search.placeholder" = "Search notes, appointments, plans";
+"search.hint" = "Type to search across every day note, appointment, and month plan.";
+"search.empty" = "No matches.";
+"search.footer" = "↑↓ to move · ↵ to open · esc to close";
+"search.count" = "%d results";
 "menu.previous" = "Previous";
 "menu.next" = "Next";
 "menu.today" = "Today";
 "menu.toggle_side_panel" = "Toggle Side Panel";
+
+/* Carryover */
+"carryover.banner" = "%d unfinished task(s) left on earlier days";
+"carryover.review" = "Review";
+"carryover.dismiss" = "Hide for today";
+"carryover.title" = "Carry unfinished tasks over";
+"carryover.hint" = "Selected tasks move to today — they're removed from the day they were written on.";
+"carryover.select_all" = "Select all";
+"carryover.select_none" = "Select none";
+"carryover.confirm" = "Carry %d over";
 
 /* Header labels */
 "header.day_format" = "yyyy MMM d (EEE)";
@@ -131,6 +149,17 @@
 "settings.language.restart_hint" = "Language changes take effect after you relaunch Dayflow.";
 "settings.language.restart_now" = "Restart now";
 "settings.language.restart_later" = "Later";
+
+/* Notifications */
+"settings.notifications" = "Appointment reminders";
+"settings.notifications.hint" = "Get notified before an appointment starts. Requires macOS notification permission.";
+"settings.notifications.enable" = "Enable reminders";
+"settings.notifications.lead" = "Remind me";
+"settings.notifications.lead.at_start" = "At start time";
+"settings.notifications.lead.minutes" = "%d min before";
+"settings.notifications.denied" = "Notification permission was denied. Allow it in System Settings → Notifications → Dayflow.";
+"notify.lead_body" = "starts in %d min";
+"notify.starting_now" = "starting now";
 
 /* Start date */
 "settings.start_date" = "Start date";

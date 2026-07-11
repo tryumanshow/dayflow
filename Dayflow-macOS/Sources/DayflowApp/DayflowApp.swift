@@ -22,6 +22,7 @@ struct DayflowApp: App {
                     GlobalHotkey.shared.register {
                         QuickThrowController.shared.toggle()
                     }
+                    AppointmentNotifier.shared.bootstrap(store: store)
                 }
         }
         .windowResizability(.contentSize)
@@ -81,6 +82,10 @@ struct DayflowApp: App {
                     NotificationCenter.default.post(name: .dayflowFind, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: .command)
+                Button("Search All Notes…") {
+                    NotificationCenter.default.post(name: .dayflowOpenSearch, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
             }
             // Editor zoom — Cmd+= (also fires for Cmd++), Cmd+-, Cmd+0.
             // Lives in the View menu so it sits next to the standard
