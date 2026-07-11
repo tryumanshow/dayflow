@@ -23,7 +23,8 @@ Obsidian is where my work lives — project notes, references, anything that has
 - **Global search** (`⌘⇧F`) — one palette over every day note, appointment, and month-plan section. Matching is substring-based, so a Korean query lands mid-word too. `↑`/`↓` to move, `↵` to jump to whichever view the hit lives on.
 - **Task carry-over** — whatever you left unchecked in the past week shows up as a banner on today. Review the list, keep what still matters, and those tasks *move*: appended to today and removed from the day they were written on, so nothing is counted twice.
 - **Appointment reminders** — opt-in macOS notifications, 0 / 5 / 10 / 30 / 60 minutes before an appointment starts. Off until you turn them on.
-- **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain, nothing is synced.
+- **Google Calendar import** — opt-in, **read-only**. Your events are mirrored into Dayflow's appointments and show up in every view; Dayflow never writes anything back to Google.
+- **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain. Nothing leaves the machine unless you ask for it: the only two things that ever talk to a server are the LLM review (when you press Generate) and the Google Calendar import (if you connect it).
 - **Optional LLM daily review** — OpenAI or Anthropic, picked and configured entirely inside the app.
 - **Bilingual** — English or Korean, switchable in Settings, no relaunch-from-terminal needed.
 
@@ -175,13 +176,40 @@ Key issue pages:
 - Pick how far ahead you want to be told: at start time, or 5 / 10 / 30 / 60 minutes before.
 - Reminders are rescheduled from scratch whenever your appointments change, so edits and deletions take effect immediately.
 - macOS only keeps a bounded number of pending local notifications, so Dayflow schedules the soonest 60 upcoming appointments and refills as they fire.
+- All-day events get no reminder — their midnight start is a storage detail, not a time anything actually happens.
+
+### Google Calendar (optional, read-only)
+
+Import only. Dayflow reads your calendar and never writes to it — imported events can't be edited or deleted inside the app, because the next sync would put them straight back.
+
+**You bring your own OAuth client.** Dayflow ships no Google credentials: an OAuth client id can't be kept secret inside an open-source binary (anyone can pull it out with `strings`), and the API quota and consent screen belong to whoever owns the client. So it's the same shape as the LLM API key — your credentials, your Keychain.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create a project.
+2. **APIs & Services** → enable the **Google Calendar API**.
+3. **Credentials** → **Create credentials** → **OAuth client ID** → application type **Desktop app**.
+4. Copy the **Client ID** and **Client secret** into Dayflow: Settings → **Calendar**.
+5. Click **Connect Google Calendar**. Your browser opens Google's consent screen; approve it and the tab tells you to come back.
+
+No web server, no domain, and **no nginx** are involved. Google's installed-app flow lets a desktop client redirect to `http://127.0.0.1` on any port, so Dayflow opens a socket for the few seconds the consent screen is up, reads the authorization code off the single request the browser makes to it, and closes. The exchange is protected with PKCE, and the refresh token goes into the macOS Keychain.
+
+After connecting:
+
+- Tick which calendars to mirror. Nothing ticked means your primary calendar only.
+- Dayflow syncs on launch, every 30 minutes, and whenever you press **Sync now**.
+- The window it mirrors is 30 days back to 180 days ahead.
+- Mirrored rows are marked with a small **ⓖ** and carry no edit or delete buttons.
+- **Disconnect** forgets the grant and removes every mirrored event. Appointments you typed yourself are untouched.
+- Requested scope: `calendar.readonly` — Google will not grant Dayflow write access even if something asked for it.
 
 ## Data and privacy
 
 - **Database** — `~/Library/Application Support/Dayflow/dayflow.db` (SQLite, WAL mode). Tables: `day_notes`, `reviews`, `appointments`, and `month_plan_sections` (plus its edit history). Everything a day note contains rides inside the markdown body.
-- **API keys** — macOS **Keychain**. Never written to plain files, environment variables, or logs.
-- **Provider / model / custom system prompt / language override / reminder preferences** — `UserDefaults` (also local-only).
-- **Outbound traffic** — only when you press **Generate** on the daily review panel. One HTTPS request per press, sent to the provider you picked. Body contains: the date string (`yyyy-MM-dd`), that day's raw markdown, and the current system prompt. Nothing else is ever sent — no other day's data, no device identifier, no telemetry, no crash reports.
+- **API keys and the Google refresh token** — macOS **Keychain**. Never written to plain files, environment variables, or logs.
+- **Provider / model / custom system prompt / language override / reminder preferences / Google client id** — `UserDefaults` (also local-only).
+- **Outbound traffic** — exactly two things reach the network, and only if you turn them on:
+  - **LLM review**, when you press **Generate**. One HTTPS request per press, to the provider you picked. Body contains: the date string (`yyyy-MM-dd`), that day's raw markdown, and the current system prompt.
+  - **Google Calendar**, if you connect it. Dayflow *reads* your events over `calendar.readonly`. Your notes are never part of that request — it's a download, not an upload.
+- No other day's data, no device identifier, no telemetry, no crash reports — ever.
 - **Backup** — copy `~/Library/Application Support/Dayflow/` somewhere safe. The DB plus its WAL and SHM files are all that matter.
 
 ---

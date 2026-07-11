@@ -32,6 +32,14 @@ enum AppointmentCategory: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// Where an appointment came from. `local` rows are the ones you typed;
+/// `google` rows are mirrored from Google Calendar and are read-only —
+/// the next sync would overwrite any edit, so the UI doesn't offer one.
+enum AppointmentSource: String, Codable {
+    case local
+    case google
+}
+
 /// A single scheduled item (meeting, appointment, time-stamped
 /// reminder). `startAt` is always local wall-clock; we don't track
 /// timezones — this is a personal per-machine planner.
@@ -42,10 +50,24 @@ struct Appointment: Identifiable, Equatable {
     let title: String
     let note: String?
     let category: AppointmentCategory
+    var source: AppointmentSource = .local
+    /// A day-granularity event (Google's `start.date` form). It has no
+    /// meaningful clock time, so the UI shows "All day" instead of 00:00.
+    var isAllDay: Bool = false
 
     var isMultiDay: Bool {
         guard let endAt else { return false }
         return DayflowDB.ymd(startAt) != DayflowDB.ymd(endAt)
+    }
+
+    /// Mirrored rows can be looked at, not edited.
+    var isReadOnly: Bool { source != .local }
+
+    /// What goes in the leading time column. An all-day event's 00:00 is an
+    /// artifact of how it's stored, not something the user wrote — showing it
+    /// would read as "this happens at midnight".
+    var timeLabel: String {
+        isAllDay ? L("apt.all_day") : DF.hourMinute.string(from: startAt)
     }
 }
 
@@ -271,6 +293,19 @@ final class DayflowDB: @unchecked Sendable {
                     FOREIGN KEY (section_id) REFERENCES month_plan_sections(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_mpsh_section ON month_plan_section_history(section_id, saved_at DESC);
+            """)
+        }
+        if current < 9 {
+            // v9: appointments can now be mirrored from Google Calendar.
+            // `external_id` is the Google event key, scoped by calendar, and
+            // the unique index is what makes a re-sync idempotent — a repeated
+            // import updates the existing row instead of piling up duplicates.
+            runMigrationStep(version: 9, sql: """
+                ALTER TABLE appointments ADD COLUMN source TEXT NOT NULL DEFAULT 'local';
+                ALTER TABLE appointments ADD COLUMN external_id TEXT;
+                ALTER TABLE appointments ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0;
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_external
+                    ON appointments(external_id) WHERE external_id IS NOT NULL;
             """)
         }
     }

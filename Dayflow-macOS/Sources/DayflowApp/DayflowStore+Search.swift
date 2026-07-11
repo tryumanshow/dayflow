@@ -47,7 +47,7 @@ extension DayflowStore {
                 date: apt.startAt,
                 mode: .day,
                 title: apt.title,
-                snippet: "\(DF.fullDate.string(from: apt.startAt)) · \(DF.hourMinute.string(from: apt.startAt))"
+                snippet: "\(DF.fullDate.string(from: apt.startAt)) · \(apt.timeLabel)"
             ))
         }
 

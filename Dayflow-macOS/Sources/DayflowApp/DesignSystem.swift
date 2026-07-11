@@ -105,6 +105,28 @@ enum DF {
         return f
     }()
 
+    /// RFC 3339 in UTC — the wire format for Google Calendar's `timeMin` /
+    /// `timeMax` bounds.
+    static let rfc3339: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        return f
+    }()
+
+    private static let rfc3339Fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    /// Parse a Google `dateTime`. Fractional seconds are optional in what the
+    /// API returns and `ISO8601DateFormatter` refuses the form it wasn't
+    /// configured for, so both shapes get a try.
+    static func parseRFC3339(_ raw: String) -> Date? {
+        rfc3339.date(from: raw) ?? rfc3339Fractional.date(from: raw)
+    }
+
     // Locale-aware formatters. `DayflowL10n.activeLocale` is a
     // `static let` resolved at launch from the `AppleLanguages`
     // override, so these are safe to cache as `static let` — Week

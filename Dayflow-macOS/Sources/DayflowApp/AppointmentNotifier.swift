@@ -120,6 +120,10 @@ final class AppointmentNotifier: NSObject {
         var scheduled = 0
 
         for apt in store.db.upcomingAppointments(after: now, limit: Self.maxScheduled) {
+            // An all-day event has no start time — its 00:00 is a storage
+            // artifact. "Your trip starts in 10 minutes" at 23:50 the night
+            // before is not a useful thing to say, so they get no reminder.
+            guard !apt.isAllDay else { continue }
             let fireAt = apt.startAt.addingTimeInterval(-lead)
             // An appointment whose lead window has already elapsed (booked for
             // 10 minutes from now with a 30-minute lead) gets no reminder —

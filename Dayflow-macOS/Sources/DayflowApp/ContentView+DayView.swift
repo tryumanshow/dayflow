@@ -201,10 +201,16 @@ extension ContentView {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(items) { apt in
                         HStack(spacing: 8) {
-                            Text(DF.hourMinute.string(from: apt.startAt))
+                            Text(apt.timeLabel)
                                 .font(.system(size: 12, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
                                 .fixedSize()
+                            if apt.source == .google {
+                                Image(systemName: "g.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.tertiary)
+                                    .help(L("gcal.mirrored_hint"))
+                            }
                             if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
                                 Text(pill)
                                     .font(.system(size: 11, weight: .medium).monospacedDigit())

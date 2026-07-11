@@ -104,9 +104,10 @@ extension ContentView {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(dayAppointments) { apt in
                         HStack(spacing: 4) {
-                            Text(DF.hourMinute.string(from: apt.startAt))
+                            Text(apt.timeLabel)
                                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Color.dfAccent)
+                                .fixedSize()
                             if let pill = Self.durationPill(from: apt.startAt, to: apt.endAt) {
                                 Text(pill)
                                     .font(.system(size: 10, weight: .medium))

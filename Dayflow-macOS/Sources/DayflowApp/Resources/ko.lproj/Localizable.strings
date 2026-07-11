@@ -158,6 +158,45 @@
 "settings.notifications.lead.at_start" = "시작할 때";
 "settings.notifications.lead.minutes" = "%d분 전";
 "settings.notifications.denied" = "알림 권한이 거부됐어. 시스템 설정 → 알림 → Dayflow 에서 허용해줘.";
+
+/* Google Calendar */
+"settings.calendar_tab" = "캘린더";
+"gcal.title" = "Google 캘린더";
+"gcal.blurb" = "Google 캘린더 일정을 Dayflow 로 가져와. 가져오기만 하고 되돌려 쓰지 않으며, 노트는 여전히 아무 데도 올라가지 않아.";
+"gcal.client_id" = "OAuth 클라이언트 ID";
+"gcal.client_id.hint" = "본인 Google Cloud 프로젝트에서 만든 데스크탑 앱 OAuth 클라이언트 값.";
+"gcal.client_secret" = "OAuth 클라이언트 시크릿";
+"gcal.client_secret.hint" = "LLM API 키와 동일하게 macOS 키체인에 저장돼.";
+"gcal.connect" = "Google 캘린더 연결";
+"gcal.connecting" = "브라우저에서 동의 대기 중…";
+"gcal.setup_guide" = "Google Cloud 사용자 인증 정보 열기";
+"gcal.setup_steps" = "프로젝트 생성 → API 및 서비스 → Google Calendar API 사용 설정 → 사용자 인증 정보 → OAuth 클라이언트 ID 만들기 → 애플리케이션 유형 ‘데스크톱 앱’. 위 두 값을 붙여넣으면 돼. Dayflow 는 자체 자격증명을 넣어 배포하지 않아 — 오픈소스 바이너리 안의 OAuth 클라이언트는 비밀로 유지할 수 없고, 할당량도 그 소유자에게 청구되니까.";
+"gcal.connected" = "연결됨";
+"gcal.disconnect" = "연결 해제";
+"gcal.calendars" = "가져올 캘린더";
+"gcal.calendars.hint" = "아무것도 체크 안 하면 기본 캘린더만 가져와.";
+"gcal.calendars.loading" = "불러오는 중…";
+"gcal.primary" = "기본";
+"gcal.sync_now" = "지금 동기화";
+"gcal.syncing" = "동기화 중…";
+"gcal.last_synced" = "마지막 동기화 %@";
+"gcal.readonly_note" = "가져온 일정은 읽기 전용이야 — 여기서 수정하거나 지워도 다음 동기화 때 그대로 되돌아오니까 아예 막아뒀어. 30분마다, 그리고 앱 실행 시 다시 동기화해.";
+"gcal.mirrored_hint" = "Google 캘린더에서 가져옴 — 읽기 전용";
+"gcal.untitled" = "(제목 없음)";
+"apt.all_day" = "종일";
+
+"gcal.browser.done_title" = "Dayflow 연결 완료";
+"gcal.browser.done_body" = "이 탭은 닫고 앱으로 돌아가면 돼.";
+"gcal.browser.failed_title" = "연결 실패";
+"gcal.browser.failed_body" = "Dayflow 로 돌아가서 다시 시도해줘.";
+
+"gcal.err.missing_credentials" = "OAuth 클라이언트 ID 와 시크릿을 먼저 입력해줘.";
+"gcal.err.not_connected" = "Google 접근 권한이 만료됐어. 다시 연결해줘.";
+"gcal.err.listener" = "로컬 콜백 포트를 열지 못했어: %@";
+"gcal.err.cancelled" = "연결이 취소됐어.";
+"gcal.err.denied" = "Google 이 요청을 거부했어: %@";
+"gcal.err.token" = "토큰 교환에 실패했어: %@";
+"gcal.err.no_refresh_token" = "Google 이 refresh token 을 주지 않았어. Google 계정에서 Dayflow 접근 권한을 지우고 다시 연결해줘.";
 "notify.lead_body" = "%d분 뒤 시작";
 "notify.starting_now" = "지금 시작";
 

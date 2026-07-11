@@ -23,6 +23,7 @@ struct DayflowApp: App {
                         QuickThrowController.shared.toggle()
                     }
                     AppointmentNotifier.shared.bootstrap(store: store)
+                    GoogleCalendarSync.shared.bootstrap(store: store)
                 }
         }
         .windowResizability(.contentSize)

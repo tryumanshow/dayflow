@@ -27,7 +27,7 @@ private func userVersion(atPath path: String) -> Int32 {
 /// NOTE: the seed is user_version 0, not 1 — seeding 1 would skip the v1
 /// `ADD COLUMN body_json` step, leaving day_notes without the column every
 /// read now selects.
-@Test func oldDBMigratesToV8WithoutDataLoss() {
+@Test func oldDBMigratesToHeadWithoutDataLoss() {
     let path = tempDBPath()
     let cal = Calendar.current
     let d = cal.date(from: DateComponents(year: 2026, month: 1, day: 15))!
@@ -55,7 +55,17 @@ private func userVersion(atPath path: String) -> Int32 {
     // A read that selects body_json succeeds → v1 column exists.
     #expect(db.getDayNoteFull(date: d).body == "- [x] survived")
     // Ladder reached the current head.
-    #expect(userVersion(atPath: path) == 8)
+    #expect(userVersion(atPath: path) == 9)
+
+    // v9 added the mirroring columns and the partial unique index they upsert
+    // against. A DB that arrived here by migration — not by fresh CREATE — is
+    // the case that would break first, so exercise a real mirror on it.
+    let start = DF.appointmentStamp.date(from: "2026-01-15T09:30")!
+    let event = MirroredAppointment(externalID: "cal|evt", startAt: start, endAt: nil,
+                                    title: "mirrored", note: nil, isAllDay: false)
+    db.replaceMirroredAppointments([event], source: .google, windowStart: d, windowEnd: d)
+    db.replaceMirroredAppointments([event], source: .google, windowStart: d, windowEnd: d)
+    #expect(db.mirroredAppointmentCount(source: .google) == 1)
 }
 
 @Test func freshDBRoundTrips() {
