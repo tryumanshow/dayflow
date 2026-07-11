@@ -158,6 +158,45 @@
 "settings.notifications.lead.at_start" = "At start time";
 "settings.notifications.lead.minutes" = "%d min before";
 "settings.notifications.denied" = "Notification permission was denied. Allow it in System Settings → Notifications → Dayflow.";
+
+/* Google Calendar */
+"settings.calendar_tab" = "Calendar";
+"gcal.title" = "Google Calendar";
+"gcal.blurb" = "Mirror your Google Calendar events into Dayflow. Import only — Dayflow never writes back, and your notes are still never uploaded anywhere.";
+"gcal.client_id" = "OAuth Client ID";
+"gcal.client_id.hint" = "From a Desktop app OAuth client in your own Google Cloud project.";
+"gcal.client_secret" = "OAuth Client Secret";
+"gcal.client_secret.hint" = "Stored in the macOS Keychain, same as your LLM API key.";
+"gcal.connect" = "Connect Google Calendar";
+"gcal.connecting" = "Waiting for consent…";
+"gcal.setup_guide" = "Open Google Cloud credentials";
+"gcal.setup_steps" = "Create a project → APIs & Services → enable the Google Calendar API → Credentials → Create OAuth client ID → application type “Desktop app”. Paste the two values above. Dayflow ships no credentials of its own: an OAuth client can't be kept secret inside an open-source binary, and the quota would be charged to whoever owned it.";
+"gcal.connected" = "Connected";
+"gcal.disconnect" = "Disconnect";
+"gcal.calendars" = "Calendars to mirror";
+"gcal.calendars.hint" = "Nothing ticked means your primary calendar only.";
+"gcal.calendars.loading" = "Loading…";
+"gcal.primary" = "primary";
+"gcal.sync_now" = "Sync now";
+"gcal.syncing" = "Syncing…";
+"gcal.last_synced" = "Last synced at %@";
+"gcal.readonly_note" = "Imported events are read-only — they can't be edited or deleted here, because the next sync would put them straight back. Dayflow re-syncs every 30 minutes and on launch.";
+"gcal.mirrored_hint" = "From Google Calendar — read-only";
+"gcal.untitled" = "(no title)";
+"apt.all_day" = "All day";
+
+"gcal.browser.done_title" = "Dayflow is connected";
+"gcal.browser.done_body" = "You can close this tab and go back to the app.";
+"gcal.browser.failed_title" = "Connection failed";
+"gcal.browser.failed_body" = "Go back to Dayflow and try again.";
+
+"gcal.err.missing_credentials" = "Enter an OAuth client ID and secret first.";
+"gcal.err.not_connected" = "Google access has expired. Connect again.";
+"gcal.err.listener" = "Couldn't open the local callback port: %@";
+"gcal.err.cancelled" = "Connection cancelled.";
+"gcal.err.denied" = "Google refused the request: %@";
+"gcal.err.token" = "Token exchange failed: %@";
+"gcal.err.no_refresh_token" = "Google didn't return a refresh token. Remove Dayflow's access in your Google account and connect again.";
 "notify.lead_body" = "starts in %d min";
 "notify.starting_now" = "starting now";
 

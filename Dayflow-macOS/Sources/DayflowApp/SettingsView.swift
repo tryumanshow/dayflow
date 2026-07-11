@@ -30,6 +30,8 @@ struct SettingsView: View {
         TabView {
             generalTab
                 .tabItem { Label(L("settings.general_tab"), systemImage: "gearshape") }
+            GoogleCalendarSettings()
+                .tabItem { Label(L("settings.calendar_tab"), systemImage: "calendar") }
             llmTab
                 .tabItem { Label(L("settings.llm_tab"), systemImage: "brain") }
         }

@@ -61,3 +61,8 @@ Dayflow-macOS/Dayflow.app/
 Dayflow-macOS/Package.resolved
 Dayflow-macOS/Dayflow.icns
 Dayflow-macOS/tools/Dayflow.iconset/
+# Editor/LSP-driven compiles drop these next to the package manifest rather
+# than inside .build/.
+Dayflow-macOS/*.o
+Dayflow-macOS/*.d
+Dayflow-macOS/*.swiftdeps

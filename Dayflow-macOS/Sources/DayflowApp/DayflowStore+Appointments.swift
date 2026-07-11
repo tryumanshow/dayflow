@@ -42,7 +42,11 @@ extension DayflowStore {
         return true
     }
 
+    /// Mirrored rows are refused here, not just hidden in the UI. The next
+    /// sync would resurrect a deleted Google event anyway, so a delete that
+    /// "worked" until the next refresh would be a lie.
     func deleteAppointment(_ apt: Appointment) {
+        guard !apt.isReadOnly else { return }
         db.deleteAppointment(id: apt.id)
         reloadAppointments()
     }
@@ -52,12 +56,24 @@ extension DayflowStore {
     /// false with no mutation. Empty `endHHmm` clears `end_at`.
     @discardableResult
     func updateAppointment(_ id: Int64, on day: Date, hhmm: String, endHHmm: String? = nil, endDay: Date? = nil, title: String, category: AppointmentCategory) -> Bool {
+        // Same reason as delete: an edit to a mirrored row survives only until
+        // the next sync overwrites it.
+        guard !isReadOnlyAppointment(id) else { return false }
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
         guard let (startAt, endAt) = Self.resolveTimes(day: day, hhmm: hhmm, endHHmm: endHHmm, endDay: endDay) else { return false }
         db.updateAppointment(id: id, startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category)
         reloadAppointments()
         return true
+    }
+
+    /// Looks the row up in the loaded set rather than the DB — the edit form
+    /// only ever addresses appointments that are currently on screen.
+    func isReadOnlyAppointment(_ id: Int64) -> Bool {
+        appointmentsByDay.values
+            .flatMap { $0 }
+            .first { $0.id == id }?
+            .isReadOnly ?? false
     }
 
     /// Multi-day span (endDay > start day) collapses to 00:00 → 23:59

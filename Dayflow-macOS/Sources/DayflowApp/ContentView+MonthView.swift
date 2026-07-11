@@ -382,7 +382,7 @@ extension ContentView {
                     .foregroundStyle(.secondary)
                     .fixedSize()
                 if !apt.isMultiDay {
-                    Text(DF.hourMinute.string(from: apt.startAt))
+                    Text(apt.timeLabel)
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
                         .foregroundStyle(Color.dfAccent)
                         .fixedSize()
@@ -392,6 +392,12 @@ extension ContentView {
                             .foregroundStyle(.tertiary)
                             .fixedSize()
                     }
+                }
+                if apt.source == .google {
+                    Image(systemName: "g.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .help(L("gcal.mirrored_hint"))
                 }
                 let liveCategory = isEditing ? aptCategoryInput : apt.category
                 Text(apt.title)
@@ -408,27 +414,35 @@ extension ContentView {
                     .layoutPriority(0)
                 Spacer(minLength: 0)
             }
-            Button {
-                startAppointmentEdit(apt)
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(isEditing ? AnyShapeStyle(Color.dfAccent) : AnyShapeStyle(.tertiary))
-                    .frame(width: 18, height: 16)
-                    .contentShape(Rectangle())
+            // A mirrored row owns no edit affordances — Google is the source of
+            // truth for it, and the next sync would undo anything done here.
+            // The spacer keeps the title column from reflowing between local
+            // and mirrored rows.
+            if apt.isReadOnly {
+                Color.clear.frame(width: 34, height: 16)
+            } else {
+                Button {
+                    startAppointmentEdit(apt)
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(isEditing ? AnyShapeStyle(Color.dfAccent) : AnyShapeStyle(.tertiary))
+                        .frame(width: 18, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Button {
+                    if isEditing { cancelAppointmentEdit() }
+                    store.deleteAppointment(apt)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            Button {
-                if isEditing { cancelAppointmentEdit() }
-                store.deleteAppointment(apt)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 16, height: 16)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
@@ -797,9 +811,10 @@ extension ContentView {
                             // wider surfaces (right rail, Day/Week).
                             // Cell chip stays start-only.
                             HStack(spacing: 3) {
-                                Text(DF.hourMinute.string(from: apt.startAt))
+                                Text(apt.timeLabel)
                                     .font(.system(size: 9, weight: .semibold).monospacedDigit())
                                     .foregroundStyle(Color.dfAccent)
+                                    .fixedSize()
                                 Text(apt.title)
                                     .font(.system(size: 9))
                                     .foregroundStyle(.primary.opacity(0.85))
