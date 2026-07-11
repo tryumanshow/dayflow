@@ -21,6 +21,14 @@ struct GoogleCalendarSettings: View {
 
     private var isConnected: Bool { GoogleCredentials.isConnected }
 
+    /// A secret is already on file, so the blank field means "keep it".
+    private var hasStoredSecret: Bool { !(GoogleCredentials.clientSecret ?? "").isEmpty }
+
+    private var canConnect: Bool {
+        guard !clientID.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        return !clientSecret.trimmingCharacters(in: .whitespaces).isEmpty || hasStoredSecret
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -69,7 +77,16 @@ struct GoogleCalendarSettings: View {
                 TextField("", text: $clientID, prompt: Text("xxxxx.apps.googleusercontent.com"))
                     .textFieldStyle(.roundedBorder)
             }
-            field(label: L("gcal.client_secret"), hint: L("gcal.client_secret.hint")) {
+            // A `SecureField` always renders empty, so a secret already sitting
+            // in the Keychain looks like no secret at all. Say that it's there,
+            // and let the field be left blank — the same contract the LLM API
+            // key field has. Without this, disconnecting and reconnecting means
+            // digging the secret out of Google Cloud and retyping it.
+            field(
+                label: L("gcal.client_secret"),
+                hint: hasStoredSecret ? L("gcal.client_secret.hint_existing")
+                                      : L("gcal.client_secret.hint")
+            ) {
                 SecureField("", text: $clientSecret, prompt: Text("GOCSPX-…"))
                     .textFieldStyle(.roundedBorder)
             }
@@ -88,8 +105,7 @@ struct GoogleCalendarSettings: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(connecting || clientID.trimmingCharacters(in: .whitespaces).isEmpty
-                          || clientSecret.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(connecting || !canConnect)
 
                 // Pressing this throws you out to a browser with no warning,
                 // which is exactly the thing nobody expects from a Settings
@@ -225,7 +241,11 @@ struct GoogleCalendarSettings: View {
         connecting = true
         defer { connecting = false }
         GoogleCredentials.clientID = clientID
-        GoogleCredentials.clientSecret = clientSecret
+        // A blank field means "keep what's in the Keychain", not "erase it".
+        let typed = clientSecret.trimmingCharacters(in: .whitespaces)
+        if !typed.isEmpty {
+            GoogleCredentials.clientSecret = typed
+        }
         await sync.connect()
         if GoogleCredentials.isConnected {
             // Nothing selected yet means "primary only"; reflect that in the
