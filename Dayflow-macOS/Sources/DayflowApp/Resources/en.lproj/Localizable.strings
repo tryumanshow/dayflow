@@ -55,7 +55,8 @@
 "appointments.end_time_placeholder" = "end";
 "appointments.title_placeholder" = "Title";
 "appointments.month_header" = "This month";
-"appointments.month_hint" = "edit here";
+"appointments.new" = "New";
+"appointments.close_form" = "Close";
 "appointments.end_date_add" = "+ end date";
 "appointments.end_date_remove" = "Remove end date";
 "appointments.manage_in_month" = "manage in Month";
@@ -105,6 +106,9 @@
 /* Settings — window */
 "settings.title" = "Settings";
 "settings.subtitle" = "Configure Dayflow preferences and AI review settings.";
+"settings.group.appearance" = "Appearance";
+"settings.group.alerts" = "Alerts";
+"settings.group.data" = "Data";
 "settings.general_tab" = "General";
 "settings.llm_tab" = "AI Review";
 "settings.provider" = "Provider";
@@ -170,7 +174,15 @@
 "gcal.connect" = "Connect Google Calendar";
 "gcal.connecting" = "Waiting for consent…";
 "gcal.setup_guide" = "Open Google Cloud credentials";
-"gcal.setup_steps" = "Create a project → APIs & Services → enable the Google Calendar API → Credentials → Create OAuth client ID → application type “Desktop app”. Paste the two values above. Dayflow ships no credentials of its own: an OAuth client can't be kept secret inside an open-source binary, and the quota would be charged to whoever owned it.";
+"gcal.connect.hint" = "This opens Google's consent screen in your browser. Approve it there and come back — nothing else to install.";
+"gcal.setup_title" = "How do I get these?";
+"gcal.step.project" = "Create a project in Google Cloud Console.";
+"gcal.step.enable_api" = "APIs & Services → enable the Google Calendar API.";
+"gcal.step.create_client" = "Credentials → Create credentials → OAuth client ID → application type “Desktop app”.";
+"gcal.step.paste" = "Paste the Client ID and Client secret into the two fields above.";
+"gcal.step.connect" = "Press Connect. Your browser opens Google's consent screen; approve it and the tab tells you to come back.";
+"gcal.byo_reason" = "Dayflow ships no credentials of its own — an OAuth client can't be kept secret inside an open-source binary, and the API quota is charged to whoever owns it.";
+"gcal.imported_count" = "%d event(s) imported";
 "gcal.connected" = "Connected";
 "gcal.disconnect" = "Disconnect";
 "gcal.calendars" = "Calendars to mirror";

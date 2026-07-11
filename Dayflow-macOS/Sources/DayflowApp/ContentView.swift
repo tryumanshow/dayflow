@@ -64,6 +64,9 @@ struct ContentView: View {
     @State var aptCategoryInput: AppointmentCategory = .event
     @State var aptRepeatInput: AppointmentRepeat = .none
     @State var editingAppointmentId: Int64? = nil
+    /// Month rail's add-appointment form. Collapsed by default — it's a wide
+    /// form in a narrow rail, and scheduling is occasional.
+    @State var showAptForm: Bool = false
     @FocusState var aptTitleFocused: Bool
 
     // Day view and Month plan editor sizes live-update independently
