@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.1.14](https://github.com/tryumanshow/dayflow/compare/v0.1.13...v0.1.14) (2026-07-11)
+
+
+### Features
+
+* **calendar:** read-only Google Calendar import ([#58](https://github.com/tryumanshow/dayflow/issues/58)) ([34974f9](https://github.com/tryumanshow/dayflow/commit/34974f9870e5a049cd84bcd2eedafb639e43623c))
+* **day/month:** toggle right side rail with nav bar button ([#50](https://github.com/tryumanshow/dayflow/issues/50)) ([968b03f](https://github.com/tryumanshow/dayflow/commit/968b03fb3761f718b0f05e979aadb75551bcf700))
+* **dx:** rebuild menu, editor zoom shortcuts, draggable side rails ([#44](https://github.com/tryumanshow/dayflow/issues/44)) ([f32333b](https://github.com/tryumanshow/dayflow/commit/f32333bf0363f8f4684ce933ef3b3d0bde8ae17e))
+* **editor:** add ⌘F find bar, HR rendering, and nested-list IME workaround ([#40](https://github.com/tryumanshow/dayflow/issues/40)) ([15b6fb3](https://github.com/tryumanshow/dayflow/commit/15b6fb3a7e056013c4db9e844ae4a3a3f8305148))
+* **editor:** vendor BlockNote locally, drop esm.sh runtime dependency ([bd941e2](https://github.com/tryumanshow/dayflow/commit/bd941e2624f01cb6b1c234920ec865a0dd75894c))
+* global search, task carry-over, appointment reminders ([#56](https://github.com/tryumanshow/dayflow/issues/56)) ([390bc20](https://github.com/tryumanshow/dayflow/commit/390bc20c97d48d74b44281fea25fb3ea2352881c))
+* **month-plan:** per-section auto-backup + restore sheet ([#43](https://github.com/tryumanshow/dayflow/issues/43)) ([fb8ff41](https://github.com/tryumanshow/dayflow/commit/fb8ff417c8ad82fc1b49ae4c5da03510d6b18eda))
+* **month:** add 2026 presidential election day to KR holidays ([579447f](https://github.com/tryumanshow/dayflow/commit/579447fef872ee98c36faf8b6cf627e748bd5e10))
+* **month:** multi-day appointment spans as continuous bars ([#45](https://github.com/tryumanshow/dayflow/issues/45)) ([9ed24eb](https://github.com/tryumanshow/dayflow/commit/9ed24eb79b4a83bdf65a5add269a074e0a9982da))
+* **month:** multi-day spans + fix month rail drag ([#46](https://github.com/tryumanshow/dayflow/issues/46)) ([517edd2](https://github.com/tryumanshow/dayflow/commit/517edd2d75615a74207fdfc836d6f06f61f7600d))
+* **month:** repeating appointments + auto KR substitute holidays ([#52](https://github.com/tryumanshow/dayflow/issues/52)) ([abf48af](https://github.com/tryumanshow/dayflow/commit/abf48af97e45a2a3b8bdd5fe5424766d66136290))
+* **review:** markdown rendering + forward edit shortcuts to first responder ([#48](https://github.com/tryumanshow/dayflow/issues/48)) ([e6eaf6a](https://github.com/tryumanshow/dayflow/commit/e6eaf6ab2811f79e20686e625e1d9bf31d3683c4))
+* **ui:** quieter editor bar, readable titles, guided calendar setup ([#59](https://github.com/tryumanshow/dayflow/issues/59)) ([fa77e98](https://github.com/tryumanshow/dayflow/commit/fa77e98f6a7d3bb6fc03434ceaaa394d8d19926b))
+
+
+### Bug Fixes
+
+* **calendar:** let a stored client secret be reused on reconnect ([#61](https://github.com/tryumanshow/dayflow/issues/61)) ([a12781e](https://github.com/tryumanshow/dayflow/commit/a12781e9f19992988db5d80c176872928ffc163a))
+* **editor:** '일' 뷰 에디터 빈 화면 — index.html 정규식 이스케이프 복원 ([#54](https://github.com/tryumanshow/dayflow/issues/54)) ([c1f0428](https://github.com/tryumanshow/dayflow/commit/c1f0428f52488d3e490ba6f5657690d650309147))
+* **editor:** pin BlockNote prosemirror deps + native clipboard forwarding ([#49](https://github.com/tryumanshow/dayflow/issues/49)) ([e87eb79](https://github.com/tryumanshow/dayflow/commit/e87eb796635eee734ebae0068419e4e4577f72b9))
+* **editor:** restore bottom breathing room in BlockNote scroll ([#42](https://github.com/tryumanshow/dayflow/issues/42)) ([89ef277](https://github.com/tryumanshow/dayflow/commit/89ef27787f8fe3d9983d01415ed888f7291e87a5))
+* **editor:** restore clipboard copy, support image paste, stop month rail overflow ([#55](https://github.com/tryumanshow/dayflow/issues/55)) ([5ce9485](https://github.com/tryumanshow/dayflow/commit/5ce94854cb2fe86bfea3b2b04083ce586f2034c3))
+* **editor:** toggle checkListItem on checkbox click ([#41](https://github.com/tryumanshow/dayflow/issues/41)) ([1cdd8b3](https://github.com/tryumanshow/dayflow/commit/1cdd8b3f96373d44ea53eab189788bd551e6e347))
+* **layout:** auto-hide side rail when a narrow/scaled display can't fit it ([cf3a1c2](https://github.com/tryumanshow/dayflow/commit/cf3a1c21f99829cbd99cadcf723864abff0f28d3))
+* **month:** use overlay for rail resize handle to fix hit testing ([#47](https://github.com/tryumanshow/dayflow/issues/47)) ([e5a6677](https://github.com/tryumanshow/dayflow/commit/e5a6677d17023eac6523fe907f62bb509f76b791))
+* **resize:** use AppKit-backed handle for side rail divider ([#38](https://github.com/tryumanshow/dayflow/issues/38)) ([21de240](https://github.com/tryumanshow/dayflow/commit/21de24016e2391748546decf94c30ba9f8c9f430))
+
 ## [0.1.13](https://github.com/tryumanshow/dayflow/compare/v0.1.12...v0.1.13) (2026-04-16)
 
 
