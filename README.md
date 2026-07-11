@@ -6,6 +6,10 @@
 - Single-user, local-first, intentionally small.
 - Lives in the menu bar, responds to a global hotkey, and can optionally ask an LLM to write a daily review.
 
+## Why this exists
+
+Obsidian is where my work lives — project notes, references, anything that has to outlast the current job. What it was never good at, for me, is the other half of the day: what am I actually doing today, what did I leave unfinished last week, when is that appointment. Dayflow is that half. I wrote it for myself, and I open it every morning.
+
 ## What you get
 
 - **Three views** — Day / Week / Month, all backed by one markdown body per day.
@@ -16,6 +20,9 @@
 - **Monthly plan** — a separate editor per month for the TODOs that belong to the month as a whole, not to any single day. Shown in the Month view right rail.
 - **Appointments** — time-stamped items (meetings, reminders) stored in a dedicated `appointments` table. Surfaced in every view: inline add/delete form in the Day rail, chips above the task preview in Week columns, and a sorted "this month" list in the Month rail. Quick Throw (`⌘⇧I`) has a Task / Appointment tab so you can jot either one without leaving your current app.
 - **Images** — paste or drop a picture straight into a note. The bytes are copied into `~/Library/Application Support/Dayflow/attachments/` and the note keeps only a reference, so images survive restarts without bloating the database. Copying an image out of a web page stores the picture itself rather than a link to someone else's server.
+- **Global search** (`⌘⇧F`) — one palette over every day note, appointment, and month-plan section. Matching is substring-based, so a Korean query lands mid-word too. `↑`/`↓` to move, `↵` to jump to whichever view the hit lives on.
+- **Task carry-over** — whatever you left unchecked in the past week shows up as a banner on today. Review the list, keep what still matters, and those tasks *move*: appended to today and removed from the day they were written on, so nothing is counted twice.
+- **Appointment reminders** — opt-in macOS notifications, 0 / 5 / 10 / 30 / 60 minutes before an appointment starts. Off until you turn them on.
 - **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain, nothing is synced.
 - **Optional LLM daily review** — OpenAI or Anthropic, picked and configured entirely inside the app.
 - **Bilingual** — English or Korean, switchable in Settings, no relaunch-from-terminal needed.
@@ -43,12 +50,23 @@
 
 ![Month view](Dayflow-macOS/docs/screenshots/en/month.png)
 
+### Global search (`⌘⇧F`)
+- One palette over day notes, appointments, and month-plan sections at once. The icon on each row tells you which is which.
+- Substring matching, not word matching — searching `산` finds `부산`. (This is why it uses `LIKE` and not SQLite's FTS5: the `unicode61` tokenizer treats a run of Korean as a single token, so mid-word queries would return nothing.)
+- `↑`/`↓` to move, `↵` to open. Opening a hit switches to the view that owns it — Day for a note, Week for an appointment, Month for a plan section — and lands on the right date.
+
+![Global search](Dayflow-macOS/docs/screenshots/en/search.png)
+
+### Task carry-over
+- A banner appears on today whenever the past 7 days still hold unchecked tasks.
+- The same task left open on several days collapses into one row, and anything already written on today is left out.
+- Confirming **moves** the tasks: appended to today's note, deleted from the source day. If a source day changed while the sheet was open, that source is skipped rather than guessed at.
+
+![Task carry-over](Dayflow-macOS/docs/screenshots/en/carryover.png)
+
 ### Settings
-- Pick a provider (OpenAI or Anthropic).
-- Paste an API key.
-- Pick a model from the preset dropdown.
-- Edit the system prompt that drives the daily review (or reset to default).
-- Switch the app language between English and Korean.
+- **General** — app language, editor font sizes, public-holiday overlays (Korea / US / both, bundled with the app, no network), appointment reminders and how far ahead they fire, and the date you started using Dayflow.
+- **AI Review** — provider (OpenAI or Anthropic), API key, model, and the system prompt that drives the daily review.
 
 ![Settings](Dayflow-macOS/docs/screenshots/en/settings.png)
 
@@ -136,6 +154,7 @@ Key issue pages:
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+N` | Open Quick Throw |
+| `Cmd+Shift+F` | Search all notes, appointments, and month plans |
 | `Cmd+R` | Refresh data |
 | `Cmd+,` | Preferences window |
 | `Cmd+Shift+I` | Global Quick Throw (works even when Dayflow is in the background) |
@@ -150,11 +169,18 @@ Key issue pages:
 - Checkbox state is reflected immediately in the right-hand progress panel and the Week / Month view aggregates.
 - In the Week view, tap a checkbox directly inside its column to toggle without navigating into the Day view.
 
+### Appointment reminders
+
+- Settings → **General** → **Enable reminders**. macOS will ask for notification permission the first time.
+- Pick how far ahead you want to be told: at start time, or 5 / 10 / 30 / 60 minutes before.
+- Reminders are rescheduled from scratch whenever your appointments change, so edits and deletions take effect immediately.
+- macOS only keeps a bounded number of pending local notifications, so Dayflow schedules the soonest 60 upcoming appointments and refills as they fire.
+
 ## Data and privacy
 
-- **Notes and reviews database** — `~/Library/Application Support/Dayflow/dayflow.db` (SQLite, WAL mode). Schema is just `day_notes` + `reviews`; everything else rides inside the markdown body.
+- **Database** — `~/Library/Application Support/Dayflow/dayflow.db` (SQLite, WAL mode). Tables: `day_notes`, `reviews`, `appointments`, and `month_plan_sections` (plus its edit history). Everything a day note contains rides inside the markdown body.
 - **API keys** — macOS **Keychain**. Never written to plain files, environment variables, or logs.
-- **Provider / model / custom system prompt / language override** — `UserDefaults` (also local-only).
+- **Provider / model / custom system prompt / language override / reminder preferences** — `UserDefaults` (also local-only).
 - **Outbound traffic** — only when you press **Generate** on the daily review panel. One HTTPS request per press, sent to the provider you picked. Body contains: the date string (`yyyy-MM-dd`), that day's raw markdown, and the current system prompt. Nothing else is ever sent — no other day's data, no device identifier, no telemetry, no crash reports.
 - **Backup** — copy `~/Library/Application Support/Dayflow/` somewhere safe. The DB plus its WAL and SHM files are all that matter.
 

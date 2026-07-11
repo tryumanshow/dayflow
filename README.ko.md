@@ -6,6 +6,10 @@
 - 단일 사용자 / 로컬 우선 / 의도적으로 작은 앱.
 - 메뉴바에 상주하고, 전역 단축키에 반응하며, 원하면 LLM 에게 오늘 하루 회고를 맡길 수 있음.
 
+## 왜 만들었나
+
+Obsidian 은 업무용으로 쓴다 — 프로젝트 노트, 레퍼런스, 회사가 바뀌어도 남아야 하는 것들. 그런데 하루의 나머지 절반, 그러니까 "오늘 뭐 하기로 했지", "지난주에 안 끝낸 건 뭐지", "그 약속 언제였지" 를 둘 자리가 없었다. Dayflow 가 그 절반이다. 내가 쓰려고 만들었고, 지금도 매일 아침 연다.
+
 ## 기본 구성
 
 - **3개 뷰** — Day / Week / Month, 모두 하루 하나의 마크다운 본문 위에서 돌아감.
@@ -16,6 +20,9 @@
 - **이달 계획** — 월 단위 TODO 전용 에디터. 특정 일자에 얽매이지 않는 한 달짜리 목록을 Month 뷰 오른쪽 레일에서 따로 편집.
 - **약속** — 시각이 찍힌 항목 (미팅, 리마인더) 을 전용 `appointments` 테이블에 저장. 세 뷰 모두에 노출: Day 오른쪽 레일의 인라인 추가/삭제, Week 컬럼에서 task 프리뷰 위에 칩 형태, Month 오른쪽 레일에 "이 달의 일정" 목록 (시간순 정렬). Quick Throw (`⌘⇧I`) 에 Task / Appointment 탭 토글이 있어서 어느 쪽이든 다른 앱 떠나지 않고 넣을 수 있음.
 - **이미지** — 노트에 그림을 바로 붙여넣거나 끌어다 놓을 수 있음. 파일은 `~/Library/Application Support/Dayflow/attachments/` 로 복사되고 본문에는 참조만 남으므로, 재시작 후에도 살아있으면서 DB 를 불리지 않음. 웹 페이지에서 복사한 이미지도 남의 서버 링크가 아니라 그림 자체를 저장함.
+- **전역 검색** (`⌘⇧F`) — 모든 Day 노트 / 약속 / 이달 계획 섹션을 한 팔레트에서 검색. 단어가 아니라 부분 문자열로 매칭해서 `산` 으로 `부산` 도 잡힘. `↑`/`↓` 이동, `↵` 으로 해당 항목이 사는 뷰로 바로 점프.
+- **할 일 이월** — 지난 7일 안에 체크 안 하고 넘어간 할 일이 있으면 오늘 상단에 배너로 뜸. 목록 확인 후 아직 유효한 것만 고르면 그 항목들이 **이동** 함 — 오늘 노트에 추가되고 원래 날짜에서는 사라져서, 같은 일이 두 번 세어지지 않음.
+- **약속 알림** — macOS 알림으로 약속 시작 0 / 5 / 10 / 30 / 60분 전에 알려줌. 직접 켜기 전까지는 꺼져 있음.
 - **완전 로컬** — 노트와 회고는 `~/Library/Application Support/Dayflow/`, API 키는 macOS Keychain, 동기화 없음.
 - **선택형 LLM 일일 회고** — OpenAI 또는 Anthropic, 제공자 / 모델 / 키 / 프롬프트 모두 앱 안에서 설정.
 - **이중 언어 지원** — 영어, 한국어. Settings 에서 전환 가능.
@@ -43,12 +50,23 @@
 
 ![Month 뷰](Dayflow-macOS/docs/screenshots/ko/month.png)
 
+### 전역 검색 (`⌘⇧F`)
+- Day 노트 / 약속 / 이달 계획 섹션을 한 번에 훑는 팔레트. 각 줄 왼쪽 아이콘으로 종류 구분.
+- 단어 단위가 아니라 부분 문자열 매칭이라 `산` 을 치면 `부산` 이 걸림. (SQLite FTS5 대신 `LIKE` 를 쓰는 이유가 이거다 — `unicode61` 토크나이저가 한글 덩어리를 토큰 하나로 잡아서, 부분 검색이 아무것도 못 찾는다.)
+- `↑`/`↓` 로 이동, `↵` 로 열기. 열면 그 항목이 사는 뷰로 전환됨 — 노트는 Day, 약속은 Week, 계획 섹션은 Month — 날짜까지 맞춰서.
+
+![전역 검색](Dayflow-macOS/docs/screenshots/ko/search.png)
+
+### 할 일 이월
+- 지난 7일 안에 체크 안 된 할 일이 남아 있으면 오늘 상단에 배너가 뜸.
+- 같은 문구가 여러 날에 걸쳐 열려 있으면 한 줄로 합쳐지고, 이미 오늘 노트에 적혀 있는 건 제외됨.
+- 확정하면 할 일이 **이동** 함 — 오늘 노트 아래에 붙고, 원래 날짜에서는 지워짐. 시트를 열어둔 사이에 원본 날짜가 바뀌었다면 그 줄은 건드리지 않고 건너뜀.
+
+![할 일 이월](Dayflow-macOS/docs/screenshots/ko/carryover.png)
+
 ### Settings
-- 제공자(OpenAI 또는 Anthropic) 선택.
-- API 키 붙여넣기.
-- 프리셋 드롭다운에서 모델 선택.
-- 일일 회고에 쓸 시스템 프롬프트 편집 (기본값 복원도 가능).
-- 앱 언어 영어 / 한국어 전환.
+- **일반** — 앱 언어, 에디터 글자 크기, 공휴일 표시 (한국 / 미국 / 둘 다, 앱에 내장되어 네트워크 안 씀), 약속 알림과 미리 알림 시각, Dayflow 를 쓰기 시작한 날짜.
+- **AI 회고** — 제공자 (OpenAI 또는 Anthropic), API 키, 모델, 일일 회고를 굴리는 시스템 프롬프트.
 
 ![Settings](Dayflow-macOS/docs/screenshots/ko/settings.png)
 
@@ -136,6 +154,7 @@ launchctl load ~/Library/LaunchAgents/com.swryu.Dayflow.plist
 | 단축키 | 동작 |
 |--------|------|
 | `Cmd+N` | Quick Throw 패널 열기 |
+| `Cmd+Shift+F` | 노트 / 약속 / 이달 계획 전역 검색 |
 | `Cmd+R` | 데이터 새로고침 |
 | `Cmd+,` | Preferences 창 |
 | `Cmd+Shift+I` | 전역 Quick Throw (Dayflow 가 백그라운드여도 동작) |
@@ -150,11 +169,18 @@ launchctl load ~/Library/LaunchAgents/com.swryu.Dayflow.plist
 - 체크박스 상태는 오른쪽 진행률 패널과 Week / Month 뷰 집계에 즉시 반영.
 - Week 뷰에서는 컬럼 안 체크박스를 직접 눌러서 Day 뷰로 이동하지 않고 토글 가능.
 
+### 약속 알림
+
+- Settings → **일반** → **약속 알림 켜기**. 처음 켤 때 macOS 가 알림 권한을 물어봄.
+- 언제 알려줄지 선택: 시작 시각, 또는 5 / 10 / 30 / 60분 전.
+- 약속이 바뀔 때마다 예약을 통째로 다시 잡기 때문에 수정 / 삭제가 바로 반영됨.
+- macOS 가 앱당 대기 중인 로컬 알림 개수를 제한하므로, 가장 가까운 60건만 예약하고 하나씩 발사될 때마다 다시 채움.
+
 ## 데이터와 개인정보
 
-- **노트 / 회고 DB** — `~/Library/Application Support/Dayflow/dayflow.db` (SQLite, WAL 모드). 스키마는 `day_notes` + `reviews` 두 테이블뿐이며, 나머지는 전부 마크다운 본문 안에 들어감.
+- **DB** — `~/Library/Application Support/Dayflow/dayflow.db` (SQLite, WAL 모드). 테이블은 `day_notes` / `reviews` / `appointments` / `month_plan_sections` (+ 편집 히스토리). Day 노트가 담는 것들은 전부 마크다운 본문 안에 들어감.
 - **API 키** — macOS **Keychain**. 평문 파일 / 환경변수 / 로그 어디에도 기록되지 않음.
-- **Provider / 모델 / 커스텀 시스템 프롬프트 / 언어 override** — `UserDefaults` (역시 로컬만).
+- **Provider / 모델 / 커스텀 시스템 프롬프트 / 언어 override / 알림 설정** — `UserDefaults` (역시 로컬만).
 - **외부로 나가는 트래픽** — 일일 회고 패널에서 **Generate** 버튼을 누른 시점에만. HTTPS 요청 1건이 네가 선택한 제공자로 나가고, 본문에는 날짜 문자열(`yyyy-MM-dd`) / 해당 날의 원본 마크다운 / 현재 시스템 프롬프트 세 가지만 포함. 다른 날 데이터, 장치 식별자, 텔레메트리, 크래시 리포트 전부 없음.
 - **백업** — `~/Library/Application Support/Dayflow/` 디렉토리 전체를 복사해두면 끝. DB 본체와 WAL / SHM 파일 세트로.
 
