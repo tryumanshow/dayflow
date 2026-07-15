@@ -22,6 +22,7 @@ Obsidian is where my work lives — project notes, references, anything that has
 - **Images** — paste or drop a picture straight into a note. The bytes are copied into `~/Library/Application Support/Dayflow/attachments/` and the note keeps only a reference, so images survive restarts without bloating the database. Copying an image out of a web page stores the picture itself rather than a link to someone else's server.
 - **Global search** (`⌘⇧F`) — one palette over every day note, appointment, and month-plan section. Matching is substring-based, so a Korean query lands mid-word too. `↑`/`↓` to move, `↵` to jump to whichever view the hit lives on.
 - **Task carry-over** — whatever you left unchecked in the past week shows up as a banner on today. Review the list, keep what still matters, and those tasks *move*: appended to today and removed from the day they were written on, so nothing is counted twice.
+- **AI Planner** (wand icon in Day/Week) — dump a pile of tasks, pick a date range, and an LLM distributes them across the days. It only schedules what you typed (never drags in old unfinished tasks), asks a clarifying question or two when the answer would actually change the plan, and lets you refine the result with free-form feedback before anything touches your notes. Applied plans land as a `## 📋 Plan` section per day; re-running replaces that section but keeps whatever you'd already checked off. A network hiccup mid-conversation surfaces as a retry banner, never a lost draft. See [AI Planner](#ai-planner) below.
 - **Appointment reminders** — opt-in macOS notifications, 0 / 5 / 10 / 30 / 60 minutes before an appointment starts. Off until you turn them on.
 - **Google Calendar import** — opt-in, **read-only**. Your events are mirrored into Dayflow's appointments and show up in every view; Dayflow never writes anything back to Google.
 - **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain. Nothing leaves the machine unless you ask for it: the only two things that ever talk to a server are the LLM review (when you press Generate) and the Google Calendar import (if you connect it).
@@ -66,6 +67,64 @@ Obsidian is where my work lives — project notes, references, anything that has
 - Confirming **moves** the tasks: appended to today's note, deleted from the source day. If a source day changed while the sheet was open, that source is skipped rather than guessed at.
 
 ![Task carry-over](Dayflow-macOS/docs/screenshots/en/carryover.png)
+
+### AI Planner
+- One sheet, three steps: **dump tasks + pick a range → (optional questions) → preview → Apply**. Reachable from the wand icon in the Day and Week nav bars; Day prefills the selected day, Week prefills the visible week.
+- Only the tasks you typed get scheduled. Existing appointments are passed in as *constraints* (blocked time), not as work to plan — and old unfinished tasks / month-plan goals are deliberately left out, so the plan is exactly what you asked for.
+- The model asks clarifying questions **only when the answer would change the plan** (priorities, deadlines, effort). Answer them, or hit *Skip — just plan it* and it proceeds on reasonable assumptions (disclosed in the rationale). Capped at two rounds.
+- The preview is editable by conversation: type free-form feedback (*"move the blog post earlier", "leave Thursday empty"*) and **Revise** re-plans in the same thread, as many times as you like, before you commit.
+- **Apply** writes a `## 📋 Plan (…)` section into each day's note. Re-running the planner for a day replaces that section but preserves any items you'd already checked off. Nothing is written until you press Apply.
+- Turns are transactional: if the network drops mid-conversation, the sheet keeps your progress and shows a **Retry** banner instead of throwing the whole draft away.
+
+```text
++------------------------------------------------------------------+
+| 1. Input                                                         |
++------------------------------------------------------------------+
+|                                                                  |
+|   Dump your tasks (one per line or free-form),                   |
+|   pick a date range.                                             |
+|                                                                  |
+|   +----------------------------------------------+               |
+|   | set up K8s production server                 |               |
+|   | publish first blog post (vLLM)               |               |
+|   | rewrite resume                               |               |
+|   +----------------------------------------------+               |
+|   From [Wed Jul 15]   To [Sun Jul 19]                            |
+|                               [ Generate plan ]                  |
+|                                                                  |
++------------------------------------------------------------------+
+                                 |
+                                 v
++------------------------------------------------------------------+
+| 2. Questions  (only if it would change the plan)                 |
++------------------------------------------------------------------+
+|                                                                  |
+|   Which is more urgent: the server or the post?                  |
+|      ( Server first )  ( Post first )                            |
+|   How long will the resume rewrite take?                         |
+|      [ ________________________________ ]                        |
+|                                                                  |
+|   [ Skip - just plan it ]          [ Answer ]                    |
+|                                                                  |
++------------------------------------------------------------------+
+                                 |
+                                 v
++------------------------------------------------------------------+
+| 3. Preview  ->  Apply                                            |
++------------------------------------------------------------------+
+|                                                                  |
+|   Wed Jul 15   - [ ] K8s cost survey                             |
+|   Thu Jul 16   - [ ] set up K8s cluster                          |
+|   Fri Jul 17   - [ ] write vLLM blog post                        |
+|   Sat Jul 18   - [ ] rewrite resume                              |
+|                                                                  |
+|   Not quite right? Tell me what to change...                     |
+|   [ move the blog post earlier ]   [ Revise ]                    |
+|                                                                  |
+|   [ Back ]                          [ Apply ]                    |
+|                                                                  |
++------------------------------------------------------------------+
+```
 
 ### Settings
 - **General** — grouped into *Appearance* (language, editor font sizes, public-holiday overlays for Korea / US / both — bundled with the app, no network), *Alerts* (appointment reminders and how far ahead they fire), and *Data* (the date you started using Dayflow).
