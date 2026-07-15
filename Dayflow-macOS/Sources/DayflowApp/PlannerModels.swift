@@ -105,6 +105,36 @@ extension PlannerResponse {
     }
 }
 
+// MARK: - encoding ---------------------------------------------------------------
+
+extension PlanDraft {
+    /// Serialize back to the same JSON shape the LLM emits. Used to replay
+    /// a delivered plan into the conversation transcript so a revision
+    /// turn can reference it.
+    func encodedJSON() -> String {
+        let object: [String: Any] = [
+            "status": "plan",
+            "days": days.map { day in
+                [
+                    "date": day.date,
+                    "tasks": day.tasks.map { task -> [String: Any] in
+                        var t: [String: Any] = ["title": task.title]
+                        if let note = task.note { t["note"] = note }
+                        return t
+                    },
+                ] as [String: Any]
+            },
+            "unassigned": unassigned,
+            "rationale": rationale,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: object),
+              let text = String(data: data, encoding: .utf8) else {
+            return #"{"status":"plan","days":[]}"#
+        }
+        return text
+    }
+}
+
 // MARK: - range sanitizing --------------------------------------------------------
 
 extension PlanDraft {

@@ -12,10 +12,6 @@ final class PlannerEngine {
     /// answered by a forced "plan now" turn instead of reaching the UI.
     static let maxQuestionRounds = 2
 
-    /// Look this many days before the range start for unfinished tasks —
-    /// same window the carry-over banner uses.
-    private static let carryoverLookbackDays = DayflowStore.carryoverLookbackDays
-
     private let db: DayflowDB
     let start: Date
     let end: Date
@@ -82,6 +78,18 @@ final class PlannerEngine {
         return try await runTurn(allowQuestions: false)
     }
 
+    /// Revision loop — the user saw a plan in the preview and wants it
+    /// changed. Free-form feedback goes in as a user turn on top of the
+    /// full history (which includes the delivered plan), and the reply
+    /// must be a plan again, not more questions.
+    func revise(_ feedback: String) async throws -> PlannerResponse {
+        messages.append(PlannerMessage(
+            role: .user,
+            text: "Feedback on the plan you produced — revise it accordingly and return the full updated plan:\n\(feedback)"
+        ))
+        return try await runTurn(allowQuestions: false)
+    }
+
     private static let forcePlanDirective =
         "Do not ask any further questions. Produce the best plan you can with the information you have, make reasonable assumptions, and state those assumptions in the rationale."
 
@@ -110,7 +118,9 @@ final class PlannerEngine {
 
     private func finish(_ draft: PlanDraft) -> PlannerResponse {
         let sanitized = draft.sanitized(allowedDates: allowedDates)
-        messages.append(PlannerMessage(role: .assistant, text: "plan delivered"))
+        // Record the actual plan in the transcript — a later revision turn
+        // needs the model to see what it proposed, not a placeholder.
+        messages.append(PlannerMessage(role: .assistant, text: sanitized.encodedJSON()))
         pendingQuestions = []
         return .plan(sanitized)
     }
@@ -135,8 +145,10 @@ final class PlannerEngine {
         return L("planner.system_prompt") + "\n" + emphasis
     }
 
-    /// The first user message: task dump + range + everything the app
-    /// already knows that constrains the plan.
+    /// The first user message: the task dump + range, plus appointments as
+    /// time constraints. Deliberately nothing else — the plan schedules
+    /// exactly what the user typed; the app must not smuggle in old
+    /// unfinished tasks or month goals as extra work.
     func initialUserPayload() -> String {
         var sections: [String] = []
         sections.append("## Tasks to schedule\n\(taskDump)")
@@ -147,43 +159,9 @@ final class PlannerEngine {
             let lines = appointments.map { apt in
                 "- \(DayflowDB.ymd(apt.startAt)) \(apt.timeLabel): \(apt.title)"
             }
-            sections.append("## Existing appointments (time already taken)\n\(lines.joined(separator: "\n"))")
-        }
-
-        let leftovers = uncheckedTasksBeforeStart()
-        if !leftovers.isEmpty {
-            sections.append("## Unfinished tasks from recent days\n\(leftovers.map { "- \($0)" }.joined(separator: "\n"))")
-        }
-
-        let monthPlan = db.getMonthPlanSections(date: start)
-            .compactMap { section -> String? in
-                let body = section.bodyMd.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !body.isEmpty else { return nil }
-                return "### \(section.title)\n\(body)"
-            }
-            .joined(separator: "\n")
-        if !monthPlan.isEmpty {
-            sections.append("## Month plan (broader goals this month)\n\(monthPlan)")
+            sections.append("## Existing appointments (time already taken — constraints only, do not schedule these)\n\(lines.joined(separator: "\n"))")
         }
 
         return sections.joined(separator: "\n\n")
-    }
-
-    /// Unchecked tasks in the lookback window before the range start —
-    /// context so the plan can absorb slippage instead of ignoring it.
-    private func uncheckedTasksBeforeStart() -> [String] {
-        let cal = Calendar.current
-        guard let windowStart = cal.date(byAdding: .day, value: -Self.carryoverLookbackDays, to: start),
-              let windowEnd = cal.date(byAdding: .day, value: -1, to: start) else { return [] }
-        let bodies = db.loadDayNoteRange(start: windowStart, end: windowEnd)
-        var out: [String] = []
-        for (_, body) in bodies.sorted(by: { $0.key < $1.key }) {
-            for line in body.components(separatedBy: "\n") {
-                if case let .task(checked, text)? = MarkdownLine.parse(line), !checked {
-                    out.append(text)
-                }
-            }
-        }
-        return out
     }
 }

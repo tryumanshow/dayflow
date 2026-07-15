@@ -24,6 +24,7 @@ struct PlannerSheet: View {
     @State private var phase: Phase = .input
     @State private var engine: PlannerEngine?
     @State private var answerDrafts: [String] = []
+    @State private var feedbackDraft: String = ""
 
     enum Phase {
         case input
@@ -222,6 +223,18 @@ struct PlannerSheet: View {
                     .foregroundStyle(.tertiary)
             }
 
+            // Revision loop: free-form feedback re-enters the same
+            // conversation, so "move the blog post earlier" is understood
+            // against the plan the model just produced.
+            HStack(spacing: DS.Space.sm) {
+                TextField(L("planner.feedback_placeholder"), text: $feedbackDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .font(DS.FontStyle.caption)
+                    .onSubmit { revise() }
+                Button(L("planner.revise")) { revise() }
+                    .disabled(feedbackDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+
             HStack {
                 Button(L("planner.back")) { phase = .input }
                     .buttonStyle(.plain)
@@ -237,6 +250,13 @@ struct PlannerSheet: View {
                 .disabled(draft.days.isEmpty)
             }
         }
+    }
+
+    private func revise() {
+        let feedback = feedbackDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !feedback.isEmpty else { return }
+        feedbackDraft = ""
+        run { try await self.engine?.revise(feedback) }
     }
 
     private func dayCard(_ day: PlanDay, willReplace: Bool) -> some View {

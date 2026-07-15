@@ -35,15 +35,15 @@ private func makeEngine(db: DayflowDB = tempDB(),
 // MARK: - payload assembly
 
 @MainActor
-@Test func payloadContainsDumpRangeAndContext() {
+@Test func payloadContainsOnlyDumpRangeAndAppointments() {
     let db = tempDB()
-    // appointment inside the range
+    // appointment inside the range — a constraint, so it stays
     _ = db.insertAppointment(startAt: day(1).addingTimeInterval(3600 * 10),
                              endAt: nil, title: "dentist", note: nil,
                              category: .event)
-    // unchecked task the week before the range start
+    // old unfinished task and month goal — must NOT leak into the payload:
+    // the plan schedules exactly what the user typed
     db.saveDayNote(date: day(-2), body: "- [ ] leftover task")
-    // month plan section for the start month
     _ = db.addMonthPlanSection(date: day(0), title: "Career", sortOrder: 0)
     let sections = db.getMonthPlanSections(date: day(0))
     if let s = sections.first {
@@ -57,8 +57,36 @@ private func makeEngine(db: DayflowDB = tempDB(),
     #expect(payload.contains(DayflowDB.ymd(day(0))))
     #expect(payload.contains(DayflowDB.ymd(day(2))))
     #expect(payload.contains("dentist"))
-    #expect(payload.contains("leftover task"))
-    #expect(payload.contains("monthly goal"))
+    #expect(!payload.contains("leftover task"))
+    #expect(!payload.contains("monthly goal"))
+}
+
+// MARK: - revision loop
+
+@MainActor
+@Test func reviseSendsFeedbackWithPlanHistoryAndReturnsPlan() async throws {
+    let engine = makeEngine()
+    let first = PlanDraft(
+        days: [PlanDay(date: DayflowDB.ymd(day(0)), tasks: [PlanTask(title: "draft v1", note: nil)])],
+        unassigned: [], rationale: "v1")
+    let second = PlanDraft(days: [], unassigned: [], rationale: "v2")
+    var sawFeedback = false
+    var historyHadPlanJSON = false
+    engine.transport = { _, messages in
+        if let last = messages.last, last.text.contains("blog post first please") {
+            sawFeedback = true
+            historyHadPlanJSON = messages.contains { $0.role == .assistant && $0.text.contains("draft v1") }
+            return .plan(second)
+        }
+        return .plan(first)
+    }
+
+    _ = try await engine.start()
+    let r = try await engine.revise("blog post first please")
+    guard case let .plan(draft) = r else { Issue.record("expected plan"); return }
+    #expect(draft.rationale == "v2")
+    #expect(sawFeedback)
+    #expect(historyHadPlanJSON)  // the model can see the plan it delivered
 }
 
 // MARK: - question round cap
