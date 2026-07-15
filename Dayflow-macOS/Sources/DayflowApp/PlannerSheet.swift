@@ -269,14 +269,32 @@ struct PlannerSheet: View {
 
             // Revision loop: free-form feedback re-enters the same
             // conversation, so "move the blog post earlier" is understood
-            // against the plan the model just produced.
-            HStack(spacing: DS.Space.sm) {
-                TextField(L("planner.feedback_placeholder"), text: $feedbackDraft)
-                    .textFieldStyle(.roundedBorder)
+            // against the plan the model just produced. Multi-line + soft
+            // wrap so long feedback doesn't run off the edge — Return makes
+            // a newline, the button (or ⌘↵) submits.
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                TextEditor(text: $feedbackDraft)
                     .font(DS.FontStyle.caption)
-                    .onSubmit { revise() }
-                Button(L("planner.revise")) { revise() }
-                    .disabled(inFlight || feedbackDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .frame(height: 56)
+                    .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.white.opacity(0.04)))
+                    .overlay(alignment: .topLeading) {
+                        if feedbackDraft.isEmpty {
+                            Text(L("planner.feedback_placeholder"))
+                                .font(DS.FontStyle.caption)
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 10)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                HStack {
+                    Spacer()
+                    Button(L("planner.revise")) { revise() }
+                        .keyboardShortcut(.return, modifiers: [.command])
+                        .disabled(inFlight || feedbackDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
 
             HStack {
@@ -290,7 +308,6 @@ struct PlannerSheet: View {
                     onClose()
                 }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.return, modifiers: [])
                 .disabled(inFlight || draft.days.isEmpty)
             }
         }
