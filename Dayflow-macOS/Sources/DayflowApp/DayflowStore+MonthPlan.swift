@@ -71,6 +71,11 @@ extension DayflowStore {
             chars[markIdx] = "x"
         case "x", "X", "✓":
             chars[markIdx] = " "
+        case "~":
+            // Tapping a parked task in the week preview completes it —
+            // the natural "I'm picking this back up and it's done" gesture.
+            // Setting/clearing on-hold itself happens in the Day editor.
+            chars[markIdx] = "x"
         default:
             return line
         }

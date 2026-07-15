@@ -58,7 +58,7 @@ extension DayflowStore {
         let existing = Set(
             Self.lines(of: db.getDayNote(date: targetDay)).compactMap { line -> String? in
                 guard case let .task(_, text)? = MarkdownLine.parse(line) else { return nil }
-                return Self.normalize(text)
+                return Self.normalize(text)  // any status: don't re-offer a task already on today
             }
         )
 
@@ -72,7 +72,10 @@ extension DayflowStore {
         for (key, body) in bodies.sorted(by: { $0.key < $1.key }) {
             guard let date = DF.ymd.date(from: key) else { continue }
             for (idx, line) in Self.lines(of: body).enumerated() {
-                guard case let .task(checked, text)? = MarkdownLine.parse(line), !checked else { continue }
+                // Only actively-open tasks carry over. Done is finished;
+                // on-hold ("보류") is parked on purpose — neither should
+                // resurface in the "unfinished from earlier days" banner.
+                guard case let .task(status, text)? = MarkdownLine.parse(line), status.isOpen else { continue }
                 let norm = Self.normalize(text)
                 guard !norm.isEmpty, !existing.contains(norm) else { continue }
                 let source = CarryoverItem.Source(date: date, lineIndex: idx)
@@ -127,8 +130,8 @@ extension DayflowStore {
             kept.reserveCapacity(lines.count)
             for (idx, line) in lines.enumerated() {
                 if entry.indices.contains(idx),
-                   case let .task(checked, text)? = MarkdownLine.parse(line),
-                   !checked,
+                   case let .task(status, text)? = MarkdownLine.parse(line),
+                   status.isOpen,
                    Self.normalize(text) == entry.expected[idx] {
                     continue  // the line we meant to move — drop it
                 }

@@ -264,3 +264,4 @@
 "planner.feedback_placeholder" = "Not quite right? Tell me what to change…";
 "planner.revise" = "Revise";
 "planner.retry" = "Retry";
+"day.held_format" = "· %d held";

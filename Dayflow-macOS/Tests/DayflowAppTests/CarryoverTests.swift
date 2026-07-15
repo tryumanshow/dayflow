@@ -43,6 +43,37 @@ private func makeStore() -> DayflowStore {
     #expect(pending.map(\.text) == ["ship the thing"])
 }
 
+/// On-hold ("보류") is parked on purpose — it must not resurface in the
+/// carry-over banner, same as a done task.
+@MainActor
+@Test func excludesOnHoldTasksFromCarryover() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(1), body: """
+        - [ ] active task
+        - [~] parked task
+        - [x] finished task
+        """)
+
+    let pending = store.pendingCarryovers(into: today())
+    #expect(pending.map(\.text) == ["active task"])
+}
+
+/// Carrying open tasks over must leave an on-hold source line untouched —
+/// only the open line moves.
+@MainActor
+@Test func carryOverLeavesOnHoldSourceInPlace() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(1), body: "- [ ] move me\n- [~] keep me parked")
+
+    let items = store.pendingCarryovers(into: today())
+    store.carryOver(items, into: today())
+
+    let source = store.db.getDayNote(date: daysAgo(1))
+    #expect(source.contains("- [~] keep me parked"))
+    #expect(!source.contains("move me"))
+    #expect(store.db.getDayNote(date: today()).contains("- [ ] move me"))
+}
+
 @MainActor
 @Test func ignoresTasksOlderThanTheLookbackWindow() {
     let store = makeStore()

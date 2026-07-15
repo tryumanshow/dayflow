@@ -264,3 +264,4 @@
 "planner.feedback_placeholder" = "마음에 안 들면 바꿀 점을 알려줘…";
 "planner.revise" = "다시 짜줘";
 "planner.retry" = "다시 시도";
+"day.held_format" = "· 보류 %d";

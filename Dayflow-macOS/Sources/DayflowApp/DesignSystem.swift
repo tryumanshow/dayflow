@@ -154,9 +154,24 @@ enum DF {
 /// `blocksToMarkdownLossy` emits `*   [x] foo` (multi-space after the
 /// bullet), which is still valid CommonMark — all parsing sites need to
 /// tolerate that, so we centralise the rule here.
+/// Lifecycle state of a checklist task. `onHold` ("보류") is a task the
+/// user has deliberately parked — neither done nor actively outstanding.
+/// It carries its own markdown mark (`- [~]`) so every markdown-based
+/// consumer (carry-over, metrics, week/month previews) can treat it
+/// distinctly without reading the richer BlockNote JSON.
+enum TaskStatus: Equatable {
+    case open
+    case done
+    case onHold
+
+    /// True only for actively-outstanding work. Done and on-hold are both
+    /// excluded — this is the predicate carry-over and "open" counts use.
+    var isOpen: Bool { self == .open }
+}
+
 enum MarkdownLine {
     case heading(level: Int, text: String)
-    case task(checked: Bool, text: String)
+    case task(status: TaskStatus, text: String)
     case bullet(text: String)
     case plain(text: String)
 
@@ -196,9 +211,11 @@ enum MarkdownLine {
                     after = after.drop(while: { $0 == " " || $0 == "\t" })
                     switch mark {
                     case " ":
-                        return .task(checked: false, text: String(after))
+                        return .task(status: .open, text: String(after))
                     case "x", "X", "✓":
-                        return .task(checked: true,  text: String(after))
+                        return .task(status: .done, text: String(after))
+                    case "~":
+                        return .task(status: .onHold, text: String(after))
                     default: break
                     }
                 }
@@ -215,6 +232,9 @@ extension Color {
     static let dfAccent = Color(red: 0.97, green: 0.55, blue: 0.20)
     static let dfDone   = Color(red: 0.30, green: 0.78, blue: 0.46)
     static let dfTodo   = Color(red: 0.55, green: 0.58, blue: 0.65)
+    /// On-hold ("보류") — fluorescent blue, deliberately vivid so a parked
+    /// task reads as a distinct third state next to done-green and todo-grey.
+    static let dfHold   = Color(red: 0.15, green: 0.65, blue: 1.0)
     /// Public holiday highlight — muted red, distinct from the
     /// warm orange accent so the two signals don't collide.
     static let dfHoliday = Color(red: 0.90, green: 0.40, blue: 0.40)

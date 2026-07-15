@@ -11,13 +11,15 @@ import Foundation
 enum PlanMarkdown {
     static let headingMarker = "📋 Plan"
 
-    /// Render a fresh section body. `carriedDone` are checked items
-    /// preserved from the section being replaced; they stay on top so
-    /// finished work never visually "un-finishes" after a re-plan.
-    static func render(tasks: [PlanTask], carriedDone: [String], generatedLabel: String) -> String {
+    /// Render a fresh section body. `carried` are non-open items (done or
+    /// on-hold) preserved from the section being replaced; they stay on top
+    /// with their original marker so finished work never visually
+    /// "un-finishes" and a parked task stays parked after a re-plan.
+    static func render(tasks: [PlanTask], carried: [(status: TaskStatus, text: String)], generatedLabel: String) -> String {
         var lines: [String] = ["## \(headingMarker) (\(generatedLabel))"]
-        for done in carriedDone {
-            lines.append("- [x] \(done)")
+        for item in carried {
+            let mark = item.status == .done ? "x" : "~"
+            lines.append("- [\(mark)] \(item.text)")
         }
         for task in tasks {
             if let note = task.note, !note.isEmpty {
@@ -45,11 +47,12 @@ enum PlanMarkdown {
         return s ..< lines.count
     }
 
-    /// Texts of checked (`- [x]`) tasks inside `range`.
-    static func checkedItems(inLines lines: [String], range: Range<Int>) -> [String] {
+    /// Non-open tasks (done or on-hold) inside `range`, with their status —
+    /// the items a re-plan must carry forward rather than discard.
+    static func preservedItems(inLines lines: [String], range: Range<Int>) -> [(status: TaskStatus, text: String)] {
         lines[range].compactMap { line in
-            guard case let .task(checked, text)? = MarkdownLine.parse(line), checked else { return nil }
-            return text
+            guard case let .task(status, text)? = MarkdownLine.parse(line), !status.isOpen else { return nil }
+            return (status, text)
         }
     }
 
@@ -59,15 +62,15 @@ enum PlanMarkdown {
         let lines = body.components(separatedBy: "\n")
 
         if let range = planSectionRange(inLines: lines) {
-            let done = checkedItems(inLines: lines, range: range)
-            let section = render(tasks: tasks, carriedDone: done, generatedLabel: generatedLabel)
+            let carried = preservedItems(inLines: lines, range: range)
+            let section = render(tasks: tasks, carried: carried, generatedLabel: generatedLabel)
             var out = Array(lines[..<range.lowerBound])
             out.append(contentsOf: section.components(separatedBy: "\n"))
             out.append(contentsOf: lines[range.upperBound...])
             return out.joined(separator: "\n")
         }
 
-        let section = render(tasks: tasks, carriedDone: [], generatedLabel: generatedLabel)
+        let section = render(tasks: tasks, carried: [], generatedLabel: generatedLabel)
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return section }
         var head = body

@@ -148,7 +148,10 @@ extension ContentView {
 
     private var daySummaryRail: some View {
         let counts = DayflowDB.parseCheckboxes(store.dayBody)
+        // On-hold is parked, not part of the completable set — the ratio is
+        // done ÷ (open + done), and held tasks are surfaced separately.
         let total = counts.open + counts.done
+        let anyTasks = total + counts.onHold > 0
         let ratio = total == 0 ? 0.0 : Double(counts.done) / Double(total)
         return VStack(alignment: .leading, spacing: DS.Space.sm) {
             SectionLabel(text: L("day.today_progress"))
@@ -161,10 +164,17 @@ extension ContentView {
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 6)
             }
-            if total > 0 {
-                Text(L("day.done_open_format", counts.done, counts.open))
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(.secondary)
+            if anyTasks {
+                HStack(spacing: 4) {
+                    Text(L("day.done_open_format", counts.done, counts.open))
+                        .font(DS.FontStyle.caption)
+                        .foregroundStyle(.secondary)
+                    if counts.onHold > 0 {
+                        Text(L("day.held_format", counts.onHold))
+                            .font(DS.FontStyle.caption)
+                            .foregroundStyle(Color.dfHold)
+                    }
+                }
             } else {
                 Text(L("day.empty"))
                     .font(DS.FontStyle.caption)

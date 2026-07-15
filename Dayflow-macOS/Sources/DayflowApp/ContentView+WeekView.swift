@@ -176,12 +176,12 @@ extension ContentView {
                         store.toggleWeekTask(day: day, sourceLineIndex: task.sourceLineIndex)
                     } label: {
                         HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: task.checked ? "checkmark.square.fill" : "square")
+                            Image(systemName: task.onHold ? "pause.square.fill" : (task.checked ? "checkmark.square.fill" : "square"))
                                 .font(.system(size: 10))
-                                .foregroundStyle(task.checked ? Color.dfAccent : .secondary)
+                                .foregroundStyle(task.onHold ? Color.dfHold : (task.checked ? Color.dfAccent : .secondary))
                             Text(task.text)
                                 .font(DS.FontStyle.caption)
-                                .foregroundStyle(task.checked ? .tertiary : .secondary)
+                                .foregroundStyle(task.onHold ? Color.dfHold : (task.checked ? Color.secondary.opacity(0.6) : Color.secondary))
                                 .strikethrough(task.checked)
                                 .lineLimit(1)
                         }

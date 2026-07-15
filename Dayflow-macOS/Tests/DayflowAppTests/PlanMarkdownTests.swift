@@ -13,7 +13,7 @@ private func task(_ title: String, _ note: String? = nil) -> PlanTask {
 @Test func renderProducesHeadingAndTasks() {
     let md = PlanMarkdown.render(
         tasks: [task("write post", "vLLM"), task("resume")],
-        carriedDone: [],
+        carried: [],
         generatedLabel: label
     )
     let lines = md.components(separatedBy: "\n")
@@ -25,14 +25,16 @@ private func task(_ title: String, _ note: String? = nil) -> PlanTask {
 @Test func renderKeepsCarriedDoneOnTop() {
     let md = PlanMarkdown.render(
         tasks: [task("new task")],
-        carriedDone: ["old finished"],
+        carried: [(.done, "old finished"), (.onHold, "parked item")],
         generatedLabel: label
     )
     let lines = md.components(separatedBy: "\n")
     let doneIdx = lines.firstIndex(of: "- [x] old finished")
+    let heldIdx = lines.firstIndex(of: "- [~] parked item")
     let newIdx = lines.firstIndex(of: "- [ ] new task")
-    #expect(doneIdx != nil && newIdx != nil)
+    #expect(doneIdx != nil && heldIdx != nil && newIdx != nil)
     #expect(doneIdx! < newIdx!)
+    #expect(heldIdx! < newIdx!)
 }
 
 // MARK: - apply: append

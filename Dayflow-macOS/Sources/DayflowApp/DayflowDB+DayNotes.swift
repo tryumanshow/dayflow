@@ -38,14 +38,21 @@ extension DayflowDB {
         return out
     }
 
-    /// Returns (open count, done count) for a markdown body.
-    static func parseCheckboxes(_ body: String) -> (open: Int, done: Int) {
+    /// Returns (open, done, onHold) task counts for a markdown body.
+    /// On-hold is its own bucket so completion ratios can exclude parked
+    /// work rather than counting it as outstanding.
+    static func parseCheckboxes(_ body: String) -> (open: Int, done: Int, onHold: Int) {
         var open = 0
         var done = 0
+        var onHold = 0
         for line in body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
-            guard case let .task(checked, _) = MarkdownLine.parse(String(line)) ?? .plain(text: "") else { continue }
-            if checked { done += 1 } else { open += 1 }
+            guard case let .task(status, _) = MarkdownLine.parse(String(line)) ?? .plain(text: "") else { continue }
+            switch status {
+            case .open:   open += 1
+            case .done:   done += 1
+            case .onHold: onHold += 1
+            }
         }
-        return (open, done)
+        return (open, done, onHold)
     }
 }

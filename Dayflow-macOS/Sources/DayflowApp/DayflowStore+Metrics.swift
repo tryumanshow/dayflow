@@ -4,7 +4,7 @@ import Foundation
 extension DayflowStore {
     // MARK: - metric helpers
 
-    func dayCounts(_ date: Date) -> (open: Int, done: Int) {
+    func dayCounts(_ date: Date) -> (open: Int, done: Int, onHold: Int) {
         DayflowDB.parseCheckboxes(dayBody(for: date))
     }
 

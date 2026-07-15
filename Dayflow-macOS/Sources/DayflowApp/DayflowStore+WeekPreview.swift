@@ -14,7 +14,7 @@ extension DayflowStore {
         let tasks: [PreviewTask]
     }
     enum PreviewItemKind {
-        case task(checked: Bool)
+        case task(status: TaskStatus)
         case bullet
     }
     struct PreviewTask: Identifiable {
@@ -24,10 +24,12 @@ extension DayflowStore {
         let sourceLineIndex: Int
         let depth: Int
 
-        var checked: Bool {
-            if case .task(let c) = kind { return c }
-            return false
+        var status: TaskStatus {
+            if case .task(let s) = kind { return s }
+            return .open
         }
+        var checked: Bool { status == .done }
+        var onHold: Bool { status == .onHold }
         var isTask: Bool {
             if case .task = kind { return true }
             return false
@@ -55,11 +57,11 @@ extension DayflowStore {
             switch parsed {
             case .heading(_, let text):
                 groups.append((text, []))
-            case .task(let checked, let text):
+            case .task(let status, let text):
                 var current = groups[groups.count - 1]
                 if current.tasks.count < Self.weekPreviewMaxTasksPerGroup {
                     current.tasks.append(PreviewTask(
-                        id: nextTaskID, text: text, kind: .task(checked: checked),
+                        id: nextTaskID, text: text, kind: .task(status: status),
                         sourceLineIndex: idx, depth: depth))
                     nextTaskID += 1
                 }
