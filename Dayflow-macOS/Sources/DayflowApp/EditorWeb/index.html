@@ -226,6 +226,43 @@ body {
     color: rgba(255,255,255,0.45) !important;
     text-decoration: line-through;
 }
+/* On-hold ("보류"): a parked task carries the reserved blue highlight on its
+   text (set via the right-click status menu). Tint the checkbox to match so
+   the whole row reads as fluorescent blue. :has() is supported in the macOS
+   14 WKWebView; if it ever isn't, the blue text highlight still conveys it. */
+.bn-block-content[data-content-type="checkListItem"]:has([data-background-color="blue"]) input[type="checkbox"] {
+    accent-color: #26a6ff !important;
+}
+/* The small floating status menu shown on right-click of a checkbox. */
+#dayflow-status-menu {
+    position: fixed;
+    z-index: 9999;
+    min-width: 132px;
+    background: #2a2b31;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    font-size: 13px;
+    color: #eee;
+    user-select: none;
+}
+#dayflow-status-menu .item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+#dayflow-status-menu .item:hover { background: rgba(255,255,255,0.08); }
+#dayflow-status-menu .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    flex: 0 0 auto;
+}
+#dayflow-status-menu .dot.open { border: 1.5px solid #9aa0aa; }
+#dayflow-status-menu .dot.done { background: #4cc66e; }
+#dayflow-status-menu .dot.hold { background: #26a6ff; }
 .bn-block-content:not([data-content-type="codeBlock"]) code,
 .bn-block-content[data-content-type="codeBlock"] {
     font-family: ui-monospace, "SF Mono", monospace;
@@ -707,11 +744,18 @@ function mdToBlocks(md) {
                 content: [{ type: 'text', text: m[2], styles: {} }],
                 children: [],
             };
-        } else if ((m = text.match(/^[-*]\s+\[([ xX])\]\s+(.*)$/))) {
+        } else if ((m = text.match(/^[-*]\s+\[([ xX~])\]\s+(.*)$/))) {
+            // `[~]` is the on-hold ("보류") mark. BlockNote has no third
+            // checkbox state, so on-hold rides as an unchecked item whose
+            // text carries the reserved blue background — the same style the
+            // status menu applies and the emit path reads back to re-derive
+            // `[~]`.
+            const mark = m[1].toLowerCase();
+            const onHold = mark === '~';
             block = {
                 type: 'checkListItem',
-                props: { checked: m[1].toLowerCase() === 'x' },
-                content: [{ type: 'text', text: m[2], styles: {} }],
+                props: { checked: mark === 'x' },
+                content: [{ type: 'text', text: m[2], styles: onHold ? { backgroundColor: 'blue' } : {} }],
                 children: [],
             };
         } else if ((m = text.match(/^[-*]\s+(.*)$/))) {
@@ -798,6 +842,42 @@ window.dayflowSetContent = async function(md, jsonText) {
     }
 };
 
+// An on-hold checkListItem is unchecked and carries the reserved blue
+// background on its text. `blocksToMarkdownLossy` can't express that (it
+// drops color and writes `- [ ]`), so we re-derive `- [~]` from the
+// document after the fact.
+function isOnHoldBlock(b) {
+    if (b.type !== 'checkListItem' || (b.props && b.props.checked)) return false;
+    const content = b.content || [];
+    return content.some(r => r && r.type === 'text' && r.styles && r.styles.backgroundColor === 'blue');
+}
+function collectCheckboxHoldFlags(blocks, out) {
+    for (const b of blocks) {
+        if (b.type === 'checkListItem') out.push(isOnHoldBlock(b));
+        if (b.children && b.children.length) collectCheckboxHoldFlags(b.children, out);
+    }
+}
+// Rewrite the Nth `[ ]` checkbox line to `[~]` when the Nth checkListItem
+// (document order) is on-hold. blocksToMarkdownLossy emits checkboxes in
+// the same depth-first order collectCheckboxHoldFlags walks, so the two
+// line up 1:1. If the counts ever disagree, bail rather than corrupt.
+function reMarkOnHold(md, doc) {
+    const flags = [];
+    collectCheckboxHoldFlags(doc, flags);
+    if (!flags.some(Boolean)) return md;
+    const lines = md.split('\n');
+    const checkboxLineIdx = [];
+    for (let i = 0; i < lines.length; i++) {
+        if (/^(\s*[-*+]\s+)\[[ xX]\]/.test(lines[i])) checkboxLineIdx.push(i);
+    }
+    if (checkboxLineIdx.length !== flags.length) return md;
+    for (let n = 0; n < flags.length; n++) {
+        if (!flags[n]) continue;
+        lines[checkboxLineIdx[n]] = lines[checkboxLineIdx[n]].replace(/^(\s*[-*+]\s+)\[ \]/, '$1[~]');
+    }
+    return lines.join('\n');
+}
+
 async function emitCurrentContent() {
     if (!editor) return;
     try {
@@ -808,6 +888,7 @@ async function emitCurrentContent() {
         const ZWSP = '\u200B';
         if (md && md.indexOf(ZWSP) !== -1) md = md.split(ZWSP).join('');
         if (json.indexOf(ZWSP) !== -1) json = json.split(ZWSP).join('');
+        md = reMarkOnHold(md, editor.document);
         postChange(md, json);
     } catch (e) {}
 }
@@ -1651,6 +1732,84 @@ function installCheckboxToggle() {
     }, true);
 }
 
+// Right-click a checkbox to set its lifecycle status. Done/undone is a
+// checked boolean; on-hold ("보류") is unchecked + the reserved blue
+// background on the item's text, which the emit path turns into `- [~]`.
+let statusMenuEl = null;
+function dismissStatusMenu() {
+    if (statusMenuEl) { statusMenuEl.remove(); statusMenuEl = null; }
+}
+function setTaskStatus(blockId, status) {
+    try {
+        const block = editor.getBlock(blockId);
+        if (!block || block.type !== 'checkListItem') return;
+        const content = (block.content || []).map(run => {
+            if (run.type !== 'text') return run;
+            const styles = Object.assign({}, run.styles);
+            if (status === 'hold') styles.backgroundColor = 'blue';
+            else delete styles.backgroundColor;
+            return Object.assign({}, run, { styles });
+        });
+        editor.updateBlock(blockId, { props: { checked: status === 'done' }, content });
+        scheduleEmit();
+    } catch (err) { console.log('setTaskStatus error: ' + err.message); }
+}
+function showStatusMenu(x, y, blockId) {
+    dismissStatusMenu();
+    const menu = document.createElement('div');
+    menu.id = 'dayflow-status-menu';
+    const items = [
+        { status: 'open', dot: 'open', label: 'To do' },
+        { status: 'done', dot: 'done', label: 'Done' },
+        { status: 'hold', dot: 'hold', label: 'On hold' },
+    ];
+    for (const it of items) {
+        const row = document.createElement('div');
+        row.className = 'item';
+        const dot = document.createElement('span');
+        dot.className = 'dot ' + it.dot;
+        const text = document.createElement('span');
+        text.textContent = it.label;
+        row.appendChild(dot);
+        row.appendChild(text);
+        row.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            setTaskStatus(blockId, it.status);
+            dismissStatusMenu();
+        }, true);
+        menu.appendChild(row);
+    }
+    document.body.appendChild(menu);
+    // Keep the menu on-screen.
+    const rect = menu.getBoundingClientRect();
+    const px = Math.min(x, window.innerWidth - rect.width - 8);
+    const py = Math.min(y, window.innerHeight - rect.height - 8);
+    menu.style.left = px + 'px';
+    menu.style.top = py + 'px';
+    statusMenuEl = menu;
+}
+function installStatusContextMenu() {
+    if (!editorRootEl || !editor) return;
+    editorRootEl.addEventListener('contextmenu', (e) => {
+        const blockEl = e.target && e.target.closest
+            && e.target.closest('.bn-block-content[data-content-type="checkListItem"]');
+        if (!blockEl) return;
+        const idEl = e.target.closest('[data-id]');
+        const blockId = idEl && idEl.getAttribute('data-id');
+        if (!blockId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        showStatusMenu(e.clientX, e.clientY, blockId);
+    }, true);
+    // Dismiss on any outside interaction.
+    document.addEventListener('mousedown', (e) => {
+        if (statusMenuEl && !statusMenuEl.contains(e.target)) dismissStatusMenu();
+    }, true);
+    document.addEventListener('scroll', dismissStatusMenu, true);
+    window.addEventListener('blur', dismissStatusMenu);
+}
+
 (async () => {
     try {
         editor = BlockNoteEditor.create({
@@ -1662,6 +1821,7 @@ function installCheckboxToggle() {
         installHrObserver();
         installNestedImeWorkaround();
         installCheckboxToggle();
+        installStatusContextMenu();
         installImagePasteHandler();
         installScrollStateBridge();
         editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); postScrollState(); });
