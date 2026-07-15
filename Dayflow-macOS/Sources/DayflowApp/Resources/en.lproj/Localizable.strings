@@ -263,3 +263,4 @@
 "planner.system_prompt.multi_day" = "The range spans multiple days: distribute tasks across the days, sequencing dependent work correctly.";
 "planner.feedback_placeholder" = "Not quite right? Tell me what to change…";
 "planner.revise" = "Revise";
+"planner.retry" = "Retry";

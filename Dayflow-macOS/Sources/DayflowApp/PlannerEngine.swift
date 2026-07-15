@@ -52,9 +52,17 @@ final class PlannerEngine {
 
     // MARK: - conversation
 
+    // Every entry point builds the messages it wants to send as a LOCAL
+    // array on top of the committed `messages`, and hands it to `send`.
+    // `send` only writes back to `self.messages` (and the round counter /
+    // pending questions) AFTER the transport succeeds. So a network error
+    // mid-turn leaves the conversation exactly as it was before the turn —
+    // the caller can retry the same action and it resumes cleanly instead
+    // of losing everything or double-appending on retry.
+
     func start() async throws -> PlannerResponse {
-        messages = [PlannerMessage(role: .user, text: initialUserPayload())]
-        return try await runTurn()
+        let base = [PlannerMessage(role: .user, text: initialUserPayload())]
+        return try await send(base, allowQuestions: true)
     }
 
     /// Send the user's answers, paired with the question texts they answer.
@@ -67,15 +75,15 @@ final class PlannerEngine {
                 lines.append(answer)
             }
         }
-        messages.append(PlannerMessage(role: .user, text: lines.joined(separator: "\n\n")))
-        return try await runTurn()
+        let base = messages + [PlannerMessage(role: .user, text: lines.joined(separator: "\n\n"))]
+        return try await send(base, allowQuestions: true)
     }
 
     /// "Skip" path — the user declined to answer; the model must plan with
     /// reasonable assumptions and disclose them in the rationale.
     func forcePlan() async throws -> PlannerResponse {
-        messages.append(PlannerMessage(role: .user, text: Self.forcePlanDirective))
-        return try await runTurn(allowQuestions: false)
+        let base = messages + [PlannerMessage(role: .user, text: Self.forcePlanDirective)]
+        return try await send(base, allowQuestions: false)
     }
 
     /// Revision loop — the user saw a plan in the preview and wants it
@@ -83,44 +91,49 @@ final class PlannerEngine {
     /// full history (which includes the delivered plan), and the reply
     /// must be a plan again, not more questions.
     func revise(_ feedback: String) async throws -> PlannerResponse {
-        messages.append(PlannerMessage(
+        let base = messages + [PlannerMessage(
             role: .user,
             text: "Feedback on the plan you produced — revise it accordingly and return the full updated plan:\n\(feedback)"
-        ))
-        return try await runTurn(allowQuestions: false)
+        )]
+        return try await send(base, allowQuestions: false)
     }
 
     private static let forcePlanDirective =
         "Do not ask any further questions. Produce the best plan you can with the information you have, make reasonable assumptions, and state those assumptions in the rationale."
 
-    private func runTurn(allowQuestions: Bool = true) async throws -> PlannerResponse {
-        let response = try await transport(systemPrompt(), messages)
+    /// Run a turn against `base` (uncommitted) and commit only on success.
+    private func send(_ base: [PlannerMessage], allowQuestions: Bool) async throws -> PlannerResponse {
+        let response = try await transport(systemPrompt(), base)
         switch response {
         case .questions(let qs):
-            // The model's reply becomes part of the history either way.
-            messages.append(PlannerMessage(role: .assistant, text: Self.encodeQuestions(qs)))
             if allowQuestions && questionRoundsUsed < Self.maxQuestionRounds {
+                // Commit: the question turn lands in history, round counted.
+                messages = base + [PlannerMessage(role: .assistant, text: Self.encodeQuestions(qs))]
                 questionRoundsUsed += 1
                 pendingQuestions = qs
                 return response
             }
-            // Cap reached (or questions disallowed): force the plan.
-            messages.append(PlannerMessage(role: .user, text: Self.forcePlanDirective))
-            let forced = try await transport(systemPrompt(), messages)
+            // Cap reached (or questions disallowed): a second transport call
+            // forces the plan. Still uncommitted until it returns.
+            let forcedBase = base + [
+                PlannerMessage(role: .assistant, text: Self.encodeQuestions(qs)),
+                PlannerMessage(role: .user, text: Self.forcePlanDirective),
+            ]
+            let forced = try await transport(systemPrompt(), forcedBase)
             guard case .plan(let draft) = forced else {
                 throw LLMClient.LLMError.decodeFailed
             }
-            return finish(draft)
+            return commitPlan(draft, base: forcedBase)
         case .plan(let draft):
-            return finish(draft)
+            return commitPlan(draft, base: base)
         }
     }
 
-    private func finish(_ draft: PlanDraft) -> PlannerResponse {
+    private func commitPlan(_ draft: PlanDraft, base: [PlannerMessage]) -> PlannerResponse {
         let sanitized = draft.sanitized(allowedDates: allowedDates)
         // Record the actual plan in the transcript — a later revision turn
         // needs the model to see what it proposed, not a placeholder.
-        messages.append(PlannerMessage(role: .assistant, text: sanitized.encodedJSON()))
+        messages = base + [PlannerMessage(role: .assistant, text: sanitized.encodedJSON())]
         pendingQuestions = []
         return .plan(sanitized)
     }

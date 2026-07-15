@@ -153,3 +153,58 @@ private func makeEngine(db: DayflowDB = tempDB(),
     guard case .plan = r else { Issue.record("expected plan"); return }
     #expect(sawDirective)
 }
+
+// MARK: - transactional turns (network-error resilience)
+
+private struct StubError: Error {}
+
+@MainActor
+@Test func failedStartLeavesNoStateAndRetrySucceeds() async throws {
+    let engine = makeEngine()
+    var attempt = 0
+    engine.transport = { _, messages in
+        attempt += 1
+        if attempt == 1 { throw StubError() }  // first attempt "network error"
+        return .plan(PlanDraft(days: [], unassigned: [], rationale: "ok"))
+    }
+
+    // First attempt fails — must throw, and leave the round counter clean.
+    await #expect(throws: StubError.self) { _ = try await engine.start() }
+    #expect(engine.questionRoundsUsed == 0)
+
+    // Retry the SAME action: resumes and succeeds.
+    let r = try await engine.start()
+    guard case let .plan(draft) = r else { Issue.record("expected plan"); return }
+    #expect(draft.rationale == "ok")
+}
+
+@MainActor
+@Test func failedAnswerDoesNotCorruptHistoryOnRetry() async throws {
+    let engine = makeEngine()
+    // Round 1 succeeds with a question; the answer turn fails once, then
+    // succeeds. The successful retry must NOT carry a doubled answer.
+    var phase = 0
+    var answerAttempts = 0
+    engine.transport = { _, messages in
+        // Detect the answer turn by its "Q:/A:" payload.
+        if messages.last?.text.contains("A: my answer") == true {
+            answerAttempts += 1
+            if answerAttempts == 1 { throw StubError() }
+            // On the retry, the answer must appear exactly once in history.
+            let answerCount = messages.filter { $0.text.contains("A: my answer") }.count
+            #expect(answerCount == 1)
+            return .plan(PlanDraft(days: [], unassigned: [], rationale: "done"))
+        }
+        phase += 1
+        return .questions([PlanQuestion(text: "which?", options: nil)])
+    }
+
+    _ = try await engine.start()
+    await #expect(throws: StubError.self) { _ = try await engine.submitAnswers(["my answer"]) }
+    // questionRoundsUsed stayed at 1 (the failed answer didn't advance).
+    #expect(engine.questionRoundsUsed == 1)
+    let r = try await engine.submitAnswers(["my answer"])
+    guard case let .plan(draft) = r else { Issue.record("expected plan"); return }
+    #expect(draft.rationale == "done")
+    #expect(answerAttempts == 2)
+}

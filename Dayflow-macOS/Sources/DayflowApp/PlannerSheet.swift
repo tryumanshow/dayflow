@@ -10,9 +10,13 @@ struct PlannerRequest: Identifiable {
 }
 
 /// The AI planner: task dump + date range in, per-day checklist plan out.
-/// One sheet, five phases — input → loading → (questions →) preview →
-/// applied. The LLM may ask up to `PlannerEngine.maxQuestionRounds` rounds
-/// of clarifying questions; the user can always skip them.
+/// Three content phases — input → (questions →) preview. The LLM may ask up
+/// to `PlannerEngine.maxQuestionRounds` rounds of clarifying questions; the
+/// user can always skip them, and refine the plan with feedback in preview.
+///
+/// A network / decode failure never destroys the conversation: it surfaces
+/// as a dismissible banner over the current phase with a Retry that re-runs
+/// the failed turn (the engine is transactional, so retry resumes cleanly).
 @MainActor
 struct PlannerSheet: View {
     let store: DayflowStore
@@ -26,12 +30,19 @@ struct PlannerSheet: View {
     @State private var answerDrafts: [String] = []
     @State private var feedbackDraft: String = ""
 
+    /// A turn is in flight — dims the content and shows a spinner, but the
+    /// underlying phase (questions/preview) stays put.
+    @State private var inFlight = false
+    /// Last turn's error, shown as a banner. Cleared on the next attempt.
+    @State private var errorBanner: String?
+    /// The turn to re-run when the user taps Retry. Set on every attempt so
+    /// Retry repeats exactly what failed.
+    @State private var lastTurn: (() async throws -> PlannerResponse?)?
+
     enum Phase {
         case input
-        case loading
         case questions([PlanQuestion])
         case preview(PlanDraft, replacing: Set<String>)
-        case error(String)
     }
 
     init(store: DayflowStore, defaultStart: Date, defaultEnd: Date, onClose: @escaping () -> Void) {
@@ -49,6 +60,9 @@ struct PlannerSheet: View {
                 Text(L("planner.title"))
                     .font(.headline)
                 Spacer()
+                if inFlight {
+                    ProgressView().controlSize(.small)
+                }
                 Button {
                     onClose()
                 } label: {
@@ -60,16 +74,54 @@ struct PlannerSheet: View {
                 .keyboardShortcut(.escape, modifiers: [])
             }
 
-            switch phase {
-            case .input:                          inputPhase
-            case .loading:                        loadingPhase
-            case .questions(let qs):              questionsPhase(qs)
-            case .preview(let draft, let badges): previewPhase(draft, replacing: badges)
-            case .error(let message):             errorPhase(message)
+            if let errorBanner {
+                errorBannerView(errorBanner)
             }
+
+            Group {
+                switch phase {
+                case .input:                          inputPhase
+                case .questions(let qs):              questionsPhase(qs)
+                case .preview(let draft, let badges): previewPhase(draft, replacing: badges)
+                }
+            }
+            .disabled(inFlight)
+            .opacity(inFlight ? 0.5 : 1)
         }
         .padding(20)
         .frame(width: 520)
+    }
+
+    /// Non-destructive error surface: the conversation is intact underneath.
+    private func errorBannerView(_ message: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: DS.Space.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(DS.FontStyle.caption)
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+            Spacer(minLength: DS.Space.sm)
+            if lastTurn != nil {
+                Button(L("planner.retry")) { retry() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.dfAccent)
+                    .disabled(inFlight)
+            }
+            Button {
+                errorBanner = nil
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, DS.Space.sm)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.orange.opacity(0.12)))
     }
 
     // MARK: - input
@@ -112,18 +164,6 @@ struct PlannerSheet: View {
         }
     }
 
-    // MARK: - loading
-
-    private var loadingPhase: some View {
-        HStack(spacing: DS.Space.sm) {
-            ProgressView().controlSize(.small)
-            Text(L("planner.loading"))
-                .font(DS.FontStyle.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, minHeight: 120)
-    }
-
     // MARK: - questions
 
     private func questionsPhase(_ questions: [PlanQuestion]) -> some View {
@@ -142,16 +182,20 @@ struct PlannerSheet: View {
             .frame(maxHeight: 320)
 
             HStack {
-                Button(L("planner.skip")) { run { try await self.engine?.forcePlan() } }
-                    .buttonStyle(.plain)
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(Color.dfAccent)
+                Button(L("planner.skip")) {
+                    perform { try await self.engine?.forcePlan() }
+                }
+                .buttonStyle(.plain)
+                .font(DS.FontStyle.caption)
+                .foregroundStyle(Color.dfAccent)
+                .disabled(inFlight)
                 Spacer()
                 Button(L("planner.answer")) {
-                    run { try await self.engine?.submitAnswers(self.answerDrafts) }
+                    let answers = answerDrafts
+                    perform { try await self.engine?.submitAnswers(answers) }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(answerDrafts.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
+                .disabled(inFlight || answerDrafts.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
             }
         }
     }
@@ -232,7 +276,7 @@ struct PlannerSheet: View {
                     .font(DS.FontStyle.caption)
                     .onSubmit { revise() }
                 Button(L("planner.revise")) { revise() }
-                    .disabled(feedbackDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(inFlight || feedbackDraft.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
             HStack {
@@ -247,7 +291,7 @@ struct PlannerSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.return, modifiers: [])
-                .disabled(draft.days.isEmpty)
+                .disabled(inFlight || draft.days.isEmpty)
             }
         }
     }
@@ -256,7 +300,7 @@ struct PlannerSheet: View {
         let feedback = feedbackDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !feedback.isEmpty else { return }
         feedbackDraft = ""
-        run { try await self.engine?.revise(feedback) }
+        perform { try await self.engine?.revise(feedback) }
     }
 
     private func dayCard(_ day: PlanDay, willReplace: Bool) -> some View {
@@ -300,41 +344,31 @@ struct PlannerSheet: View {
         return DF.shortDate.string(from: date)
     }
 
-    // MARK: - error
-
-    private func errorPhase(_ message: String) -> some View {
-        VStack(alignment: .leading, spacing: DS.Space.md) {
-            Label {
-                Text(message)
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-            }
-            HStack {
-                Spacer()
-                Button(L("planner.back")) { phase = .input }
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 100)
-    }
-
     // MARK: - actions
 
     private func generate() {
         let engine = PlannerEngine(db: store.db, start: start, end: end, taskDump: taskDump)
         self.engine = engine
-        run { try await engine.start() }
+        perform { try await engine.start() }
     }
 
-    /// Run one engine turn and translate the outcome into a phase.
-    private func run(_ turn: @escaping () async throws -> PlannerResponse?) {
-        phase = .loading
+    private func retry() {
+        guard let turn = lastTurn else { return }
+        perform(turn)
+    }
+
+    /// Run one engine turn, translating success into a phase transition and
+    /// failure into a non-destructive banner. `turn` is retained as
+    /// `lastTurn` so Retry re-runs the exact same request; the engine is
+    /// transactional, so a retry after a failure resumes rather than
+    /// duplicating or discarding the conversation.
+    private func perform(_ turn: @escaping () async throws -> PlannerResponse?) {
+        lastTurn = turn
+        errorBanner = nil
+        inFlight = true
         _Concurrency.Task {
             do {
-                guard let response = try await turn() else { return }
+                guard let response = try await turn() else { inFlight = false; return }
                 switch response {
                 case .questions(let qs):
                     answerDrafts = Array(repeating: "", count: qs.count)
@@ -343,9 +377,11 @@ struct PlannerSheet: View {
                     let replacing = Set(store.datesWithExistingPlan(in: draft))
                     phase = .preview(draft, replacing: replacing)
                 }
+                lastTurn = nil       // succeeded — nothing to retry
+                inFlight = false
             } catch {
-                let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
-                phase = .error(message)
+                errorBanner = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+                inFlight = false
             }
         }
     }

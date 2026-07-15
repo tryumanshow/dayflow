@@ -263,3 +263,4 @@
 "planner.system_prompt.multi_day" = "범위가 여러 날이다: 태스크를 날짜별로 배분하고, 의존 관계가 있는 작업의 순서를 지킨다.";
 "planner.feedback_placeholder" = "마음에 안 들면 바꿀 점을 알려줘…";
 "planner.revise" = "다시 짜줘";
+"planner.retry" = "다시 시도";
