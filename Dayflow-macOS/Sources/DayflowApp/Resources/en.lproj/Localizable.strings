@@ -239,3 +239,25 @@
 /* Review sections for connection test */
 "llm.test.system" = "You are a connectivity test. Respond with the single word: ok";
 "llm.test.user" = "ping";
+
+/* AI planner */
+"planner.title" = "AI Planner";
+"planner.tooltip" = "Plan tasks with AI";
+"planner.hint" = "Dump your tasks below — one per line or free-form. The AI distributes them across the selected dates.";
+"planner.dump_placeholder" = "e.g.\nset up K8s production server\npublish first blog post (vLLM)\nrewrite resume";
+"planner.start" = "From";
+"planner.end" = "To";
+"planner.generate" = "Generate plan";
+"planner.loading" = "Thinking…";
+"planner.questions_hint" = "A few questions before planning — answer or skip.";
+"planner.answer" = "Answer";
+"planner.answer_placeholder" = "Your answer…";
+"planner.skip" = "Skip — just plan it";
+"planner.apply" = "Apply to notes";
+"planner.back" = "Back";
+"planner.replace_badge" = "replaces existing plan";
+"planner.unassigned" = "Didn't fit this range";
+"planner.generated_label" = "generated %@";
+"planner.system_prompt" = "You are a scheduling assistant inside a personal calendar app. The user gives you a dump of tasks and a date range; existing appointments (blocked time), unfinished tasks from recent days, and month-level goals may be attached as context.\n\nAlways respond by calling the plan_response tool / emitting JSON matching the given schema — either status \"questions\" or status \"plan\".\n\nAsk questions ONLY when the answer would genuinely change the plan (priorities, deadlines, effort estimates, hard constraints). At most 3 questions per round. If the input is clear enough, plan immediately.\n\nWhen planning: respect task dependencies (prerequisite work earlier), keep days realistic (don't overstuff a day that has many appointments), and if everything cannot fit honestly, put the overflow in \"unassigned\" instead of pretending. State your key reasoning — and any assumptions you made — in one or two sentences in \"rationale\". Dates must be yyyy-MM-dd within the given range. Write all task titles, notes, questions and rationale in English.";
+"planner.system_prompt.single_day" = "The range is a single day: focus on choosing what fits into ONE day and putting it in a sensible order, cutting what doesn't fit.";
+"planner.system_prompt.multi_day" = "The range spans multiple days: distribute tasks across the days, sequencing dependent work correctly.";

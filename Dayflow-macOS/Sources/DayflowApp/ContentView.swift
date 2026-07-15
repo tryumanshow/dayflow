@@ -119,6 +119,11 @@ struct ContentView: View {
     /// banner on tap needs state the view actually tracks.
     @State var carryoverDismissed: Set<String> = []
 
+    /// AI planner sheet. `.sheet(item:)` for the same reason as
+    /// `carryoverBatch`: the request carries the mode-dependent prefilled
+    /// date range into the sheet in one transaction.
+    @State var plannerRequest: PlannerRequest? = nil
+
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
@@ -135,6 +140,14 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .dayflowOpenSearch)) { _ in
             showSearch = true
+        }
+        .sheet(item: $plannerRequest) { request in
+            PlannerSheet(
+                store: store,
+                defaultStart: request.start,
+                defaultEnd: request.end,
+                onClose: { plannerRequest = nil }
+            )
         }
         // Keep the floor BELOW the primary column's needs (grid 320 / day
         // editor 360 + padding), not above grid+rail. A floor wider than
@@ -235,6 +248,12 @@ struct ContentView: View {
                 daysBadge
             }
 
+            if store.viewMode != .month {
+                navIconButton("wand.and.stars", tooltip: L("planner.tooltip")) {
+                    openPlanner()
+                }
+            }
+
             navIconButton("magnifyingglass", tooltip: L("nav.tooltip.search")) {
                 showSearch = true
             }
@@ -257,6 +276,20 @@ struct ContentView: View {
         .background(Color.dfCanvas)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.dfHairline).frame(height: 0.7)
+        }
+    }
+
+    /// Open the planner prefilled from the current mode: week mode plans
+    /// the visible week, day mode plans the selected day.
+    private func openPlanner() {
+        let cal = Calendar.current
+        switch store.viewMode {
+        case .week:
+            let weekStart = store.startOfWeek(store.selectedDate)
+            let weekEnd = cal.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart
+            plannerRequest = PlannerRequest(start: weekStart, end: weekEnd)
+        default:
+            plannerRequest = PlannerRequest(start: store.selectedDate, end: store.selectedDate)
         }
     }
 
