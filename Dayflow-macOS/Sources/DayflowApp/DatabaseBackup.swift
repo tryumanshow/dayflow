@@ -120,8 +120,10 @@ final class DatabaseBackupScheduler {
     func start(db: DayflowDB = .shared) {
         guard timer == nil else { return }
         run(db)
-        timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.run(db) }
+        // Through the singleton rather than a captured `self`: Swift 5.10
+        // rejects a captured `self` var inside the concurrently-run Task.
+        timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
+            Task { @MainActor in DatabaseBackupScheduler.shared.run(db) }
         }
     }
 
