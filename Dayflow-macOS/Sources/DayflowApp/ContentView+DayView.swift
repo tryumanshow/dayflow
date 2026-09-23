@@ -108,6 +108,7 @@ extension ContentView {
                         VStack(alignment: .leading, spacing: DS.Space.breathe) {
                             daySummaryRail
                             appointmentsRail
+                            onHoldRail
                             reviewRail
                         }
                         .padding(.horizontal, DS.Space.xl)
@@ -239,6 +240,45 @@ extension ContentView {
                                 )
                             Spacer(minLength: 0)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Parked tasks from the last few weeks. Hidden when there are none, so
+    /// it costs nothing on a day without any.
+    @ViewBuilder
+    private var onHoldRail: some View {
+        let items = store.onHoldTasks(upTo: store.selectedDate)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                SectionLabel(text: L("onhold.header", items.count))
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(items) { item in
+                        Button {
+                            store.selectDate(item.date)
+                        } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Image(systemName: "pause.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.dfHold)
+                                Text(item.text)
+                                    .font(DS.FontStyle.body)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                Spacer(minLength: 0)
+                                Text(DF.shortMonthDay.string(from: item.date))
+                                    .font(DS.FontStyle.micro)
+                                    .foregroundStyle(.tertiary)
+                                    .fixedSize()
+                            }
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(L("onhold.open_day"))
                     }
                 }
             }

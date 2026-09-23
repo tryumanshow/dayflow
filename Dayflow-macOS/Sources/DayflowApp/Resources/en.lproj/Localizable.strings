@@ -34,6 +34,8 @@
 "carryover.select_none" = "Select none";
 "carryover.confirm" = "Carry %d over";
 "carryover.subitems" = "+%d sub-items";
+"onhold.header" = "On hold · %d";
+"onhold.open_day" = "Open the day it's parked on";
 
 /* Header labels */
 "header.day_format" = "yyyy MMM d (EEE)";

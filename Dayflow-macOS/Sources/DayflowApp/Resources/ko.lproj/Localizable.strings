@@ -34,6 +34,8 @@
 "carryover.select_none" = "전체 해제";
 "carryover.confirm" = "%d개 이월";
 "carryover.subitems" = "하위 %d개";
+"onhold.header" = "보류 중 · %d";
+"onhold.open_day" = "보류해 둔 날짜로 이동";
 
 /* Header labels */
 "header.day_format" = "yyyy년 M월 d일 (E)";

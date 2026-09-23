@@ -810,6 +810,7 @@ extension ContentView {
         let total = done + open
         let appointments = store.appointments(for: day)
         let holidayName = inMonth ? HolidayStore.holidayName(on: day, mode: holidaysMode) : nil
+        let openTasks = inMonth ? Self.openTaskTitles(in: store.bodies[key] ?? "") : []
 
         return VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -866,7 +867,47 @@ extension ContentView {
                         }
                     }
                 }
+                // The fill only says "busy"; these say with what. A few
+                // open tasks under the appointments, and a done/total bar at
+                // the foot of the cell.
+                if inMonth && !openTasks.isEmpty {
+                    let room = max(1, 3 - min(appointments.count, 3))
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(openTasks.prefix(room).enumerated()), id: \.offset) { _, title in
+                            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                Image(systemName: "square")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.tertiary)
+                                Text(title)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        if openTasks.count > room {
+                            Text("+\(openTasks.count - room)")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
                 Spacer(minLength: 0)
+                if inMonth && total > 0 {
+                    HStack(spacing: 5) {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.primary.opacity(0.10))
+                                Capsule().fill(Color.dfDone.opacity(0.85))
+                                    .frame(width: geo.size.width * CGFloat(done) / CGFloat(total))
+                            }
+                        }
+                        .frame(height: 3)
+                        Text("\(done)/\(total)")
+                            .font(.system(size: 9, weight: .medium).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                }
             }
             .padding(10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -874,6 +915,7 @@ extension ContentView {
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .fill(heatColor(inMonth: inMonth, total: total))
             )
+            .help(inMonth && !openTasks.isEmpty ? openTasks.map { "☐ " + $0 }.joined(separator: "\n") : "")
             .overlay(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .stroke(isSelected ? Color.dfAccent.opacity(0.7) : Color.dfHairlineSoft,
@@ -888,6 +930,14 @@ extension ContentView {
                 store.selectDate(day)
             }
             .animation(DS.Motion.snap, value: isSelected)
+    }
+
+    /// Open (not done, not on-hold) task texts of a day, in page order.
+    private static func openTaskTitles(in body: String) -> [String] {
+        body.components(separatedBy: "\n").compactMap { line in
+            guard case let .task(status, text)? = MarkdownLine.parse(line), status.isOpen else { return nil }
+            return text
+        }
     }
 
     /// Single warm-accent fill with opacity tied to activity density.

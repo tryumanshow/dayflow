@@ -62,7 +62,7 @@ extension DayflowStore {
     /// banner.
     nonisolated static let carryoverLookbackDays = 7
 
-    private static func normalize(_ text: String) -> String {
+    nonisolated private static func normalize(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
@@ -382,6 +382,40 @@ extension DayflowStore {
             if !sections.isEmpty { return sections }
         }
         return []
+    }
+
+    // MARK: - on-hold list
+
+    /// A parked ("보류") task and the latest day it sits on.
+    struct OnHoldTask: Identifiable, Equatable {
+        let id: String
+        let text: String
+        let date: Date
+    }
+
+    /// How far back the Day rail looks for parked tasks. On-hold is excluded
+    /// from carry-over on purpose, so without this list a parked task simply
+    /// drops out of sight.
+    nonisolated static let onHoldLookbackDays = 30
+
+    /// On-hold tasks from the `lookbackDays` days up to and including
+    /// `date`, one per text (its latest day), newest first.
+    func onHoldTasks(upTo date: Date, lookbackDays: Int = DayflowStore.onHoldLookbackDays) -> [OnHoldTask] {
+        let cal = Calendar.current
+        let end = cal.startOfDay(for: date)
+        guard let start = cal.date(byAdding: .day, value: -lookbackDays, to: end) else { return [] }
+        var latest: [String: OnHoldTask] = [:]
+        for (key, body) in db.loadDayNoteRange(start: start, end: end) {
+            guard let day = DF.ymd.date(from: key) else { continue }
+            for line in Self.lines(of: body) {
+                guard case let .task(status, text)? = MarkdownLine.parse(line), status == .onHold else { continue }
+                let norm = Self.normalize(text)
+                guard !norm.isEmpty else { continue }
+                if let existing = latest[norm], existing.date >= day { continue }
+                latest[norm] = OnHoldTask(id: norm, text: text, date: day)
+            }
+        }
+        return latest.values.sorted { ($0.date, $0.text) > ($1.date, $1.text) }
     }
 
     // MARK: - banner dismissal

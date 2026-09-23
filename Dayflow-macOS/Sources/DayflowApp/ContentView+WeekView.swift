@@ -132,10 +132,16 @@ extension ContentView {
             }
 
             if !groups.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(groups) { group in
-                        weekGroupView(group, day: day)
+                // Wrapped titles can outgrow the window on a busy day; the
+                // list scrolls inside its column instead of stretching the
+                // whole view and pushing the nav bar and footer off screen.
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(groups) { group in
+                            weekGroupView(group, day: day)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
@@ -168,7 +174,8 @@ extension ContentView {
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(0.3)
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .help(heading)
             }
             ForEach(group.tasks) { task in
                 if task.isTask {
@@ -183,8 +190,13 @@ extension ContentView {
                                 .font(DS.FontStyle.caption)
                                 .foregroundStyle(task.onHold ? Color.dfHold : (task.checked ? Color.secondary.opacity(0.6) : Color.secondary))
                                 .strikethrough(task.checked)
-                                .lineLimit(1)
+                                // Two lines before truncating: seven columns
+                                // leave little width, and one line cut most
+                                // titles down to their first word.
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
+                        .help(task.text)
                         .padding(.leading, CGFloat(min(task.depth, 3)) * 10)
                         .contentShape(Rectangle())
                     }
@@ -197,8 +209,10 @@ extension ContentView {
                         Text(task.text)
                             .font(DS.FontStyle.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .help(task.text)
                     .padding(.leading, CGFloat(min(task.depth, 3)) * 10)
                     .contentShape(Rectangle())
                     .onTapGesture {

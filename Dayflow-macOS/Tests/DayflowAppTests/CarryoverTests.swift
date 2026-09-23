@@ -353,3 +353,19 @@ private func makeStore() -> DayflowStore {
 
     #expect(store.db.getDayNote(date: daysAgo(1)) == "- [ ] parent\n    - child edited")
 }
+
+// MARK: - on-hold list
+
+@MainActor
+@Test func onHoldListShowsParkedTasksOnceAtTheirLatestDay() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(5), body: "- [~] visa paperwork\n- [ ] open one")
+    store.db.saveDayNote(date: daysAgo(2), body: "- [~] Visa paperwork\n- [x] done one")
+    store.db.saveDayNote(date: today(), body: "- [~] today's parked")
+    store.db.saveDayNote(date: daysAgo(40), body: "- [~] ancient")
+
+    let items = store.onHoldTasks(upTo: today())
+
+    #expect(items.map(\.text) == ["today's parked", "Visa paperwork"])
+    #expect(DayflowDB.ymd(items[1].date) == DayflowDB.ymd(daysAgo(2)))
+}
