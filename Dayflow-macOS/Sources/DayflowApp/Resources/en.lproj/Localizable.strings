@@ -218,6 +218,11 @@
 "settings.start_date" = "Start date";
 "settings.start_date.hint" = "The day you started using Dayflow.";
 "settings.start_date.days_format" = "Day %d";
+"settings.backup" = "Backups";
+"settings.backup.hint" = "A snapshot of all notes is saved once a day while Dayflow runs. The newest %d are kept.";
+"settings.backup.latest" = "Latest: %@";
+"settings.backup.none" = "No snapshot yet";
+"settings.backup.open" = "Show in Finder";
 
 /* LLM errors */
 "llm.error.missing_api_key" = "%@ API key is missing. Open Dayflow → Settings… to add one.";

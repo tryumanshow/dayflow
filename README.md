@@ -27,6 +27,8 @@ Obsidian is where my work lives — project notes, references, anything that has
 - **Appointment reminders** — opt-in macOS notifications, 0 / 5 / 10 / 30 / 60 minutes before an appointment starts. Off until you turn them on.
 - **Google Calendar import** — opt-in, **read-only**. Your events are mirrored into Dayflow's appointments and show up in every view; Dayflow never writes anything back to Google.
 - **Local-only by design** — notes and reviews live in `~/Library/Application Support/Dayflow/`, API keys live in macOS Keychain. Nothing leaves the machine unless you ask for it: the only two things that ever talk to a server are the LLM review (when you press Generate) and the Google Calendar import (if you connect it).
+- **Copy and paste** — lists from Notion, Google Docs, web pages, terminals and VS Code keep their nesting and checkboxes. Copying out gives indented markdown. `⌘⇧V` pastes text exactly as written.
+- **Automatic backups** — while Dayflow runs, a full snapshot is saved once a day to `~/Library/Application Support/Dayflow/backups/`; the newest 14 are kept. Settings → Data shows it in Finder.
 - **Optional LLM daily review** — OpenAI or Anthropic, picked and configured entirely inside the app.
 - **Bilingual** — English or Korean, switchable in Settings, no relaunch-from-terminal needed.
 

@@ -218,6 +218,11 @@
 "settings.start_date" = "시작 날짜";
 "settings.start_date.hint" = "Dayflow를 쓰기 시작한 날.";
 "settings.start_date.days_format" = "D+%d";
+"settings.backup" = "백업";
+"settings.backup.hint" = "Dayflow가 켜져 있으면 하루 한 번 모든 노트의 스냅샷을 저장해. 최근 %d개만 남겨.";
+"settings.backup.latest" = "마지막 백업: %@";
+"settings.backup.none" = "아직 백업 없음";
+"settings.backup.open" = "Finder에서 보기";
 
 /* LLM errors */
 "llm.error.missing_api_key" = "%@ API 키가 없어. 메뉴 → Dayflow → Settings… 에서 등록해.";

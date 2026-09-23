@@ -55,6 +55,7 @@ struct SettingsView: View {
                 }
                 settingsGroup(L("settings.group.data")) {
                     startDateField
+                    backupField
                 }
                 Spacer(minLength: 0)
             }
@@ -128,6 +129,33 @@ struct SettingsView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
+            }
+        }
+    }
+
+    private var backupField: some View {
+        let dir = DatabaseBackup.directory(for: .shared)
+        let latest = DatabaseBackup.snapshots(in: dir).first
+        let latestDate = latest.flatMap {
+            (try? FileManager.default.attributesOfItem(atPath: $0.path))?[.modificationDate] as? Date
+        }
+        return field(
+            label: L("settings.backup"),
+            hint: L("settings.backup.hint", DatabaseBackup.keepCount)
+        ) {
+            HStack(spacing: 8) {
+                Text(latestDate.map { L("settings.backup.latest", $0.formatted(date: .abbreviated, time: .shortened)) }
+                     ?? L("settings.backup.none"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(L("settings.backup.open")) {
+                    if let latest {
+                        NSWorkspace.shared.activateFileViewerSelecting([latest])
+                    } else {
+                        NSWorkspace.shared.open(dir.deletingLastPathComponent())
+                    }
+                }
             }
         }
     }
