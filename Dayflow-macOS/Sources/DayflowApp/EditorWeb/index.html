@@ -523,6 +523,9 @@ body {
 <div id="editor"></div>
 <script type="module">
 import { BlockNoteEditor } from "dayflow-asset://editor/blocknote-entry.mjs";
+import {
+    blockNoteHtmlToBlocks, blocksToMarkdown, htmlHasBlockStructure, htmlToBlocks, markdownToBlocks, plainTextShape,
+} from "dayflow-asset://editor/app/clipboard.mjs";
 
 let editor = null;
 let lastEmitted = "";
@@ -613,31 +616,198 @@ async function uploadFile(file) {
     return promise;
 }
 
-// BlockNote's paste plugin checks clipboard flavours in the order
-// [vscode-editor-data, blocknote/html, text/html, text/plain, Files] and stops
-// at the first hit. Browsers put *both* `text/html` and the image bytes on the
-// clipboard when you copy a picture off a page, so `text/html` wins and the
-// editor ends up with `<img src="https://…">`: a note that renders nothing (the
-// page CSP refuses remote images, by design) and silently depends on someone
-// else's server. Whenever the clipboard actually carries image bytes, claim the
-// paste first and store them in the attachments directory instead.
+// Paste pipeline. BlockNote's own paste plugin picks the first flavour in
+// [vscode-editor-data, blocknote/html, text/html, text/plain, Files] and hands
+// it to its converters, which lose list nesting (see app/clipboard.mjs). This
+// capture-phase handler claims the paste whenever the clipboard carries
+// structure, converts it with our converters, and inserts blocks at the caret.
+// Anything structureless (a word, a sentence) still goes through BlockNote so
+// it merges into the caret's line the usual way.
 //
-// `stopImmediatePropagation` in the capture phase is what keeps BlockNote's own
+// `stopImmediatePropagation` in the capture phase is what keeps BlockNote's
 // handler — registered on the ProseMirror node, i.e. later — from running too.
-function installImagePasteHandler() {
+function installPasteHandler() {
     document.addEventListener('paste', (e) => {
         if (!editor || !e.clipboardData) return;
         // A paste aimed at the find field is not a paste into the document.
         if (document.activeElement === findInputEl) return;
-        const files = Array.from(e.clipboardData.files || []);
-        const images = files.filter((f) => f.type && f.type.startsWith('image/'));
-        // Non-image files still belong to BlockNote: it picks the right block
-        // type (video/audio/file) from its own schema.
-        if (images.length === 0 || images.length !== files.length) return;
+        if (!editorRootEl || !editorRootEl.contains(e.target)) return;
+        let plan = null;
+        try { plan = planPaste(e.clipboardData); } catch (err) { console.log('paste plan error: ' + err.message); }
+        if (!plan) return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        insertImageFiles(images);
+        if (plan.kind === 'images') {
+            insertImageFiles(plan.files);
+            return;
+        }
+        try {
+            insertPastedBlocks(plan.blocks);
+        } catch (err) {
+            console.log('paste insert error: ' + err.message);
+        }
+        scheduleEmit();
     }, true);
+}
+
+function planPaste(data) {
+    const files = Array.from(data.files || []);
+    const images = files.filter((f) => f.type && f.type.startsWith('image/'));
+    const html = data.getData('text/html');
+    const text = data.getData('text/plain');
+    const htmlDoc = html ? new DOMParser().parseFromString(html, 'text/html') : null;
+    const htmlText = htmlDoc ? (htmlDoc.body.textContent || '').trim() : '';
+
+    // Browsers put *both* `<img src="https://…">` HTML and the image bytes on
+    // the clipboard when you copy a picture, and a remote `src` renders nothing
+    // under the page CSP — so store the bytes instead. But Office, Keynote and
+    // Numbers attach a rendered image to every *text* copy too; when there is
+    // text to paste, the text is what the user meant. Non-image files still
+    // belong to BlockNote, which picks the right block type for them.
+    if (images.length && images.length === files.length && !text.trim() && !htmlText) {
+        return { kind: 'images', files: images };
+    }
+
+    const caret = caretContext();
+    // Code blocks take text verbatim; table cells hold inline content only.
+    if (caret.inCode || caret.inTable) return null;
+
+    // Our own copy: the internal flavour is the only lossless one.
+    const internal = data.getData('blocknote/html');
+    if (internal) {
+        const blocks = blockNoteHtmlToBlocks(new DOMParser().parseFromString(internal, 'text/html'));
+        return blocks && blocks.length ? { kind: 'blocks', blocks } : null;
+    }
+
+    // VS Code tags its copies with the source language: markdown and plain
+    // text are prose, anything else becomes a code block. (BlockNote's own
+    // handler splices the code into HTML unescaped, so `a < b` or JSX
+    // loses text, and the result parses as a paragraph anyway.)
+    if (data.types.includes('vscode-editor-data')) {
+        let mode = '';
+        try { mode = JSON.parse(data.getData('vscode-editor-data')).mode || ''; } catch (err) {}
+        if (mode && mode !== 'markdown' && mode !== 'plaintext') {
+            if (!text) return null;
+            const code = text.replace(/\r\n?/g, '\n');
+            return { kind: 'blocks', blocks: [{ type: 'codeBlock', props: { language: mode }, content: [{ type: 'text', text: code, styles: {} }], children: [] }] };
+        }
+        return planPlainText(text, caret);
+    }
+    if (htmlDoc && htmlText) {
+        if (!htmlHasBlockStructure(htmlDoc)) return null;
+        const blocks = htmlToBlocks(htmlDoc);
+        return blocks.length ? { kind: 'blocks', blocks } : null;
+    }
+    return planPlainText(text, caret);
+}
+
+function planPlainText(text, caret) {
+    const shape = plainTextShape(text);
+    if (shape === 'blocks' || (shape === 'marker-line' && caret.blankBlock)) {
+        const blocks = markdownToBlocks(text);
+        return blocks.length ? { kind: 'blocks', blocks } : null;
+    }
+    return null;
+}
+
+function caretContext() {
+    const { $from } = editor._tiptapEditor.state.selection;
+    let inTable = false;
+    for (let d = $from.depth; d > 0; d--) {
+        if ($from.node(d).type.name === 'table') inTable = true;
+    }
+    const cursor = editor.getTextCursorPosition();
+    return {
+        inCode: $from.parent.type.name === 'codeBlock',
+        inTable,
+        blankBlock: isBlankBlock(cursor.block),
+    };
+}
+
+// A block the paste may simply take over: inline-content block with no text
+// (ZWSPs from the IME workaround don't count) and nothing nested under it.
+function isBlankBlock(block) {
+    if (!block || !Array.isArray(block.content)) return false;
+    if (block.children && block.children.length) return false;
+    return block.content.every((c) => c.type === 'text' && !c.text.replace(/​/g, ''));
+}
+
+// A whole-note copy ends with BlockNote's always-present empty trailing
+// paragraph; it is not content the user meant to carry over.
+function trimTrailingBlank(blocks) {
+    const out = blocks.slice();
+    while (out.length > 1 && out[out.length - 1].type === 'paragraph' && isBlankBlock(out[out.length - 1])) out.pop();
+    return out;
+}
+
+function lastLeaf(block) {
+    let b = block;
+    while (b.children && b.children.length) b = b.children[b.children.length - 1];
+    return b;
+}
+
+// Insert pasted blocks as siblings of the caret's block, the way Notion does:
+// replace a blank line, go before/after a line when the caret sits at its
+// edge, or split the line at the caret and drop the blocks in between.
+function insertPastedBlocks(pasted) {
+    const blocks = trimTrailingBlank(pasted);
+    const tt = editor._tiptapEditor;
+    if (!tt.state.selection.empty) tt.commands.deleteSelection();
+
+    const current = editor.getTextCursorPosition().block;
+    const { $from } = tt.state.selection;
+    let inserted;
+    if (isBlankBlock(current)) {
+        inserted = editor.replaceBlocks([current], blocks).insertedBlocks;
+    } else if ($from.parentOffset === $from.parent.content.size) {
+        inserted = editor.insertBlocks(blocks, current, 'after');
+    } else if ($from.parentOffset === 0) {
+        inserted = editor.insertBlocks(blocks, current, 'before');
+    } else {
+        // Depth 2 splits both the block content and its blockContainer, so
+        // the tail becomes a sibling block (keeping any nested children).
+        tt.view.dispatch(tt.state.tr.split($from.pos, 2));
+        inserted = editor.insertBlocks(blocks, editor.getTextCursorPosition().block, 'before');
+    }
+    if (!inserted || !inserted.length) return;
+    try {
+        editor.setTextCursorPosition(lastLeaf(inserted[inserted.length - 1]), 'end');
+    } catch (err) {
+        // Tables and images have no text caret; leave the selection where it is.
+    }
+}
+
+// BlockNote writes the plain-text flavour as a loose markdown list (`*   a`,
+// a blank line between items). Rewrite it as a tight list other apps read
+// cleanly. Runs in the bubble phase, after BlockNote has filled the
+// clipboard, and derives the blocks from its internal HTML so the plain text
+// covers exactly the copied range (partial first/last lines included).
+function installCopyHandler() {
+    const rewritePlainText = (e) => {
+        if (!e.clipboardData || !editorRootEl || !editorRootEl.contains(e.target)) return;
+        try {
+            const html = e.clipboardData.getData('blocknote/html');
+            if (!html) return;
+            const blocks = blockNoteHtmlToBlocks(new DOMParser().parseFromString(html, 'text/html'));
+            if (!blocks) return;
+            e.clipboardData.setData('text/plain', blocksToMarkdown(trimTrailingBlank(blocks)));
+        } catch (err) {
+            console.log('copy rewrite error: ' + err.message);
+        }
+    };
+    document.addEventListener('copy', rewritePlainText);
+    document.addEventListener('cut', rewritePlainText);
+
+    // With nothing selected, BlockNote still clears the clipboard and writes
+    // empty strings, so a stray ⌘C (or ⌘X) wipes whatever was just copied
+    // from another app. Keep BlockNote out of it; the native no-op copy of an
+    // empty selection leaves the pasteboard alone.
+    const skipEmptySelection = (e) => {
+        if (!editor || !editorRootEl || !editorRootEl.contains(e.target)) return;
+        if (editor._tiptapEditor.state.selection.empty) e.stopImmediatePropagation();
+    };
+    document.addEventListener('copy', skipEmptySelection, true);
+    document.addEventListener('cut', skipEmptySelection, true);
 }
 
 async function insertImageFiles(files) {
@@ -655,142 +825,6 @@ async function insertImageFiles(files) {
         }
     }
     scheduleEmit();
-}
-
-// Line-based markdown parser. BlockNote 0.15.11's tryParseMarkdownToBlocks
-// chokes on GFM task lists (`- [ ] foo` becomes [empty checkListItem, "foo"
-// paragraph]), so we parse ourselves. Indentation (2-space unit) turns into
-// BlockNote block children, which is exactly how cross-list-type nesting
-// works in BlockNote — a bulletListItem can have checkListItem children and
-// vice versa, all within the same `blockContainer` tree.
-function makeCodeBlock(lines) {
-    return {
-        type: 'codeBlock',
-        props: {},
-        content: [{ type: 'text', text: lines.join('\n'), styles: {} }],
-        children: [],
-    };
-}
-
-/// Returns one image block per `![name](url)` token when `text` consists of
-/// nothing else, otherwise null (so `![x](y)` inside a sentence stays prose).
-function matchImageOnlyLine(text) {
-    const token = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
-    const blocks = [];
-    let cursor = 0;
-    let m;
-    while ((m = token.exec(text)) !== null) {
-        if (m.index !== cursor) return null;
-        cursor = token.lastIndex;
-        blocks.push({ type: 'image', props: { url: m[2], name: m[1] }, children: [] });
-    }
-    if (blocks.length === 0 || cursor !== text.length) return null;
-    return blocks;
-}
-
-function mdToBlocks(md) {
-    const lines = (md || '').replace(/\r\n?/g, '\n').split('\n');
-    const root = { children: [] };
-    const stack = [{ indent: -1, block: root }];
-    let inCodeBlock = false;
-    let codeLines = [];
-    for (const raw of lines) {
-        // Skip HTML comments — no block representation in BlockNote.
-        if (!inCodeBlock && /^\s*<!--.*-->\s*$/.test(raw)) continue;
-        // Fenced code block handling (```...```)
-        if (raw.trim().startsWith('```')) {
-            if (!inCodeBlock) {
-                inCodeBlock = true;
-                codeLines = [];
-                continue;
-            } else {
-                inCodeBlock = false;
-                const block = makeCodeBlock(codeLines);
-                while (stack.length > 1) stack.pop();
-                stack[stack.length - 1].block.children.push(block);
-                continue;
-            }
-        }
-        if (inCodeBlock) {
-            codeLines.push(raw);
-            continue;
-        }
-        if (!raw.trim()) continue;
-        const leading = raw.match(/^(\s*)/)[0].length;
-        const indent = Math.floor(leading / 2);
-        const text = raw.slice(leading);
-        let block;
-        let m;
-        // Images. `blocksToMarkdownLossy` writes each image block as
-        // `![name](url)` and runs consecutive ones together on a single line,
-        // so a line is an image line when it is *nothing but* image tokens.
-        // The alt slot carries `props.name` (the original file name), not the
-        // caption — markdown has nowhere to put a caption. Parsing these keeps
-        // images alive for notes that only ever kept their markdown body
-        // (backups, rows predating `body_json`).
-        const imageTokens = matchImageOnlyLine(text);
-        if (imageTokens) {
-            while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
-            for (const token of imageTokens) {
-                stack[stack.length - 1].block.children.push(token);
-            }
-            stack.push({ indent, block: imageTokens[imageTokens.length - 1] });
-            continue;
-        }
-        if ((m = text.match(/^(#{1,3})\s+(.*)$/))) {
-            block = {
-                type: 'heading',
-                props: { level: m[1].length },
-                content: [{ type: 'text', text: m[2], styles: {} }],
-                children: [],
-            };
-        } else if ((m = text.match(/^[-*]\s+\[([ xX~])\]\s+(.*)$/))) {
-            // `[~]` is the on-hold ("보류") mark. BlockNote has no third
-            // checkbox state, so on-hold rides as an unchecked item whose
-            // text carries the reserved blue background — the same style the
-            // status menu applies and the emit path reads back to re-derive
-            // `[~]`.
-            const mark = m[1].toLowerCase();
-            const onHold = mark === '~';
-            block = {
-                type: 'checkListItem',
-                props: { checked: mark === 'x' },
-                content: [{ type: 'text', text: m[2], styles: onHold ? { backgroundColor: 'blue' } : {} }],
-                children: [],
-            };
-        } else if ((m = text.match(/^[-*]\s+(.*)$/))) {
-            block = {
-                type: 'bulletListItem',
-                props: {},
-                content: [{ type: 'text', text: m[1], styles: {} }],
-                children: [],
-            };
-        } else if ((m = text.match(/^\d+\.\s+(.*)$/))) {
-            block = {
-                type: 'numberedListItem',
-                props: {},
-                content: [{ type: 'text', text: m[1], styles: {} }],
-                children: [],
-            };
-        } else {
-            block = {
-                type: 'paragraph',
-                props: {},
-                content: [{ type: 'text', text: text, styles: {} }],
-                children: [],
-            };
-        }
-        while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-            stack.pop();
-        }
-        stack[stack.length - 1].block.children.push(block);
-        stack.push({ indent, block });
-    }
-    // Flush unclosed fenced code block at EOF
-    if (inCodeBlock && codeLines.length > 0) {
-        root.children.push(makeCodeBlock(codeLines));
-    }
-    return root.children;
 }
 
 // `jsonText` arrives as a JSON string (Swift passes a quoted
@@ -814,7 +848,7 @@ window.dayflowSetContent = async function(md, jsonText) {
             }
         }
         if (!blocks) {
-            blocks = mdToBlocks(md || '');
+            blocks = markdownToBlocks(md || '');
         }
         // Replace blocks that are just HTML comments (e.g. "<!---->")
         // with empty paragraphs to preserve visual spacing.
@@ -1822,7 +1856,8 @@ function installStatusContextMenu() {
         installNestedImeWorkaround();
         installCheckboxToggle();
         installStatusContextMenu();
-        installImagePasteHandler();
+        installPasteHandler();
+        installCopyHandler();
         installScrollStateBridge();
         editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); postScrollState(); });
         if (editor.onEditorSelectionChange) {

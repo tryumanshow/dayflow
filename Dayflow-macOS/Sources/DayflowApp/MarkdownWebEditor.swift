@@ -174,12 +174,25 @@ struct MarkdownWebEditor: NSViewRepresentable {
         // and preserves block structure (HTML + plain text flavors).
         // Trimming or re-serializing in Swift collapses chunk boundaries,
         // so we delegate entirely.
-        @objc private func handleCopy()      { webView?.perform(#selector(NSText.copy(_:)),      with: nil) }
-        @objc private func handleCut()       { webView?.perform(#selector(NSText.cut(_:)),       with: nil) }
-        @objc private func handlePaste()     { webView?.perform(#selector(NSText.paste(_:)),     with: nil) }
-        @objc private func handleSelectAll() { webView?.perform(#selector(NSText.selectAll(_:)), with: nil) }
+        //
+        // These notifications are broadcast: every live editor (Day rail,
+        // Month plan, the menu-bar window's copy of the same views) hears
+        // them. Only the one holding keyboard focus may act, or a paste
+        // lands in every other editor's last selection — including notes
+        // that are not on screen.
+        @objc private func handleCopy()      { if isFocused { webView?.perform(#selector(NSText.copy(_:)),      with: nil) } }
+        @objc private func handleCut()       { if isFocused { webView?.perform(#selector(NSText.cut(_:)),       with: nil) } }
+        @objc private func handlePaste()     { if isFocused { webView?.perform(#selector(NSText.paste(_:)),     with: nil) } }
+        @objc private func handleSelectAll() { if isFocused { webView?.perform(#selector(NSText.selectAll(_:)), with: nil) } }
+
+        private var isFocused: Bool {
+            guard let web = webView, let window = web.window, window.isKeyWindow,
+                  let responder = window.firstResponder as? NSView else { return false }
+            return responder === web || responder.isDescendant(of: web)
+        }
 
         @objc private func handleUndo() {
+            guard isFocused else { return }
             webView?.evaluateJavaScript("""
                 document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
                     key: 'z', code: 'KeyZ', metaKey: true, shiftKey: false,
@@ -189,6 +202,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }
 
         @objc private func handleRedo() {
+            guard isFocused else { return }
             webView?.evaluateJavaScript("""
                 document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
                     key: 'z', code: 'KeyZ', metaKey: true, shiftKey: true,

@@ -110,6 +110,15 @@ jobs:
         run: |
           swift test -c release
 
+      - name: Editor clipboard unit tests (node)
+        run: node --test Dayflow-macOS/Tests/EditorWeb/*.test.mjs
+
+      - name: Editor clipboard end-to-end (headless WebKit)
+        run: |
+          python3 -m pip install playwright
+          python3 -m playwright install webkit
+          python3 Dayflow-macOS/Tests/EditorWeb/clipboard_e2e.py
+
       - name: End-to-end bundle check
         working-directory: Dayflow-macOS
         run: |
@@ -117,6 +126,8 @@ jobs:
           test -f Dayflow.app/Contents/MacOS/DayflowApp
           test -f Dayflow.app/Contents/Resources/Dayflow.icns
           test -f Dayflow.app/Contents/Info.plist
+          # Editor modules outside the vendored tree must ship too.
+          find Dayflow.app/Contents/Resources -path '*EditorWeb/app/clipboard.mjs' | grep -q .
           # Confirm the version was actually injected — a regression that
           # leaves a literal `${APP_VERSION}` in the plist would otherwise
           # slip through.

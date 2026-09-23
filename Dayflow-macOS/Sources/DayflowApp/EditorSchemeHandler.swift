@@ -51,10 +51,16 @@ final class EditorSchemeHandler: NSObject, WKURLSchemeHandler {
         } else {
             // The page itself is `dayflow-asset://editor/index.html`; every module
             // and the stylesheet resolve to `dayflow-asset://editor/<path>` which
-            // maps onto the mirrored `EditorWeb/vendor/esm/<path>` tree.
-            fileURL = (rel.isEmpty || rel == "index.html")
-                ? root.appendingPathComponent("index.html")
-                : root.appendingPathComponent("vendor/esm").appendingPathComponent(rel)
+            // maps onto the mirrored `EditorWeb/vendor/esm/<path>` tree, except
+            // `app/<file>`: Dayflow's own editor modules, kept apart from the
+            // vendored upstream tree so a re-vendor cannot clobber them.
+            if rel.isEmpty || rel == "index.html" {
+                fileURL = root.appendingPathComponent("index.html")
+            } else if rel.hasPrefix("app/"), !rel.split(separator: "/").contains("..") {
+                fileURL = root.appendingPathComponent(rel)
+            } else {
+                fileURL = root.appendingPathComponent("vendor/esm").appendingPathComponent(rel)
+            }
         }
 
         guard let data = try? Data(contentsOf: fileURL) else {

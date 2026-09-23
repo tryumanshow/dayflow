@@ -168,7 +168,13 @@ Playwright 는 쓸 수 없다. Dayflow 는 웹 앱이 아니고 SwiftUI 네이�
 
 ## 테스트
 
-현재 자동 테스트는 없다. 검증 방법:
+자동 테스트 (CI 에서도 같은 순서로 돈다):
+
+- `swift test` — Swift 단위 테스트
+- `node --test Dayflow-macOS/Tests/EditorWeb/*.test.mjs` — 에디터 클립보드 변환 (markdown ↔ block)
+- `python3 Dayflow-macOS/Tests/EditorWeb/clipboard_e2e.py` — 헤드리스 WebKit 에서 실제 copy/paste 이벤트로 위계 보존 확인 (`pip install playwright && python3 -m playwright install webkit` 필요)
+
+수동 검증:
 
 1. `swift build -c release` — zero errors, zero warnings 를 목표로
 2. `./build.sh` 설치 후 Day / Week / Month 세 뷰가 모두 렌더되는지 수동 확인
