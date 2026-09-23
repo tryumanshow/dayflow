@@ -12,6 +12,7 @@
 "nav.tooltip.toggle_rail_hide" = "Hide side panel";
 "nav.tooltip.toggle_rail_show" = "Show side panel";
 "nav.tooltip.search" = "Search all notes (⌘⇧F)";
+"nav.tooltip.theme" = "Theme";
 
 /* Search */
 "search.placeholder" = "Search notes, appointments, plans";
@@ -224,6 +225,13 @@
 "settings.start_date" = "Start date";
 "settings.start_date.hint" = "The day you started using Dayflow.";
 "settings.start_date.days_format" = "Day %d";
+"settings.theme" = "Theme";
+"settings.theme.hint" = "Background palette for every window. Paper and Sepia are light.";
+"theme.midnight" = "Midnight";
+"theme.graphite" = "Graphite";
+"theme.navy" = "Navy";
+"theme.paper" = "Paper";
+"theme.sepia" = "Sepia";
 "settings.backup" = "Backups";
 "settings.backup.hint" = "A snapshot of all notes is saved once a day while Dayflow runs. The newest %d are kept.";
 "settings.backup.latest" = "Latest: %@";

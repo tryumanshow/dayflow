@@ -265,17 +265,20 @@ extension AppointmentCategory {
 }
 
 extension Color {
-    static let dfCanvas = Color(red: 0.06, green: 0.07, blue: 0.085)
+    // Surfaces come from the selected theme (Settings → Appearance). Reading
+    // one inside a view body subscribes that view to theme changes.
+    static var dfCanvas: Color { ThemeStore.shared.theme.canvas }
     /// Slightly raised surface (cards, side rail).
-    static let dfSurface = Color(red: 0.10, green: 0.11, blue: 0.13)
-    /// Quiet panel — 2% brighter than canvas, used for side rails so the
-    /// divide reads even without a border. Replaces `dfSurface.opacity(0.4)`.
-    static let dfQuiet = Color(red: 0.08, green: 0.09, blue: 0.105)
-    /// Hairline border for surface separation.
-    static let dfHairline = Color.white.opacity(0.06)
+    static var dfSurface: Color { ThemeStore.shared.theme.surface }
+    /// Quiet panel — a step off the canvas, used for side rails so the
+    /// divide reads even without a border.
+    static var dfQuiet: Color { ThemeStore.shared.theme.quiet }
+    /// Hairline border for surface separation. `.primary` so it stays
+    /// visible on light themes too.
+    static let dfHairline = Color.primary.opacity(0.07)
     /// Even softer hairline for repeated structures (grid cells) where the
     /// standard hairline accumulates into visual noise.
-    static let dfHairlineSoft = Color.white.opacity(0.035)
+    static let dfHairlineSoft = Color.primary.opacity(0.04)
 }
 
 // MARK: - Card chrome ----------------------------------------------------------

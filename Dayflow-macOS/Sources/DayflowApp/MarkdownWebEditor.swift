@@ -183,6 +183,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleUndo),      name: .dayflowUndo,      object: nil)
             nc.addObserver(self, selector: #selector(handleRedo),      name: .dayflowRedo,      object: nil)
             nc.addObserver(self, selector: #selector(handleFind),      name: .dayflowFind,      object: nil)
+            nc.addObserver(self, selector: #selector(applyTheme), name: .dayflowThemeChanged, object: nil)
             nc.addObserver(self, selector: #selector(handleScrollToHeading(_:)), name: .dayflowScrollToHeading, object: nil)
         }
 
@@ -240,6 +241,13 @@ struct MarkdownWebEditor: NSViewRepresentable {
             webView?.evaluateJavaScript("window.dayflowScrollToHeading && window.dayflowScrollToHeading(\(Self.jsStringLiteral(title)))", completionHandler: nil)
         }
 
+        @objc private func applyTheme() {
+            guard ready else { return }
+            let theme = ThemeStore.shared.theme
+            let js = "window.dayflowSetTheme && window.dayflowSetTheme(\(Self.jsStringLiteral(theme.editorInk)), \(Self.jsStringLiteral(theme.editorPanel)), \(theme.isDark))"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
         @objc private func handleFind() {
             webView?.evaluateJavaScript("window.dayflowOpenFind && window.dayflowOpenFind()", completionHandler: nil)
         }
@@ -252,6 +260,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 ready = true
                 flushIfReady()
                 applyFontSizeIfReady()
+                applyTheme()
             case "scrollState":
                 let up = (body["canScrollUp"] as? Bool) ?? false
                 let down = (body["canScrollDown"] as? Bool) ?? false

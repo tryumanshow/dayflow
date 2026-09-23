@@ -33,7 +33,7 @@ html, body {
     padding: 0;
     height: 100%;
     background: transparent;
-    color: rgba(255,255,255,0.92);
+    color: rgba(var(--ink),0.92);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui;
     -webkit-font-smoothing: antialiased;
 }
@@ -57,8 +57,8 @@ body {
 #editor::-webkit-scrollbar { width: 8px; }
 #editor::-webkit-scrollbar-track { background: transparent; }
 #editor::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
-#editor:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); }
-#editor:hover::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24); }
+#editor:hover::-webkit-scrollbar-thumb { background: rgba(var(--ink), 0.14); }
+#editor:hover::-webkit-scrollbar-thumb:hover { background: rgba(var(--ink), 0.24); }
 /* Brief highlight on the heading the Day rail jumped to. */
 .dayflow-flash {
     background: rgba(247, 140, 51, 0.12);
@@ -81,8 +81,8 @@ body {
     row-gap: 6px;
     column-gap: 10px;
     padding: 6px 12px;
-    background: rgba(28, 28, 32, 0.7);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(var(--panel), 0.7);
+    border-bottom: 1px solid rgba(var(--ink), 0.06);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     font-size: 13px;
@@ -125,7 +125,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     width: 14px;
     height: 3px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.22);
+    background: rgba(var(--ink), 0.22);
 }
 /* The swatch panel expands INSIDE the toolbar — it takes a full flex row and
    pushes the editor down, rather than floating over it.
@@ -169,12 +169,12 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     height: 24px;
     padding: 0 6px;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.85);
+    color: rgba(var(--ink), 0.85);
     cursor: pointer;
     font-weight: 600;
 }
 #dayflow-toolbar button:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
 }
 #dayflow-toolbar button.active {
     background: rgba(247, 158, 51, 0.22);
@@ -190,15 +190,15 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     height: 18px;
     padding: 0;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(var(--ink), 0.18);
 }
 #dayflow-toolbar .swatch.active {
     outline: 2px solid #f79e33;
     outline-offset: 1px;
 }
 #dayflow-toolbar .swatch-reset {
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.45);
+    background: rgba(var(--ink), 0.06);
+    color: rgba(var(--ink), 0.45);
     font-size: 12px;
     line-height: 16px;
     display: inline-flex;
@@ -212,11 +212,16 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
    variable drives the whole size ramp. */
 :root {
     --editor-font-size: 15px;
+    /* Theme palette as r,g,b triples, pushed from Swift by
+       dayflowSetTheme(); the defaults are the dark Midnight theme. */
+    --ink: 255, 255, 255;
+    --panel: 28, 28, 32;
+    --code-bg: rgba(255, 255, 255, 0.05);
 }
 /* BlockNote dark theme overrides */
 .bn-container, .bn-editor, .ProseMirror {
     background: transparent !important;
-    color: rgba(255,255,255,0.92) !important;
+    color: rgba(var(--ink),0.92) !important;
     outline: none !important;
     font-size: var(--editor-font-size) !important;
     line-height: 1.7 !important;
@@ -230,7 +235,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 .bn-block-content[data-content-type="heading"][data-level="3"] {
     font-size: 1.2em !important; font-weight: 600 !important;
 }
-.bn-inline-content { color: rgba(255,255,255,0.92); }
+.bn-inline-content { color: rgba(var(--ink),0.92); }
 /* BlockNote stores a pixel `previewWidth` (512 by default) on image blocks.
    The Month-plan rail is ~300px wide, so honour the stored width only up to
    the container and let the image scale down rather than overflow. */
@@ -244,7 +249,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 .bn-block .bn-block-content { padding-left: 0 !important; }
 .bn-block-content[data-content-type="bulletListItem"]::before,
 .bn-block-content[data-content-type="numberedListItem"]::before {
-    color: rgba(255,255,255,0.45) !important;
+    color: rgba(var(--ink),0.45) !important;
 }
 /* check list item — block-note renders an actual <input type="checkbox"> */
 .bn-block-content[data-content-type="checkListItem"] input[type="checkbox"] {
@@ -253,7 +258,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     height: 16px !important;
 }
 .bn-block-content[data-content-type="checkListItem"][data-checked="true"] .bn-inline-content {
-    color: rgba(255,255,255,0.45) !important;
+    color: rgba(var(--ink),0.45) !important;
     text-decoration: line-through;
 }
 /* On-hold ("보류"): a parked task carries the reserved blue highlight on its
@@ -268,13 +273,13 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     position: fixed;
     z-index: 9999;
     min-width: 132px;
-    background: #2a2b31;
-    border: 1px solid rgba(255,255,255,0.12);
+    background: rgb(var(--panel));
+    border: 1px solid rgba(var(--ink),0.12);
     border-radius: 8px;
     padding: 4px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     font-size: 13px;
-    color: #eee;
+    color: rgba(var(--ink), 0.92);
     user-select: none;
 }
 #dayflow-status-menu .item {
@@ -285,12 +290,12 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     border-radius: 5px;
     cursor: pointer;
 }
-#dayflow-status-menu .item:hover { background: rgba(255,255,255,0.08); }
+#dayflow-status-menu .item:hover { background: rgba(var(--ink),0.08); }
 #dayflow-status-menu .dot {
     width: 9px; height: 9px; border-radius: 50%;
     flex: 0 0 auto;
 }
-#dayflow-status-menu .dot.open { border: 1.5px solid #9aa0aa; }
+#dayflow-status-menu .dot.open { border: 1.5px solid rgba(var(--ink), 0.5); }
 #dayflow-status-menu .dot.done { background: #4cc66e; }
 #dayflow-status-menu .dot.hold { background: #26a6ff; }
 .bn-block-content:not([data-content-type="codeBlock"]) code,
@@ -299,22 +304,24 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     font-size: 13px;
 }
 .bn-block-content:not([data-content-type="codeBlock"]) code {
-    background: rgba(255,255,255,0.08);
+    background: rgba(var(--ink),0.08);
     color: #f79e33;
     border-radius: 4px;
     padding: 1px 5px;
 }
 .bn-block-content[data-content-type="codeBlock"] {
-    background: rgba(255,255,255,0.05);
+    /* Always a dark block: the highlighter's palette is github-dark, which
+       would wash out on a light theme's page. */
+    background: var(--code-bg);
     border-radius: 6px;
     padding: 10px 12px;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255, 255, 255, 0.85);
     line-height: 1.5;
 }
 .bn-block-content[data-content-type="quote"] {
     border-left: 3px solid rgba(247, 158, 51, 0.6);
     padding-left: 12px;
-    color: rgba(255,255,255,0.75);
+    color: rgba(var(--ink),0.75);
 }
 /* Table dark theme */
 .bn-block-content[data-content-type="table"] table {
@@ -323,12 +330,12 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 }
 .bn-block-content[data-content-type="table"] td,
 .bn-block-content[data-content-type="table"] th {
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(var(--ink), 0.12);
     padding: 6px 10px;
     min-width: 60px;
 }
 .bn-block-content[data-content-type="table"] th {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     font-weight: 600;
 }
 .bn-block-content[data-content-type="table"] td:focus-within {
@@ -345,7 +352,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 .bn-side-menu { display: none !important; }
 /* placeholder */
 .bn-block-content[data-is-empty-and-focused="true"]::before {
-    color: rgba(255,255,255,0.25) !important;
+    color: rgba(var(--ink),0.25) !important;
 }
 /* Custom slash command menu. Floats above the editor near the
    caret, gets its own filterable input row, dark-themed. */
@@ -356,13 +363,13 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     max-width: 320px;
     max-height: 360px;
     overflow: hidden;
-    background: rgba(28, 28, 32, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(var(--panel), 0.98);
+    border: 1px solid rgba(var(--ink), 0.1);
     border-radius: 10px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     padding: 4px;
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(var(--ink), 0.9);
     display: flex;
     flex-direction: column;
 }
@@ -386,7 +393,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     width: 20px;
     text-align: center;
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(var(--ink), 0.55);
 }
 #dayflow-slash-menu .sm-item.selected .sm-icon {
     color: #f79e33;
@@ -396,12 +403,12 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 }
 #dayflow-slash-menu .sm-item .sm-sub {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(var(--ink), 0.4);
     margin-left: auto;
 }
 #dayflow-slash-menu .sm-empty {
     padding: 10px;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(var(--ink), 0.4);
     text-align: center;
     font-size: 12px;
 }
@@ -409,13 +416,13 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 #dayflow-grid-picker {
     position: fixed;
     z-index: 1001;
-    background: rgba(28, 28, 32, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(var(--panel), 0.98);
+    border: 1px solid rgba(var(--ink), 0.1);
     border-radius: 10px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     padding: 10px;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(var(--ink), 0.7);
     user-select: none;
 }
 #dayflow-grid-picker .gp-grid {
@@ -429,7 +436,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     width: 24px;
     height: 24px;
     border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(var(--ink), 0.12);
     background: transparent;
     cursor: pointer;
     transition: background 0.1s;
@@ -440,7 +447,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 }
 #dayflow-grid-picker .gp-label {
     text-align: center;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(var(--ink), 0.5);
     font-weight: 600;
 }
 /* Find bar — overlays the editor, toggled by ⌘F. */
@@ -452,8 +459,8 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     display: none;
     align-items: center;
     gap: 4px;
-    background: rgba(28, 28, 32, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(var(--panel), 0.98);
+    border: 1px solid rgba(var(--ink), 0.12);
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     padding: 6px;
@@ -463,13 +470,13 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 #dayflow-find-bar input {
     all: unset;
     width: 180px;
-    color: rgba(255, 255, 255, 0.92);
+    color: rgba(var(--ink), 0.92);
     padding: 4px 8px;
     border-radius: 5px;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     transition: background 0.15s;
 }
-#dayflow-find-bar input::placeholder { color: rgba(255, 255, 255, 0.35); }
+#dayflow-find-bar input::placeholder { color: rgba(var(--ink), 0.35); }
 #dayflow-find-bar input.miss { background: rgba(239, 68, 68, 0.25); }
 #dayflow-find-bar button {
     all: unset;
@@ -479,11 +486,11 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     align-items: center;
     justify-content: center;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(var(--ink), 0.8);
     cursor: pointer;
     font-size: 12px;
 }
-#dayflow-find-bar button:hover { background: rgba(255, 255, 255, 0.1); }
+#dayflow-find-bar button:hover { background: rgba(var(--ink), 0.1); }
 /* CSS Custom Highlights — match decoration without any DOM or
    selection mutation. WebKit 17.2+ (macOS 14.2+) required; on
    older systems highlights silently no-op but find still
@@ -516,7 +523,7 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     right: 0;
     top: 50%;
     height: 1px;
-    background: rgba(255, 255, 255, 0.25);
+    background: rgba(var(--ink), 0.25);
     transform: translateY(-50%);
     pointer-events: none;
 }
@@ -1155,6 +1162,16 @@ function bindToolbar() {
     });
 }
 
+// Theme from Swift (Settings → Appearance). Light themes also flip
+// `color-scheme` so native controls (find field, scrollbars) match.
+window.dayflowSetTheme = function(ink, panel, isDark) {
+    const root = document.documentElement.style;
+    root.setProperty('--ink', ink);
+    root.setProperty('--panel', panel);
+    root.setProperty('color-scheme', isDark ? 'dark' : 'light');
+    root.setProperty('--code-bg', isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgb(36, 38, 45)');
+};
+
 function syncSelectionClass() {
     try {
         document.body.classList.toggle('has-selection', !editor._tiptapEditor.state.selection.empty);
@@ -1222,7 +1239,7 @@ function refreshToolbarState() {
         const ink = b.querySelector('.ink');
         if (!ink) continue;
         const current = active[b.dataset.pop];
-        ink.style.background = COLOR_HEX[current] || 'rgba(255, 255, 255, 0.22)';
+        ink.style.background = COLOR_HEX[current] || 'rgba(var(--ink), 0.22)';
     }
 }
 

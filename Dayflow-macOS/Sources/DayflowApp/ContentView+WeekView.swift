@@ -83,7 +83,7 @@ extension ContentView {
                 if total > 0 {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.06))
+                            Capsule().fill(Color.primary.opacity(0.06))
                             Capsule().fill(Color.dfAccent).frame(width: geo.size.width * ratio)
                         }
                     }

@@ -253,7 +253,7 @@ extension ContentView {
                     .padding(.vertical, 5)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.white.opacity(0.04))
+                            .fill(Color.primary.opacity(0.04))
                     )
                     .focused($aptTitleFocused)
                     .onSubmit { submitMonthAppointment() }
@@ -498,7 +498,7 @@ extension ContentView {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(Color.primary.opacity(0.04))
             )
             .onChange(of: binding.wrappedValue) { _, new in
                 let masked = Self.maskHHMM(new)
@@ -670,7 +670,7 @@ extension ContentView {
                             .frame(maxWidth: 120)
                             .background(
                                 RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
+                                    .fill(Color.primary.opacity(0.08))
                             )
                         } else {
                             monthPlanTab(section: section, isActive: section.id == activeId)
@@ -757,7 +757,7 @@ extension ContentView {
         .frame(height: 440)
         .background(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .fill(Color.white.opacity(0.03))
+                .fill(Color.primary.opacity(0.03))
         )
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
@@ -773,7 +773,7 @@ extension ContentView {
             .padding(.vertical, DS.Space.xs)
             .background(
                 RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .fill(isActive ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isActive ? Color.primary.opacity(0.08) : Color.clear)
             )
             .contentShape(Rectangle())
             .onTapGesture {
@@ -945,8 +945,8 @@ extension ContentView {
     /// to convey rhythm, not success/failure. Value judgments belong in the
     /// rail's metric, not smeared across 42 cells.
     private func heatColor(inMonth: Bool, total: Int) -> Color {
-        if !inMonth { return Color.white.opacity(0.015) }
-        if total == 0 { return Color.white.opacity(0.025) }
+        if !inMonth { return Color.primary.opacity(0.015) }
+        if total == 0 { return Color.primary.opacity(0.025) }
         let intensity = min(1.0, Double(total) / 6.0)
         return Color.dfAccent.opacity(0.06 + intensity * 0.26)
     }

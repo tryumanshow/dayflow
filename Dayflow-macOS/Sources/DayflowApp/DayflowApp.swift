@@ -26,6 +26,7 @@ struct DayflowApp: App {
                     AppointmentNotifier.shared.bootstrap(store: store)
                     GoogleCalendarSync.shared.bootstrap(store: store)
                     DatabaseBackupScheduler.shared.start()
+                    ThemeStore.applyAppearance(ThemeStore.shared.theme)
                 }
         }
         .windowResizability(.contentSize)

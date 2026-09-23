@@ -137,7 +137,7 @@ struct PlannerSheet: View {
                 .scrollContentBackground(.hidden)
                 .padding(8)
                 .frame(height: 160)
-                .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.white.opacity(0.04)))
+                .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.primary.opacity(0.04)))
                 .overlay(alignment: .topLeading) {
                     if taskDump.isEmpty {
                         Text(L("planner.dump_placeholder"))
@@ -215,7 +215,7 @@ struct PlannerSheet: View {
                         .font(DS.FontStyle.caption)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(isPicked ? Color.dfAccent.opacity(0.25) : Color.white.opacity(0.06)))
+                        .background(Capsule().fill(isPicked ? Color.dfAccent.opacity(0.25) : Color.primary.opacity(0.06)))
                         .foregroundStyle(isPicked ? Color.dfAccent : .primary)
                     }
                 }
@@ -226,7 +226,7 @@ struct PlannerSheet: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.white.opacity(0.04)))
+        .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.primary.opacity(0.04)))
     }
 
     private func answerBinding(_ index: Int) -> Binding<String> {
@@ -278,7 +278,7 @@ struct PlannerSheet: View {
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .frame(height: 56)
-                    .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.white.opacity(0.04)))
+                    .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.primary.opacity(0.04)))
                     .overlay(alignment: .topLeading) {
                         if feedbackDraft.isEmpty {
                             Text(L("planner.feedback_placeholder"))
@@ -353,7 +353,7 @@ struct PlannerSheet: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.white.opacity(0.04)))
+        .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.primary.opacity(0.04)))
     }
 
     private func dayLabel(_ ymd: String) -> String {

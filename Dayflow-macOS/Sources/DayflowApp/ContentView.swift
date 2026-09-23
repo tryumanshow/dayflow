@@ -211,7 +211,7 @@ struct ContentView: View {
                             .padding(.vertical, 4)
                             .background(
                                 RoundedRectangle(cornerRadius: DS.Radius.sm)
-                                    .fill(store.viewMode == mode ? Color.white.opacity(0.08) : .clear)
+                                    .fill(store.viewMode == mode ? Color.primary.opacity(0.08) : .clear)
                             )
                     }
                     .buttonStyle(.plain)
@@ -230,7 +230,7 @@ struct ContentView: View {
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
                         .background(
-                            Capsule().fill(Color.white.opacity(0.06))
+                            Capsule().fill(Color.primary.opacity(0.06))
                         )
                 }
                 .buttonStyle(.plain)
@@ -257,6 +257,31 @@ struct ContentView: View {
             navIconButton("magnifyingglass", tooltip: L("nav.tooltip.search")) {
                 showSearch = true
             }
+
+            // Theme switch one click away, not only in Settings.
+            Menu {
+                ForEach(AppTheme.allCases) { theme in
+                    Button {
+                        ThemeStore.shared.theme = theme
+                    } label: {
+                        if ThemeStore.shared.theme == theme {
+                            Label(theme.label, systemImage: "checkmark")
+                        } else {
+                            Text(theme.label)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "paintpalette")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .frame(width: 24, height: 24)
+            .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.primary.opacity(0.04)))
+            .help(L("nav.tooltip.theme"))
 
             if store.viewMode != .week {
                 navIconButton(
@@ -315,7 +340,7 @@ struct ContentView: View {
                 .frame(width: 24, height: 24)
                 .background(
                     RoundedRectangle(cornerRadius: DS.Radius.sm)
-                        .fill(Color.white.opacity(bgOpacity))
+                        .fill(Color.primary.opacity(bgOpacity))
                 )
                 .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
                 .animation(DS.Motion.snap, value: hovered)

@@ -12,6 +12,7 @@
 "nav.tooltip.toggle_rail_hide" = "사이드 패널 숨기기";
 "nav.tooltip.toggle_rail_show" = "사이드 패널 보이기";
 "nav.tooltip.search" = "전체 검색 (⌘⇧F)";
+"nav.tooltip.theme" = "테마";
 
 /* Search */
 "search.placeholder" = "노트·약속·계획 검색";
@@ -224,6 +225,13 @@
 "settings.start_date" = "시작 날짜";
 "settings.start_date.hint" = "Dayflow를 쓰기 시작한 날.";
 "settings.start_date.days_format" = "D+%d";
+"settings.theme" = "테마";
+"settings.theme.hint" = "모든 창의 배경 색. 페이퍼와 세피아는 밝은 테마야.";
+"theme.midnight" = "미드나잇";
+"theme.graphite" = "그래파이트";
+"theme.navy" = "네이비";
+"theme.paper" = "페이퍼";
+"theme.sepia" = "세피아";
 "settings.backup" = "백업";
 "settings.backup.hint" = "Dayflow가 켜져 있으면 하루 한 번 모든 노트의 스냅샷을 저장해. 최근 %d개만 남겨.";
 "settings.backup.latest" = "마지막 백업: %@";
