@@ -232,3 +232,124 @@ private func makeStore() -> DayflowStore {
     #expect(store.dayBody.contains("- [ ] carried"))
     #expect(store.bodies[DayflowDB.ymd(daysAgo(1))]?.contains("carried") == false)
 }
+
+// MARK: - sections and nested blocks
+
+@MainActor
+@Test func carriedTaskLandsUnderItsHeadingToday() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(1), body: "## Work\n- [ ] ship it\n## Home\n- [ ] groceries")
+    store.db.saveDayNote(date: today(), body: "## Work\n- [x] standup\n\n## Home\n- [x] laundry")
+
+    store.carryOver(store.pendingCarryovers(into: today()), into: today())
+
+    #expect(store.db.getDayNote(date: today()) == """
+        ## Work
+        - [x] standup
+        - [ ] ship it
+
+        ## Home
+        - [x] laundry
+        - [ ] groceries
+
+        """)
+}
+
+@MainActor
+@Test func missingHeadingIsCreatedForTheCarriedTask() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(1), body: "## Reading\n- [ ] finish chapter 3")
+    store.db.saveDayNote(date: today(), body: "## Work\n- [x] standup")
+
+    store.carryOver(store.pendingCarryovers(into: today()), into: today())
+
+    #expect(store.db.getDayNote(date: today()) == "## Work\n- [x] standup\n\n## Reading\n- [ ] finish chapter 3\n")
+}
+
+/// A blank new day takes the latest day's whole heading layout — empty
+/// sections included — and the carried tasks fill in under their headings.
+@MainActor
+@Test func blankDayIsSeededWithTheLatestDaysSections() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(3), body: "## Old layout\n- [ ] older task")
+    store.db.saveDayNote(date: daysAgo(1), body: "## AI\n- [ ] paper\n\n## Macro\n- [x] read\n\n## Et cetera")
+
+    store.carryOver(store.pendingCarryovers(into: today()), into: today())
+
+    #expect(store.db.getDayNote(date: today()) == """
+        ## AI
+        - [ ] paper
+
+        ## Macro
+
+        ## Et cetera
+
+        ## Old layout
+        - [ ] older task
+
+        """)
+}
+
+/// Sub-bullets travel with their task; an open task nested inside another
+/// open task moves as part of it rather than as its own item.
+@MainActor
+@Test func nestedLinesMoveWithTheirTask() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(1), body: """
+        ## Move
+        - [ ] General Agent
+            - Mongo <-> ES
+            - [ ] RARE data
+        - [x] done thing
+        """)
+
+    let pending = store.pendingCarryovers(into: today())
+    #expect(pending.map(\.text) == ["General Agent"])
+    store.carryOver(pending, into: today())
+
+    #expect(store.db.getDayNote(date: daysAgo(1)) == "## Move\n- [x] done thing")
+    #expect(store.db.getDayNote(date: today()) == "## Move\n- [ ] General Agent\n    - Mongo <-> ES\n    - [ ] RARE data\n")
+}
+
+/// The editor stores loose BlockNote markdown: `*   [ ]` markers, four-space
+/// nesting, blank lines between items, tasks under numbered items.
+@MainActor
+@Test func blockNoteMarkdownShapeCarriesAndDedents() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(1), body: """
+        ## Work
+
+        1.  Doc Pod
+
+            *   [ ] 세부담보 발라내기
+
+                *   고객사별
+
+            *   전체 페이지
+        """)
+
+    store.carryOver(store.pendingCarryovers(into: today()), into: today())
+
+    #expect(store.db.getDayNote(date: today()) == "## Work\n- [ ] 세부담보 발라내기\n\n    *   고객사별\n")
+    #expect(store.db.getDayNote(date: daysAgo(1)) == """
+        ## Work
+
+        1.  Doc Pod
+
+            *   전체 페이지
+        """)
+}
+
+/// A child line edited after the sheet opened makes the block stale: nothing
+/// is deleted from the source.
+@MainActor
+@Test func staleNestedBlockIsSkipped() {
+    let store = makeStore()
+    store.db.saveDayNote(date: daysAgo(1), body: "- [ ] parent\n    - child")
+    let pending = store.pendingCarryovers(into: today())
+    store.db.saveDayNote(date: daysAgo(1), body: "- [ ] parent\n    - child edited")
+
+    store.carryOver(pending, into: today())
+
+    #expect(store.db.getDayNote(date: daysAgo(1)) == "- [ ] parent\n    - child edited")
+}

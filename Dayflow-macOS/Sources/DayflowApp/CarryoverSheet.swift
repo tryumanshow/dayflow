@@ -135,10 +135,17 @@ struct CarryoverSheet: View {
                 Image(systemName: isOn ? "checkmark.square.fill" : "square")
                     .font(.system(size: 13))
                     .foregroundStyle(isOn ? Color.dfAccent : Color.secondary)
-                Text(item.text)
-                    .font(DS.FontStyle.body)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.text)
+                        .font(DS.FontStyle.body)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    if let detail = detailLabel(item) {
+                        Text(detail)
+                            .font(DS.FontStyle.micro)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Spacer(minLength: DS.Space.sm)
                 Text(sourceLabel(item))
                     .font(DS.FontStyle.micro)
@@ -155,6 +162,15 @@ struct CarryoverSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// Where the task will land and what comes with it: its heading and the
+    /// number of lines nested under it.
+    private func detailLabel(_ item: CarryoverItem) -> String? {
+        let subItems = item.children.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+        let parts = [item.section.map { "# " + $0.title }, subItems > 0 ? L("carryover.subitems", subItems) : nil]
+            .compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
     }
 
     /// The day the task was last left open, plus how many other days carry the

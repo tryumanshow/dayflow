@@ -29,10 +29,11 @@
 "carryover.review" = "보기";
 "carryover.dismiss" = "오늘은 그만 보기";
 "carryover.title" = "안 끝난 할 일 이월";
-"carryover.hint" = "고른 항목은 오늘로 옮겨져. 원래 있던 날짜에서는 사라져.";
+"carryover.hint" = "고른 항목은 하위 항목까지 오늘의 같은 제목 아래로 옮겨져. 원래 있던 날짜에서는 사라져.";
 "carryover.select_all" = "전체 선택";
 "carryover.select_none" = "전체 해제";
 "carryover.confirm" = "%d개 이월";
+"carryover.subitems" = "하위 %d개";
 
 /* Header labels */
 "header.day_format" = "yyyy년 M월 d일 (E)";

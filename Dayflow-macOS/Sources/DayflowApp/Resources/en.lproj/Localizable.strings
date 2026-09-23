@@ -29,10 +29,11 @@
 "carryover.review" = "Review";
 "carryover.dismiss" = "Hide for today";
 "carryover.title" = "Carry unfinished tasks over";
-"carryover.hint" = "Selected tasks move to today — they're removed from the day they were written on.";
+"carryover.hint" = "Selected tasks move to today — under the same heading, with their sub-items — and are removed from the day they were on.";
 "carryover.select_all" = "Select all";
 "carryover.select_none" = "Select none";
 "carryover.confirm" = "Carry %d over";
+"carryover.subitems" = "+%d sub-items";
 
 /* Header labels */
 "header.day_format" = "yyyy MMM d (EEE)";
