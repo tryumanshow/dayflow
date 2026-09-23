@@ -45,6 +45,18 @@ jobs:
       - name: Install Pillow
         run: python3 -m pip install --upgrade pip && python3 -m pip install Pillow
 
+      # Same toolchain as the ci workflow, so the release is built by the
+      # compiler that CI verified. The runner's default (Xcode 15.4 / Swift
+      # 5.10) rejected code that CI's Swift 6 accepted.
+      - name: Select Xcode 16
+        run: |
+          latest=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$latest" ]; then
+            echo "::error::no Xcode 16 found on the runner"; exit 1
+          fi
+          sudo xcode-select -s "$latest/Contents/Developer"
+          swift --version
+
       - name: Build app bundle
         working-directory: Dayflow-macOS
         env:
