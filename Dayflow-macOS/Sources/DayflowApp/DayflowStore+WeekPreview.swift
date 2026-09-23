@@ -105,20 +105,33 @@ extension DayflowStore {
     /// no parser re-walk, no preview index → source index mapping.
     func toggleWeekTask(day: Date, sourceLineIndex: Int) {
         let key = DayflowDB.ymd(day)
-        let body = bodies[key] ?? db.getDayNote(date: day)
+        let stored = db.getDayNoteFull(date: day)
+        let body = bodies[key] ?? stored.body
         guard !body.isEmpty else { return }
-        var lines = body.components(separatedBy: "\n")
+        let original = body.components(separatedBy: "\n")
+        var lines = original
         guard lines.indices.contains(sourceLineIndex) else { return }
         let toggled = toggleTaskMarker(in: lines[sourceLineIndex])
         guard toggled != lines[sourceLineIndex] else { return }
         lines[sourceLineIndex] = toggled
 
+        // Flip the same item in the editor's document so the day keeps its
+        // colours; markdown-only (nil JSON) only when the two don't line up.
+        var json: String?
+        if body == stored.body,
+           var blocks = BlockNoteJSON.parse(stored.bodyJSON),
+           let path = BlockNoteJSON.checkItemPath(forLine: sourceLineIndex, lines: original, blocks: blocks),
+           case let .task(status, _)? = MarkdownLine.parse(toggled) {
+            BlockNoteJSON.update(at: path, in: &blocks) { BlockNoteJSON.setStatus(status, on: &$0) }
+            json = BlockNoteJSON.serialize(blocks)
+        }
+
         let newBody = lines.joined(separator: "\n")
-        db.saveDayNote(date: day, body: newBody, bodyJSON: nil)
+        db.saveDayNote(date: day, body: newBody, bodyJSON: json)
         bodies[key] = newBody
 
         if Calendar.current.isDate(day, inSameDayAs: selectedDate) {
-            setDayBuffers(md: newBody, json: nil, cacheKey: key)
+            setDayBuffers(md: newBody, json: json, cacheKey: key)
         }
     }
 }

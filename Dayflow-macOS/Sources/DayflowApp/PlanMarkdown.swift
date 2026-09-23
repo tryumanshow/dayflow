@@ -77,4 +77,45 @@ enum PlanMarkdown {
         while head.hasSuffix("\n") { head.removeLast() }
         return head + "\n\n" + section
     }
+
+    /// `apply`, performed on the editor's document so the rest of the note
+    /// keeps its styles. Nil when `bodyJSON` can't be matched to `body`
+    /// (missing, unparseable, or its checklist doesn't line up with the
+    /// markdown's task lines) — the caller then saves markdown only.
+    static func applyToJSON(tasks: [PlanTask], body: String, bodyJSON: String?, generatedLabel: String) -> String? {
+        let lines = body.components(separatedBy: "\n")
+        var blocks: [BlockNoteJSON.Block]
+        if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            blocks = []
+        } else {
+            guard let parsed = BlockNoteJSON.parse(bodyJSON),
+                  BlockNoteJSON.checkItemPaths(parsed).count == BlockNoteJSON.taskLineCount(lines) else { return nil }
+            blocks = parsed
+        }
+
+        let heading = BlockNoteJSON.headingBlock(level: 2, title: "\(headingMarker) (\(generatedLabel))")
+        let newTasks = tasks.map { task in
+            BlockNoteJSON.taskBlock(task.note.map { $0.isEmpty ? task.title : "\(task.title) — \($0)" } ?? task.title)
+        }
+
+        let start = blocks.firstIndex {
+            BlockNoteJSON.headingLevel($0) == 2 && BlockNoteJSON.text($0).hasPrefix(headingMarker)
+        }
+        guard let start else {
+            blocks.insert(contentsOf: [heading] + newTasks, at: BlockNoteJSON.contentEnd(blocks))
+            return BlockNoteJSON.serialize(blocks)
+        }
+        let end = blocks.indices.dropFirst(start + 1).first { (BlockNoteJSON.headingLevel(blocks[$0]) ?? .max) <= 2 } ?? blocks.count
+        // Same carry rule as the markdown path: every done / on-hold item in
+        // the old section, nested ones included, flattened to the top.
+        let section = Array(blocks[(start + 1)..<end])
+        let kept: [BlockNoteJSON.Block] = BlockNoteJSON.checkItemPaths(section).compactMap { path in
+            guard var item = BlockNoteJSON.block(at: path, in: section),
+                  BlockNoteJSON.status(item) != .open else { return nil }
+            item["children"] = [BlockNoteJSON.Block]()
+            return item
+        }
+        blocks.replaceSubrange(start..<end, with: [heading] + kept + newTasks)
+        return BlockNoteJSON.serialize(blocks)
+    }
 }

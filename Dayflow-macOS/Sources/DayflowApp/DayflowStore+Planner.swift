@@ -12,12 +12,14 @@ extension DayflowStore {
         var replaced: [String] = []
         for day in draft.days {
             guard let date = DF.ymd.date(from: day.date) else { continue }
-            let body = db.getDayNote(date: date)
+            let stored = db.getDayNoteFull(date: date)
+            let body = stored.body
             let hadSection = PlanMarkdown.planSectionRange(
                 inLines: body.components(separatedBy: "\n")) != nil
             let newBody = PlanMarkdown.apply(tasks: day.tasks, to: body, generatedLabel: label)
-            db.saveDayNote(date: date, body: newBody, bodyJSON: nil)
-            applyExternalEdit(date: date, body: newBody)
+            let json = PlanMarkdown.applyToJSON(tasks: day.tasks, body: body, bodyJSON: stored.bodyJSON, generatedLabel: label)
+            db.saveDayNote(date: date, body: newBody, bodyJSON: json)
+            applyExternalEdit(date: date, body: newBody, json: json)
             if hadSection { replaced.append(day.date) }
         }
         return replaced

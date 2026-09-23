@@ -68,7 +68,7 @@ extension DayflowStore {
 
     /// Split a body the same way `carryOver` will, so line indices captured
     /// here address the same lines there.
-    private static func lines(of body: String) -> [String] {
+    nonisolated private static func lines(of body: String) -> [String] {
         body.components(separatedBy: "\n")
     }
 
@@ -251,7 +251,8 @@ extension DayflowStore {
         let cal = Calendar.current
         let targetDay = cal.startOfDay(for: target)
 
-        var byDay: [String: (date: Date, blocks: [(index: Int, lines: [String])])] = [:]
+        typealias Removal = (index: Int, lines: [String], itemID: String, isLatest: Bool)
+        var byDay: [String: (date: Date, blocks: [Removal])] = [:]
         for item in items {
             for source in item.sources {
                 // A source day must be strictly in the past; carrying a day
@@ -259,15 +260,21 @@ extension DayflowStore {
                 guard !cal.isDate(source.date, inSameDayAs: targetDay) else { continue }
                 let key = DayflowDB.ymd(source.date)
                 var entry = byDay[key] ?? (date: source.date, blocks: [])
-                entry.blocks.append((source.lineIndex, source.lines))
+                entry.blocks.append((source.lineIndex, source.lines, item.id, source == item.sources.last))
                 byDay[key] = entry
             }
         }
 
+        // The editor-document block of each item on its latest day: what lands
+        // today, styles intact. An item without one sends today markdown-only.
+        var carriedBlocks: [String: BlockNoteJSON.Block] = [:]
+
         for (_, entry) in byDay {
-            let body = db.getDayNote(date: entry.date)
-            var lines = Self.lines(of: body)
-            let before = lines.count
+            let stored = db.getDayNoteFull(date: entry.date)
+            let original = Self.lines(of: stored.body)
+            var lines = original
+            var blocks = BlockNoteJSON.parse(stored.bodyJSON)
+            var removedPaths: [BlockNoteJSON.Path] = []
             // Bottom-up so earlier indices stay valid as blocks come out.
             for block in entry.blocks.sorted(by: { $0.index > $1.index }) {
                 let range = block.index..<(block.index + block.lines.count)
@@ -283,20 +290,82 @@ extension DayflowStore {
                    lines[seam].trimmingCharacters(in: .whitespaces).isEmpty {
                     lines.remove(at: seam)
                 }
+
+                // The same block in the editor's document: the addressed
+                // checklist item, holding exactly as many checklist items as
+                // the markdown block holds task lines.
+                if let doc = blocks,
+                   let path = BlockNoteJSON.checkItemPath(forLine: block.index, lines: original, blocks: doc),
+                   let node = BlockNoteJSON.block(at: path, in: doc),
+                   BlockNoteJSON.checkItemPaths([node]).count == BlockNoteJSON.taskLineCount(block.lines) {
+                    removedPaths.append(path)
+                    if block.isLatest { carriedBlocks[block.itemID] = node }
+                } else {
+                    blocks = nil
+                }
             }
-            guard lines.count != before else { continue }
+            guard lines.count != original.count else { continue }
+            var json: String?
+            if var doc = blocks {
+                for path in removedPaths.sorted(by: { $0.lexicographicallyPrecedes($1) }).reversed() {
+                    BlockNoteJSON.remove(at: path, in: &doc)
+                }
+                json = BlockNoteJSON.serialize(doc)
+            }
             let newBody = lines.joined(separator: "\n")
-            db.saveDayNote(date: entry.date, body: newBody, bodyJSON: nil)
-            applyExternalEdit(date: entry.date, body: newBody)
+            db.saveDayNote(date: entry.date, body: newBody, bodyJSON: json)
+            applyExternalEdit(date: entry.date, body: newBody, json: json)
         }
 
         // Oldest first, in page order, so tasks land in the order they were written.
         let ordered = items.sorted {
             ($0.latestDate, $0.sources.last?.lineIndex ?? 0) < ($1.latestDate, $1.sources.last?.lineIndex ?? 0)
         }
-        let body = Self.placeCarried(ordered, into: db.getDayNote(date: targetDay), seedSections: seedSections(before: targetDay))
-        db.saveDayNote(date: targetDay, body: body, bodyJSON: nil)
-        applyExternalEdit(date: targetDay, body: body)
+        let target = db.getDayNoteFull(date: targetDay)
+        let seeds = seedSections(before: targetDay)
+        let body = Self.placeCarried(ordered, into: target.body, seedSections: seeds)
+        let json = Self.placeCarriedJSON(ordered, blocks: carriedBlocks, into: target, seedSections: seeds)
+        db.saveDayNote(date: targetDay, body: body, bodyJSON: json)
+        applyExternalEdit(date: targetDay, body: body, json: json)
+    }
+
+    /// `placeCarried` on the editor's document: same placement rules, with
+    /// each task's original block (styles and nested items included). Nil
+    /// when a carried item has no block or today's JSON doesn't match its
+    /// markdown — today is then saved markdown-only.
+    nonisolated static func placeCarriedJSON(
+        _ items: [CarryoverItem],
+        blocks carried: [String: BlockNoteJSON.Block],
+        into target: (body: String, bodyJSON: String?),
+        seedSections: [CarryoverSection]
+    ) -> String? {
+        guard items.allSatisfy({ carried[$0.id] != nil }) else { return nil }
+        var doc: [BlockNoteJSON.Block]
+        if target.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            doc = seedSections.map { BlockNoteJSON.headingBlock(level: $0.level, title: $0.title) }
+        } else {
+            guard let parsed = BlockNoteJSON.parse(target.bodyJSON),
+                  BlockNoteJSON.checkItemPaths(parsed).count == BlockNoteJSON.taskLineCount(lines(of: target.body)) else { return nil }
+            doc = parsed
+        }
+
+        var unsectioned: [BlockNoteJSON.Block] = []
+        for item in items {
+            guard let block = carried[item.id] else { continue }
+            guard let section = item.section else {
+                unsectioned.append(block)
+                continue
+            }
+            let key = BlockNoteJSON.matchKey(section.title)
+            if let h = doc.firstIndex(where: { BlockNoteJSON.headingLevel($0) != nil && BlockNoteJSON.matchKey(BlockNoteJSON.text($0)) == key }) {
+                doc.insert(block, at: BlockNoteJSON.sectionEnd(doc, headingIndex: h))
+            } else {
+                doc.insert(contentsOf: [BlockNoteJSON.headingBlock(level: section.level, title: section.title), block],
+                           at: BlockNoteJSON.contentEnd(doc))
+            }
+        }
+        doc.insert(contentsOf: unsectioned, at: BlockNoteJSON.contentEnd(doc))
+        return BlockNoteJSON.serialize(doc)
     }
 
     /// Headings of the most recent earlier day (within the look-back window)
