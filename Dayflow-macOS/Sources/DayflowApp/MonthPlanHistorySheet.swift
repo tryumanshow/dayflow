@@ -49,9 +49,9 @@ struct MonthPlanHistorySheet: View {
                 HSplitView {
                     List(entries, id: \.id, selection: $selectedEntryId) { entry in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.savedAt)
+                            Text(Self.savedLabel(entry.savedAt))
                                 .font(.system(size: 12, weight: .medium).monospacedDigit())
-                            Text("\(entry.bodyMd.count) \(L("month.plan.history.chars"))  ·  \(entry.reason)")
+                            Text("\(entry.bodyMd.count) \(L("month.plan.history.chars"))  ·  \(Self.reasonLabel(entry.reason))")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                         }
@@ -62,13 +62,13 @@ struct MonthPlanHistorySheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         if let entry = currentEntry {
                             ScrollView {
-                                Text(entry.bodyMd.isEmpty ? "(empty)" : entry.bodyMd)
+                                Text(entry.bodyMd.isEmpty ? L("month.plan.history.empty_body") : entry.bodyMd)
                                     .font(.system(size: 12, design: .monospaced))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .textSelection(.enabled)
                                     .padding(12)
                             }
-                            .background(Color.black.opacity(0.15))
+                            .background(Color.primary.opacity(0.05))
                             .cornerRadius(6)
                             HStack {
                                 Spacer()
@@ -109,5 +109,19 @@ struct MonthPlanHistorySheet: View {
     private func restore(_ entry: DayflowDB.MonthPlanSectionHistoryEntry) {
         store.updateMonthPlanSection(id: sectionId, body: entry.bodyMd, bodyJSON: entry.bodyJSON)
         onClose()
+    }
+
+    /// "9월 24일 14:03" style, from the stored `yyyy-MM-ddTHH:mm:ss`.
+    private static func savedLabel(_ raw: String) -> String {
+        guard let date = DF.isoTimestamp.date(from: raw) else { return raw }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private static func reasonLabel(_ reason: String) -> String {
+        switch reason {
+        case "wipe-guard": L("month.plan.history.reason.wipe")
+        case "pre-overwrite": L("month.plan.history.reason.edit")
+        default: reason
+        }
     }
 }

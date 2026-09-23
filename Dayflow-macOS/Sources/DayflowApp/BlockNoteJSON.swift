@@ -172,6 +172,22 @@ enum BlockNoteJSON {
         return paths[ordinal]
     }
 
+    /// The document with an open task inserted first — the JSON side of
+    /// prepending `- [ ] text` to the markdown. Nil when the existing JSON
+    /// doesn't line up with `body`.
+    static func prependTask(_ text: String, toBody body: String, bodyJSON: String?) -> String? {
+        var blocks: [Block]
+        if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            blocks = []
+        } else {
+            guard let parsed = parse(bodyJSON),
+                  checkItemPaths(parsed).count == taskLineCount(body.components(separatedBy: "\n")) else { return nil }
+            blocks = parsed
+        }
+        blocks.insert(taskBlock(text), at: 0)
+        return serialize(blocks)
+    }
+
     // MARK: - sections (top-level headings)
 
     static func isBlankParagraph(_ block: Block) -> Bool {

@@ -13,6 +13,7 @@ struct GoogleCalendarSettings: View {
     // already holds its own reference to the store from `bootstrap`, which is
     // the only place this view needs one.
     @State private var sync = GoogleCalendarSync.shared
+    @State private var confirmDisconnect = false
     @State private var clientID: String = GoogleCredentials.clientID
     @State private var clientSecret: String = ""
     @State private var connecting = false
@@ -167,11 +168,16 @@ struct GoogleCalendarSettings: View {
                     .font(.subheadline)
                 Spacer()
                 Button(L("gcal.disconnect"), role: .destructive) {
-                    sync.disconnect()
-                    clientSecret = ""
-                    selected = []
+                    confirmDisconnect = true
                 }
                 .controlSize(.small)
+                .confirmationDialog(L("gcal.disconnect_confirm"), isPresented: $confirmDisconnect) {
+                    Button(L("gcal.disconnect"), role: .destructive) {
+                        sync.disconnect()
+                        clientSecret = ""
+                        selected = []
+                    }
+                }
             }
 
             field(label: L("gcal.calendars"), hint: L("gcal.calendars.hint")) {

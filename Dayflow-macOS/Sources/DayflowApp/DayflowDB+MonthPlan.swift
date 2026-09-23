@@ -48,6 +48,19 @@ extension DayflowDB {
         return sqlite3_last_insert_rowid(db)
     }
 
+    /// Minimum gap between two ordinary (non-wipe) history snapshots.
+    static let monthPlanSnapshotInterval: TimeInterval = 10 * 60
+
+    private func hasRecentMonthPlanSnapshot(sectionId: Int64, now: Date = Date()) -> Bool {
+        let cutoff = DF.isoTimestamp.string(from: now.addingTimeInterval(-Self.monthPlanSnapshotInterval))
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT 1 FROM month_plan_section_history WHERE section_id = ? AND saved_at > ? LIMIT 1", -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, sectionId)
+        bindText(stmt, 2, cutoff)
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
     func updateMonthPlanSection(id: Int64, body: String, bodyJSON: String?) {
         let now = nowISO()
         // Snapshot the current row into history BEFORE overwriting whenever
@@ -72,8 +85,13 @@ extension DayflowDB {
         }
         let bodyChanged = existingMd != body || existingJSON != bodyJSON
         let droppingContent = !existingMd.isEmpty && bodyChanged
-        if droppingContent {
-            let reason = body.isEmpty ? "wipe-guard" : "pre-overwrite"
+        // The editor saves after every 200ms pause in typing, so snapshotting
+        // every save kept only the last minute or two of edits in the 50-row
+        // window. Ordinary edits are snapshotted at most once per interval;
+        // a wipe (content → empty) is always kept.
+        let isWipe = body.isEmpty
+        if droppingContent && (isWipe || !hasRecentMonthPlanSnapshot(sectionId: id)) {
+            let reason = isWipe ? "wipe-guard" : "pre-overwrite"
             var hist: OpaquePointer?
             sqlite3_prepare_v2(db, """
                 INSERT INTO month_plan_section_history (section_id, body_md, body_json, saved_at, reason)

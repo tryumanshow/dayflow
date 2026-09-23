@@ -25,6 +25,8 @@ struct SettingsView: View {
     @State private var errorMessage: String?
     @State private var testResult: String?
     @State private var testing: Bool = false
+    @State private var confirmPromptReset = false
+    @State private var confirmKeyDelete = false
 
     var body: some View {
         TabView {
@@ -332,9 +334,12 @@ struct SettingsView: View {
                                 .stroke(Color.primary.opacity(0.1), lineWidth: 0.7)
                         )
                     HStack {
-                        Button(L("settings.reset_default")) { resetPrompt() }
+                        Button(L("settings.reset_default")) { confirmPromptReset = true }
                             .buttonStyle(.borderless)
                             .font(.caption)
+                            .confirmationDialog(L("settings.reset_default_confirm"), isPresented: $confirmPromptReset) {
+                                Button(L("settings.reset_default"), role: .destructive) { resetPrompt() }
+                            }
                         Spacer()
                         Text(L("settings.char_count", systemPrompt.count))
                             .font(.caption)
@@ -351,8 +356,11 @@ struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .disabled(testing || !canTest)
                 if hasExisting {
-                    Button(L("settings.delete_key")) { clear() }
+                    Button(L("settings.delete_key")) { confirmKeyDelete = true }
                         .buttonStyle(.bordered)
+                        .confirmationDialog(L("settings.delete_key_confirm"), isPresented: $confirmKeyDelete) {
+                            Button(L("settings.delete_key"), role: .destructive) { clear() }
+                        }
                 }
                 Spacer()
                 if testing {

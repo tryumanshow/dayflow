@@ -128,7 +128,11 @@ struct MarkdownWebEditor: NSViewRepresentable {
         // all its vendored modules share the `dayflow-asset://editor` origin —
         // ES module imports need a real (non-opaque) origin, which loadHTMLString
         // does not reliably provide.
-        web.load(URLRequest(url: EditorSchemeHandler.baseURL.appendingPathComponent("index.html")))
+        // The page's own UI strings (slash menu, placeholders) follow the app
+        // language; the scheme handler ignores the query when serving.
+        var page = URLComponents(url: EditorSchemeHandler.baseURL.appendingPathComponent("index.html"), resolvingAgainstBaseURL: false)!
+        page.queryItems = [URLQueryItem(name: "lang", value: L("editor.lang"))]
+        web.load(URLRequest(url: page.url!))
 
         context.coordinator.webView = web
         context.coordinator.pendingMarkdown = markdown

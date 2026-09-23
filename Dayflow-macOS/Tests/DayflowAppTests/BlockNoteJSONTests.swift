@@ -230,3 +230,23 @@ private func outline(_ s: String?) -> String {
 
         """)
 }
+
+// MARK: - Quick Throw
+
+@Test func quickThrowPrependsTaskAndKeepsStyles() {
+    let body = "## Work\n\n*   [ ] ship it"
+    let doc = json([
+        node("heading", [run("Work")], props: ["level": 2]),
+        node("checkListItem", [run("ship it", ["textColor": "red"])], props: ["checked": false]),
+    ])
+    let out = BlockNoteJSON.prependTask("call bank", toBody: body, bodyJSON: doc)
+    #expect(outline(out) == """
+        checkListItem[open]: call bank
+        heading: Work
+        checkListItem[open]: ship it {textColor=red}
+
+        """)
+    #expect(outline(BlockNoteJSON.prependTask("first", toBody: "", bodyJSON: nil)) == "checkListItem[open]: first\n")
+    // Out of step with the markdown: no JSON rather than a wrong one.
+    #expect(BlockNoteJSON.prependTask("x", toBody: "*   [ ] a\n*   [ ] b", bodyJSON: doc) == nil)
+}

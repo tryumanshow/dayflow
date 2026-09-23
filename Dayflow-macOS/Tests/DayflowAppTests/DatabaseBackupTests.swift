@@ -75,3 +75,22 @@ private func noteBody(in file: URL, date: String) -> String? {
     let files = try FileManager.default.contentsOfDirectory(atPath: url.deletingLastPathComponent().path)
     #expect(files == [url.lastPathComponent])
 }
+
+// MARK: - month plan history
+
+/// The editor saves every 200ms of idle typing; history keeps one snapshot
+/// per interval for ordinary edits, so the 50-row window spans real time.
+/// Emptying a section is always snapshotted.
+@Test func monthPlanHistoryThrottlesEditsButAlwaysKeepsWipes() {
+    let db = tempDB()
+    let id = db.addMonthPlanSection(date: day("2026-09-01"), title: "Goals", sortOrder: 0)
+    db.updateMonthPlanSection(id: id, body: "v1", bodyJSON: nil)
+    db.updateMonthPlanSection(id: id, body: "v2", bodyJSON: nil)   // snapshot of v1
+    db.updateMonthPlanSection(id: id, body: "v3", bodyJSON: nil)   // within the interval: none
+    db.updateMonthPlanSection(id: id, body: "v4", bodyJSON: nil)   // none
+    db.updateMonthPlanSection(id: id, body: "", bodyJSON: nil)     // wipe: snapshot of v4
+
+    let history = db.getMonthPlanSectionHistory(sectionId: id)
+    #expect(history.map(\.bodyMd).sorted() == ["v1", "v4"])
+    #expect(Set(history.map(\.reason)) == ["pre-overwrite", "wipe-guard"])
+}

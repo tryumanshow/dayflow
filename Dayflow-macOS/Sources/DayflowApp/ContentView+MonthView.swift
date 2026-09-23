@@ -189,6 +189,9 @@ extension ContentView {
                         cancelAppointmentEdit()
                         showAptForm = false
                     } else {
+                        // Start on the day being looked at, not the day the
+                        // app was launched.
+                        aptDateInput = store.selectedDate
                         showAptForm = true
                         aptTitleFocused = true
                     }
@@ -224,6 +227,21 @@ extension ContentView {
             }
         }
         .animation(.easeOut(duration: 0.14), value: isAppointmentFormOpen)
+        // The × sits right beside the edit pencil; one misclick used to
+        // delete the appointment for good.
+        .confirmationDialog(
+            L("appointments.delete_confirm", pendingDeleteAppointment?.title ?? ""),
+            isPresented: Binding(get: { pendingDeleteAppointment != nil }, set: { if !$0 { pendingDeleteAppointment = nil } })
+        ) {
+            Button(L("appointments.delete"), role: .destructive) {
+                if let apt = pendingDeleteAppointment {
+                    if editingAppointmentId == apt.id { cancelAppointmentEdit() }
+                    store.deleteAppointment(apt)
+                }
+                pendingDeleteAppointment = nil
+            }
+            Button(L("appointments.cancel"), role: .cancel) { pendingDeleteAppointment = nil }
+        }
     }
 
     /// Open whenever the user asked for it, and forced open while a row is
@@ -485,8 +503,7 @@ extension ContentView {
                 }
                 .buttonStyle(.plain)
                 Button {
-                    if isEditing { cancelAppointmentEdit() }
-                    store.deleteAppointment(apt)
+                    pendingDeleteAppointment = apt
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
@@ -588,34 +605,33 @@ extension ContentView {
         if ok { resetAppointmentForm() }
     }
 
-    /// Expand the form's single date into every matching date within
-    /// the month containing `aptDateInput` (weekly = same weekday,
-    /// monthly = same day-of-month). Days that don't exist (e.g. the
-    /// 31st in February) are skipped. `excludingDay` skips a specific
-    /// date — used in edit mode so the just-updated row isn't dupli-
-    /// cated.
+    /// How far a repeat reaches from the form's date: about a quarter of
+    /// weekly meetings, a year of monthly ones. Bounded rather than open-ended
+    /// because every occurrence is a real row the user can edit or delete.
+    static let weeklyRepeatCount = 13
+    static let monthlyRepeatCount = 12
+
+    /// Expand the form's date into its repeats — weekly: the same weekday for
+    /// the next `weeklyRepeatCount` weeks; monthly: the same day of month for
+    /// the next `monthlyRepeatCount` months, skipping months without that day
+    /// (the 31st in February). `excludingDay` skips a specific date — used in
+    /// edit mode so the just-updated row isn't duplicated.
     @discardableResult
     private func addRepeatingAppointments(hhmm: String, endHHmm: String, excludingDay: Date?) -> Bool {
         let cal = Calendar(identifier: .gregorian)
-        let monthComps = cal.dateComponents([.year, .month], from: aptDateInput)
-        guard let firstOfMonth = cal.date(from: monthComps),
-              let range = cal.range(of: .day, in: .month, for: firstOfMonth) else { return false }
-
+        let start = cal.startOfDay(for: aptDateInput)
         var targets: [Date] = []
         switch aptRepeatInput {
         case .weekly:
-            let weekday = cal.component(.weekday, from: aptDateInput)
-            for day in range {
-                var c = monthComps; c.day = day
-                if let d = cal.date(from: c), cal.component(.weekday, from: d) == weekday {
-                    targets.append(d)
-                }
-            }
+            targets = (0..<Self.weeklyRepeatCount).compactMap { cal.date(byAdding: .weekOfYear, value: $0, to: start) }
         case .monthly:
-            let dom = cal.component(.day, from: aptDateInput)
-            if range.contains(dom) {
-                var c = monthComps; c.day = dom
-                if let d = cal.date(from: c) { targets.append(d) }
+            let dom = cal.component(.day, from: start)
+            targets = (0..<Self.monthlyRepeatCount).compactMap { n in
+                guard let month = cal.date(byAdding: .month, value: n, to: cal.date(from: cal.dateComponents([.year, .month], from: start))!) else { return nil }
+                var c = cal.dateComponents([.year, .month], from: month)
+                c.day = dom
+                guard let d = cal.date(from: c), cal.component(.day, from: d) == dom else { return nil }
+                return d
             }
         case .none:
             return false
@@ -735,6 +751,23 @@ extension ContentView {
                 .padding(.vertical, DS.Space.xl)
             }
         }
+        // Deleting a section also drops its saved versions (cascade), so it
+        // can't be recovered from history afterwards: say so and ask first.
+        .confirmationDialog(
+            L("month.plan.delete_confirm", store.monthPlanSections.first { $0.id == pendingDeleteSectionId }?.title ?? ""),
+            isPresented: Binding(get: { pendingDeleteSectionId != nil }, set: { if !$0 { pendingDeleteSectionId = nil } })
+        ) {
+            Button(L("month.plan.delete_section"), role: .destructive) {
+                if let id = pendingDeleteSectionId {
+                    store.deleteMonthPlanSection(id: id)
+                    if selectedSectionId == id { selectedSectionId = store.monthPlanSections.first?.id }
+                }
+                pendingDeleteSectionId = nil
+            }
+            Button(L("appointments.cancel"), role: .cancel) { pendingDeleteSectionId = nil }
+        } message: {
+            Text(L("month.plan.delete_confirm_hint"))
+        }
         .sheet(item: Binding(
             get: { historySectionId.map(IdentifiedSectionId.init) },
             set: { historySectionId = $0?.id }
@@ -813,10 +846,7 @@ extension ContentView {
                 if store.monthPlanSections.count > 1 {
                     Divider()
                     Button(L("month.plan.delete_section"), role: .destructive) {
-                        store.deleteMonthPlanSection(id: section.id)
-                        if selectedSectionId == section.id {
-                            selectedSectionId = store.monthPlanSections.first?.id
-                        }
+                        pendingDeleteSectionId = section.id
                     }
                 }
             }

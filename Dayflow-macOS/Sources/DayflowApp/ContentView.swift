@@ -100,6 +100,9 @@ struct ContentView: View {
     @State var editingSectionTitleId: Int64? = nil
     @State var sectionTitleDraft: String = ""
     @State var historySectionId: Int64? = nil
+    /// Destructive actions wait here for a confirmation dialog.
+    @State var pendingDeleteAppointment: Appointment? = nil
+    @State var pendingDeleteSectionId: Int64? = nil
 
     /// Global search overlay (⌘⇧F). Distinct from the in-editor ⌘F find.
     @State var showSearch: Bool = false

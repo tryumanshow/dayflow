@@ -20,6 +20,21 @@
 "search.empty" = "No matches.";
 "search.footer" = "↑↓ to move · ↵ to open · esc to close";
 "search.count" = "%d results";
+"menu.quick_throw" = "Quick Throw…";
+"menu.copy" = "Copy";
+"menu.cut" = "Cut";
+"menu.paste" = "Paste";
+"menu.paste_plain" = "Paste as Plain Text";
+"menu.select_all" = "Select All";
+"menu.undo" = "Undo";
+"menu.redo" = "Redo";
+"menu.find" = "Find…";
+"menu.search_all" = "Search All Notes…";
+"menu.zoom_in" = "Editor: Zoom In";
+"menu.zoom_out" = "Editor: Zoom Out";
+"menu.zoom_reset" = "Editor: Default Zoom";
+"menu.refresh" = "Refresh";
+"menu.generate_review" = "Generate Daily Review";
 "menu.previous" = "Previous";
 "menu.next" = "Next";
 "menu.today" = "Today";
@@ -66,14 +81,21 @@
 "appointments.new" = "New";
 "appointments.close_form" = "Close";
 "appointments.end_date_add" = "+ end date";
+"appointments.delete_confirm" = "Delete “%@”?";
+"appointments.delete" = "Delete";
+"month.plan.delete_confirm" = "Delete section “%@”?";
+"month.plan.delete_confirm_hint" = "Its saved versions are deleted with it and can’t be restored.";
+"settings.reset_default_confirm" = "Replace your system prompt with the default?";
+"settings.delete_key_confirm" = "Remove this API key from the Keychain?";
+"gcal.disconnect_confirm" = "Disconnect Google Calendar? The saved client secret is cleared too.";
 "appointments.span_progress" = "day %d of %d";
 "appointments.all_day_help" = "No specific time — shows as All day, no reminder";
 "appointments.end_date_remove" = "Remove end date";
 "appointments.manage_in_month" = "manage in Month";
 "appointments.repeat.none" = "No repeat";
-"appointments.repeat.weekly" = "Weekly";
-"appointments.repeat.monthly" = "Monthly";
-"appointments.repeat.help" = "Fill matching days in the visible month";
+"appointments.repeat.weekly" = "Weekly · 13 weeks";
+"appointments.repeat.monthly" = "Monthly · 12 months";
+"appointments.repeat.help" = "Creates each occurrence from this date: the same weekday for 13 weeks, or the same day of month for 12 months";
 
 /* Week view */
 "week.footer.done" = "done";
@@ -95,7 +117,10 @@
 "month.plan.history" = "View earlier versions...";
 "month.plan.history.title" = "Earlier versions (auto-backup)";
 "month.plan.history.empty" = "No earlier versions yet";
-"month.plan.history.hint" = "Whenever the body is overwritten with empty content, the prior version is auto-saved. Up to 50 per section.";
+"month.plan.history.hint" = "The previous version is kept automatically — at most every 10 minutes while you edit, and always before the section is emptied. Up to 50 per section.";
+"month.plan.history.empty_body" = "(empty)";
+"month.plan.history.reason.wipe" = "before it was emptied";
+"month.plan.history.reason.edit" = "before an edit";
 "month.plan.history.restore" = "Restore this version";
 "month.plan.history.chars" = "chars";
 "month.plan.history.select_hint" = "Pick a version on the left.";
@@ -287,3 +312,4 @@
 "planner.revise" = "Revise";
 "planner.retry" = "Retry";
 "day.held_format" = "· %d held";
+"editor.lang" = "en";
