@@ -4,6 +4,15 @@ import Observation
 enum CalendarViewMode: String, CaseIterable, Identifiable {
     case day, week, month
     var id: String { rawValue }
+
+    /// ⌘1 / ⌘2 / ⌘3 switch views (View menu).
+    var shortcutDigit: Int {
+        switch self {
+        case .day: 1
+        case .week: 2
+        case .month: 3
+        }
+    }
 }
 
 extension Array {

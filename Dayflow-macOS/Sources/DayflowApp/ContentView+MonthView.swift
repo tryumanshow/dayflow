@@ -1044,7 +1044,15 @@ extension ContentView {
         let lastIdx = gridDays.count - 1
         var laneEnds: [Int] = []
         var entries: [SpanLayout.Entry] = []
+        let gridFirst = cal.startOfDay(for: gridDays.first!)
+        let gridLast = cal.startOfDay(for: gridDays.last!)
         for apt in spans {
+            // A span entirely outside the grid (the week view passes the
+            // whole month's spans) has no cell to draw in; clamping it would
+            // paint it on the first or last day.
+            let spanStart = cal.startOfDay(for: apt.startAt)
+            let spanEnd = cal.startOfDay(for: apt.endAt ?? apt.startAt)
+            guard spanEnd >= gridFirst, spanStart <= gridLast else { continue }
             let startKey = DayflowDB.ymd(apt.startAt)
             let endKey = DayflowDB.ymd(apt.endAt ?? apt.startAt)
             // Spans starting before the grid clamp to 0; ending after, to lastIdx.

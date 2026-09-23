@@ -218,8 +218,12 @@ struct ContentView: View {
                                 RoundedRectangle(cornerRadius: DS.Radius.sm)
                                     .fill(store.viewMode == mode ? Color.primary.opacity(0.08) : .clear)
                             )
+                            // English labels wrapped mid-word ("Da / y") once
+                            // the bar ran short of width.
+                            .fixedSize()
                     }
                     .buttonStyle(.plain)
+                    .help(L("nav.tooltip.mode_shortcut", mode.shortcutDigit))
                 }
             }
 
@@ -232,6 +236,7 @@ struct ContentView: View {
                 } label: {
                     Text(L("nav.today"))
                         .font(.system(size: 11, weight: .semibold))
+                        .fixedSize()
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
                         .background(
@@ -246,6 +251,8 @@ struct ContentView: View {
             Text(headerLabel)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             Spacer()
 

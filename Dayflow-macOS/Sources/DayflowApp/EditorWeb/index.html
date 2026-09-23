@@ -59,6 +59,12 @@ body {
 #editor::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
 #editor:hover::-webkit-scrollbar-thumb { background: rgba(var(--ink), 0.14); }
 #editor:hover::-webkit-scrollbar-thumb:hover { background: rgba(var(--ink), 0.24); }
+/* Same for a long code line's horizontal bar, which drew a light track
+   under every code block. */
+.bn-block-content[data-content-type="codeBlock"] pre::-webkit-scrollbar { height: 6px; }
+.bn-block-content[data-content-type="codeBlock"] pre::-webkit-scrollbar-track { background: transparent; }
+.bn-block-content[data-content-type="codeBlock"] pre::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.bn-block-content[data-content-type="codeBlock"]:hover pre::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
 /* Brief highlight on the heading the Day rail jumped to. */
 .dayflow-flash {
     background: rgba(247, 140, 51, 0.12);

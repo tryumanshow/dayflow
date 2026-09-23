@@ -12,6 +12,7 @@
 "nav.tooltip.toggle_rail_hide" = "Hide side panel";
 "nav.tooltip.toggle_rail_show" = "Show side panel";
 "nav.tooltip.search" = "Search all notes (⌘⇧F)";
+"nav.tooltip.mode_shortcut" = "⌘%d";
 "nav.tooltip.theme" = "Theme";
 
 /* Search */

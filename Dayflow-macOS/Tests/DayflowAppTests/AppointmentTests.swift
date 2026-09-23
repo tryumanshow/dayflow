@@ -91,3 +91,18 @@ private func makeStore(on date: String) -> DayflowStore {
     #expect(lanes["after trip"] == 0)
     #expect(layout.laneCount(weekStartIdx: 0) == 2)
 }
+
+/// Spans that start after (or end before) the grid aren't drawn at all —
+/// they used to be clamped onto the last (or first) day.
+@MainActor
+@Test func spansOutsideTheGridAreSkipped() {
+    let store = makeStore(on: "2026-09-10")
+    store.addAppointment(on: day("2026-09-01"), hhmm: "", endDay: day("2026-09-03"), title: "before")
+    store.addAppointment(on: day("2026-09-13"), hhmm: "", endDay: day("2026-09-15"), title: "after")
+    store.addAppointment(on: day("2026-09-12"), hhmm: "", endDay: day("2026-09-14"), title: "crossing")
+
+    let week = (6...12).map { day(String(format: "2026-09-%02d", $0)) }
+    let layout = ContentView.spanLayout(for: store.currentMonthSpans(), gridDays: week, cal: .current)
+    #expect(layout.entries.map(\.apt.title) == ["crossing"])
+    #expect(layout.entries.first?.startIdx == 6)
+}

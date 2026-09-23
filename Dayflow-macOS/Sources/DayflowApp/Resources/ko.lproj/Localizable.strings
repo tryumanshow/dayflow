@@ -12,6 +12,7 @@
 "nav.tooltip.toggle_rail_hide" = "사이드 패널 숨기기";
 "nav.tooltip.toggle_rail_show" = "사이드 패널 보이기";
 "nav.tooltip.search" = "전체 검색 (⌘⇧F)";
+"nav.tooltip.mode_shortcut" = "⌘%d";
 "nav.tooltip.theme" = "테마";
 
 /* Search */

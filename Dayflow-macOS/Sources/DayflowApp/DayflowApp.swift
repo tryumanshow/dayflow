@@ -112,6 +112,11 @@ struct DayflowApp: App {
             // to the labels) and reach (the shortcuts work app-wide even
             // when the nav bar is offscreen behind a sheet).
             CommandGroup(after: .toolbar) {
+                ForEach(CalendarViewMode.allCases) { mode in
+                    Button(L("nav.\(mode.rawValue)")) { store.setMode(mode) }
+                        .keyboardShortcut(KeyEquivalent(Character(String(mode.shortcutDigit))), modifiers: .command)
+                }
+                Divider()
                 Button(NSLocalizedString("menu.previous", bundle: DayflowL10n.activeBundle, comment: "")) {
                     store.step(by: -1)
                 }
