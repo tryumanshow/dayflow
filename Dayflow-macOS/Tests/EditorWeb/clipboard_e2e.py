@@ -8,6 +8,7 @@ ClipboardEvents through the page — BlockNote's handlers and ours both run.
     python3 -m pip install playwright && python3 -m playwright install webkit
     python3 Dayflow-macOS/Tests/EditorWeb/clipboard_e2e.py
 """
+import faulthandler
 import http.server
 import pathlib
 import sys
@@ -290,19 +291,28 @@ def run(page):
     check('load: legacy loose markdown', outline(), NESTED)
 
 
+# A hung browser must fail the run with a traceback, not sit until the CI
+# job's own timeout: page.evaluate() has no timeout of its own.
+WATCHDOG_SECONDS = 300
+
+
 def main():
+    faulthandler.dump_traceback_later(WATCHDOG_SECONDS, exit=True)
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), EditorAssets)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f'http://127.0.0.1:{server.server_address[1]}/index.html'
     with sync_playwright() as p:
-        browser = p.webkit.launch()
+        print('launching WebKit', flush=True)
+        browser = p.webkit.launch(timeout=60_000)
         page = browser.new_page()
+        page.set_default_timeout(20_000)
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)) if 'WebAssembly' not in str(e) else None)
         page.on('console', lambda m: (print('  [console]', m.text), errors.append(m.text)) if 'error' in m.text.lower() and 'WebAssembly' not in m.text else None)
         page.add_init_script(BRIDGE)
         page.goto(url)
         page.wait_for_function("window.__msgs.some((m) => m.type === 'ready')")
+        print('editor ready', flush=True)
         run(page)
         browser.close()
     for e in errors:

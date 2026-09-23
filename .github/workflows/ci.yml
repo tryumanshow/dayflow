@@ -110,15 +110,6 @@ jobs:
         run: |
           swift test -c release
 
-      - name: Editor clipboard unit tests (node)
-        run: node --test Dayflow-macOS/Tests/EditorWeb/*.test.mjs
-
-      - name: Editor clipboard end-to-end (headless WebKit)
-        run: |
-          python3 -m pip install playwright
-          python3 -m playwright install webkit
-          python3 Dayflow-macOS/Tests/EditorWeb/clipboard_e2e.py
-
       - name: End-to-end bundle check
         working-directory: Dayflow-macOS
         run: |
@@ -139,3 +130,27 @@ jobs:
             Dayflow.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" \
             Dayflow.app/Contents/Info.plist
+
+  # The editor web view's clipboard behaviour, in headless WebKit. Its own
+  # job on macos-15: Playwright only ships a frozen WebKit build for macOS 14,
+  # which hung the step there.
+  editor-web:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Editor clipboard unit tests (node)
+        run: node --test Dayflow-macOS/Tests/EditorWeb/*.test.mjs
+
+      - name: Editor clipboard end-to-end (headless WebKit)
+        timeout-minutes: 10
+        run: |
+          python3 -m pip install playwright
+          python3 -m playwright install webkit
+          python3 -u Dayflow-macOS/Tests/EditorWeb/clipboard_e2e.py
