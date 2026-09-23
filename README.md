@@ -18,7 +18,7 @@ Obsidian is where my work lives — project notes, references, anything that has
 - **Code blocks** — type `` ``` `` + Space on an empty line, or pick "Code Block" from the slash menu. Monospaced, dark-themed, syntax-highlighted per language, with fenced markdown round-tripping.
 - **Tables** — pick "Table" from the slash menu and choose dimensions from a Notion-style grid picker (up to 6 × 6). Backspace on an empty cell removes the entire table.
 - **Monthly plan** — a separate editor per month for the TODOs that belong to the month as a whole, not to any single day. Shown in the Month view right rail.
-- **Appointments** — time-stamped items (meetings, reminders) stored in a dedicated `appointments` table. Surfaced in every view: a read-only list in the Day rail, chips above the task preview in Week columns, and a sorted "this month" list in the Month rail, which is the one place they're created and edited. Quick Throw (`⌘⇧I`) has a Task / Appointment tab so you can jot either one without leaving your current app.
+- **Appointments** — time-stamped items (meetings, reminders) stored in a dedicated `appointments` table. **All day** when you know the date but not the time; add an **end date** for something that runs over several days. Surfaced in every view: the Day rail (multi-day ones show "day 2 of 3"), chips and continuous bars in Week columns, bars across Month cells plus a sorted "this month" list in the Month rail, which is the one place they're created and edited. Repeats: weekly (13 weeks) or monthly (12 months). Quick Throw (`⌘⇧I`) has a Task / Appointment tab so you can jot either one without leaving your current app.
 - **Images** — paste or drop a picture straight into a note. The bytes are copied into `~/Library/Application Support/Dayflow/attachments/` and the note keeps only a reference, so images survive restarts without bloating the database. Copying an image out of a web page stores the picture itself rather than a link to someone else's server.
 - **Global search** (`⌘⇧F`) — one palette over every day note, appointment, and month-plan section. Matching is substring-based, so a Korean query lands mid-word too. `↑`/`↓` to move, `↵` to jump to whichever view the hit lives on.
 - **Task carry-over** — whatever you left unchecked in the past week shows up as a banner on today. Review the list, keep what still matters, and those tasks *move* — sub-items included, under the same heading (`## Work` etc.) they sat under — and are removed from the day they were written on, so nothing is counted twice. A blank today first gets the most recent day's headings.
@@ -30,30 +30,36 @@ Obsidian is where my work lives — project notes, references, anything that has
 - **Copy and paste** — lists from Notion, Google Docs, web pages, terminals and VS Code keep their nesting and checkboxes. Copying out gives indented markdown. `⌘⇧V` pastes text exactly as written.
 - **Automatic backups** — while Dayflow runs, a full snapshot is saved once a day to `~/Library/Application Support/Dayflow/backups/`; the newest 14 are kept. Settings → Data shows it in Finder.
 - **Optional LLM daily review** — OpenAI or Anthropic, picked and configured entirely inside the app.
-- **Bilingual** — English or Korean, switchable in Settings, no relaunch-from-terminal needed.
+- **Themes** — Midnight, Graphite and Navy (dark), Paper and Sepia (light). Switch from the palette button in the top bar or in Settings; the editor, menus and window appearance all follow, and code blocks stay dark on light themes so their highlighting stays readable.
+- **Bilingual** — English or Korean, switchable in Settings, no relaunch-from-terminal needed. The menu bar and the editor's slash and status menus follow too.
+- **Keyboard** — `⌘1` / `⌘2` / `⌘3` for Day / Week / Month, `⌘←` / `⌘→` previous / next, `⌘T` today, `⌘⇧F` global search, `⌘⇧V` paste as plain text.
 
 ## Screenshots
 
 ### Day view
-- Markdown editor on the left. On the right: today's completion ratio, the day's appointments, and the AI review panel.
+- Markdown editor on the left. The right rail, top to bottom:
+    - This week as seven rings, each filled by that day's done ratio; click one to open that day.
+    - Today's progress: the done count, plus a **progress bar per heading** (`## …`) of the note. Clicking a heading row scrolls the editor to it.
+    - Appointments (multi-day ones included), tasks **on hold** from the last 30 days, and the AI review. Empty sections collapse to one line.
 - Checklists, memos, and nested lists all live in one body per day.
 - A banner appears at the top when earlier days still hold unchecked tasks — see [Task carry-over](#task-carry-over).
-- Top toolbar: **B** / *I* / <u>U</u> / ~~S~~ / `{ }`, plus text colour and highlight. Select text, click a button. The colour swatches stay folded behind their two buttons — the underline on each one shows the colour the selection already carries.
+- Top toolbar: **B** / *I* / <u>U</u> / ~~S~~ / `{ }`, plus text colour and highlight. Select text, click a button. With nothing selected it fades back so the page reads as a page; a selection brings it back. The colour swatches stay folded behind their two buttons — the underline on each one shows the colour the selection already carries.
 - Slash menu (`/` on an empty line): headings, lists, code blocks, tables, and more.
 
 ![Day view](Dayflow-macOS/docs/screenshots/en/day.png)
 
 ### Week view
-- Seven columns, one per weekday. Each column shows the day's appointments as chips, then its open tasks.
-- The task preview shows the **open tasks only**, grouped by their nearest heading (up to 2 headings, 3 tasks each). Done work is summarized in the column header's done/total ratio instead of taking preview slots.
-- Checkboxes are tappable in place — toggling a box does not navigate away from the week.
+- Seven columns, one per weekday. Multi-day appointments run across the columns as **continuous bars**, then each day's appointment chips, then its tasks grouped by heading.
+- Task titles wrap to two lines, with the full text on hover; a busy day's list scrolls inside its own column.
+- Checkboxes are tappable in place — toggling a box does not navigate away from the week, and the day's colours and underlines are kept.
 
 ![Week view](Dayflow-macOS/docs/screenshots/en/week.png)
 
 ### Month view
-- Heatmap colored by how much you actually did each day.
+- Heatmap colored by how much you actually did each day. Each cell previews its open tasks and ends with a done/total bar; hovering lists every open task.
+- Multi-day appointments run across the cells as bars, stacked into separate lanes when they overlap.
 - Right rail, top to bottom: month metrics (completion rate, longest streak, busiest weekday), every appointment in the month, and a **Month plan** editor for month-scoped TODOs.
-- Month view is where scheduling happens. The add form stays collapsed behind **New** — it's wider than the rail, and you schedule occasionally rather than constantly. The pencil on a row opens it pre-filled.
+- Month view is where scheduling happens. The add form stays collapsed behind **New** — it's wider than the rail, and you schedule occasionally rather than constantly. It opens on the day you're looking at, with **All day** and **+ End date** controls. The pencil on a row opens it pre-filled; × asks before deleting.
 
 ![Month view](Dayflow-macOS/docs/screenshots/en/month.png)
 
@@ -67,9 +73,15 @@ Obsidian is where my work lives — project notes, references, anything that has
 ### Task carry-over
 - A banner appears on today whenever the past 7 days still hold unchecked tasks.
 - The same task left open on several days collapses into one row, and anything already written on today is left out.
-- Confirming **moves** the tasks: appended to today's note, deleted from the source day. If a source day changed while the sheet was open, that source is skipped rather than guessed at.
+- Each row shows the heading it came from and how many sub-items travel with it.
+- Confirming **moves** the tasks with their sub-items: placed under the same heading in today's note (added if missing), deleted from the source day, text colours included. If a source day changed while the sheet was open, that block is skipped rather than guessed at.
 
 ![Task carry-over](Dayflow-macOS/docs/screenshots/en/carryover.png)
+
+### Themes
+- Pick one from the palette button in the top bar, or Settings → General → Appearance. Below is the light **Paper** theme.
+
+![Paper theme](Dayflow-macOS/docs/screenshots/en/day-paper.png)
 
 ### AI Planner
 - One sheet, three steps: **dump tasks + pick a range → (optional questions) → preview → Apply**. Reachable from the wand icon in the Day and Week nav bars; Day prefills the selected day, Week prefills the visible week.
@@ -130,7 +142,7 @@ Obsidian is where my work lives — project notes, references, anything that has
 ```
 
 ### Settings
-- **General** — grouped into *Appearance* (language, editor font sizes, public-holiday overlays for Korea / US / both — bundled with the app, no network), *Alerts* (appointment reminders and how far ahead they fire), and *Data* (the date you started using Dayflow).
+- **General** — grouped into *Appearance* (language, theme, editor font sizes, public-holiday overlays for Korea / US / both — bundled with the app, no network), *Alerts* (appointment reminders and how far ahead they fire), and *Data* (the date you started using Dayflow, and automatic backups — the latest snapshot, shown in Finder).
 - **Calendar** — connect a Google Calendar and pick which calendars to mirror. Read-only. See [Google Calendar](#google-calendar-optional-read-only) below.
 - **AI Review** — provider (OpenAI or Anthropic), API key, model, and the system prompt that drives the daily review.
 
