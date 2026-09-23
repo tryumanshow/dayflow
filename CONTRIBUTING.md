@@ -47,7 +47,7 @@ Dayflow-macOS/
 │   └── DesignSystem.swift        디자인 토큰 + DayflowLogo 브랜드 마크
 ├── tools/
 │   ├── make_icon.py              앱 아이콘 .icns 렌더러 (Pillow 기반)
-│   └── capture_screenshots.sh    Day/Week/Month/Settings 스크린샷 일괄 재생성
+│   └── capture_screenshots.py    README 스크린샷 일괄 재생성 (임시 홈에서 실행, 실제 DB 미접촉)
 ├── docs/screenshots/             README 에 쓰이는 Day/Week/Month/Settings 미리보기
 ├── build.sh                      빌드, 번들링, 서명, /Applications 설치
 ├── Package.swift                 Swift Package 정의
@@ -152,23 +152,26 @@ UI 가 바뀌면 `docs/screenshots/*.png` 도 같이 갱신해야 한다. 수동
 
 ```bash
 cd Dayflow-macOS
-./build.sh                       # 먼저 최신 빌드를 /Applications/Dayflow.app 에 설치
-./tools/capture_screenshots.sh   # Day / Week / Month / Settings 캡처 후 docs/screenshots/ 에 저장
+./build.sh                                # 먼저 최신 빌드를 /Applications/Dayflow.app 에 설치
+python3 tools/capture_screenshots.py      # en / ko 각각 Day / Week / Month / 이월 / 검색 / 페이퍼 테마
 ```
 
-Playwright 는 쓸 수 없다. Dayflow 는 웹 앱이 아니고 SwiftUI 네이티브 창이라 Playwright 의 브라우저 드라이버로 제어할 수 없다. 그래서 이 스크립트는 순수 macOS 도구 조합으로 돌아간다:
-
-- `open /Applications/Dayflow.app` — 앱 기동
-- `osascript` + System Events AXPress — 네비 바 버튼 (`Day` / `Week` / `Month` / `Today`) 를 accessibility tree 를 통해 클릭
-- 창 위치 / 크기 고정 (`{80, 80}` origin, `1440x920`) 으로 크롭 좌표 예측 가능하게
-- `screencapture -x` — 전체 스크린 캡처
-- Pillow — retina 좌표 기준 크롭 후 1440x920 으로 다운스케일
-
-첫 실행 시 Terminal (또는 사용 중인 쉘) 에 접근성 권한 부여 필요 — System Settings → Privacy & Security → Accessibility.
+- 앱을 **임시 홈 폴더** (`CFFIXED_USER_HOME`) 로 띄우고 거기에만 데모 데이터를 심는다. 실제 `dayflow.db` 는 열지도, 복사하지도, 덮어쓰지도 않는다.
+- 실행 중인 Dayflow 는 캡처 동안 종료했다가 끝나면 다시 연다. 클립보드의 텍스트도 복원한다.
+- 뷰 전환은 `⌘1` / `⌘2` / `⌘3`, 검색은 `⌘⇧F` 를 key code 로 보낸다 — 한글 입력기가 켜져 있어도 동작한다.
+- 창 캡처는 `screencapture -l <window id>` 라 창 위치와 무관하다.
+- 필요한 것: `cliclick` (`brew install cliclick`), Pillow, 그리고 터미널의 손쉬운 사용(Accessibility) 권한.
+- Settings 창은 자동으로 열리지 않을 수 있다 — 그 경우 `settings.png` 는 기존 것을 유지한다고 출력한다.
 
 ## 테스트
 
-현재 자동 테스트는 없다. 검증 방법:
+자동 테스트 (CI 에서도 같은 순서로 돈다):
+
+- `swift test` — Swift 단위 테스트
+- `node --test Dayflow-macOS/Tests/EditorWeb/*.test.mjs` — 에디터 클립보드 변환 (markdown ↔ block)
+- `python3 Dayflow-macOS/Tests/EditorWeb/clipboard_e2e.py` — 헤드리스 WebKit 에서 실제 copy/paste 이벤트로 위계 보존 확인 (`pip install playwright && python3 -m playwright install webkit` 필요)
+
+수동 검증:
 
 1. `swift build -c release` — zero errors, zero warnings 를 목표로
 2. `./build.sh` 설치 후 Day / Week / Month 세 뷰가 모두 렌더되는지 수동 확인

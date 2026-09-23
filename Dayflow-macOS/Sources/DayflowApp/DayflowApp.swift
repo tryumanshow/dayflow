@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 @main
 @MainActor
@@ -24,13 +25,15 @@ struct DayflowApp: App {
                     }
                     AppointmentNotifier.shared.bootstrap(store: store)
                     GoogleCalendarSync.shared.bootstrap(store: store)
+                    DatabaseBackupScheduler.shared.start()
+                    ThemeStore.applyAppearance(ThemeStore.shared.theme)
                 }
         }
         .windowResizability(.contentSize)
         .defaultSize(width: 1100, height: 700)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Quick Throw…") {
+                Button(L("menu.quick_throw")) {
                     QuickThrowController.shared.show()
                 }
                 .keyboardShortcut("n", modifiers: [.command])
@@ -39,25 +42,37 @@ struct DayflowApp: App {
             // commands with custom versions that forward to the
             // WKWebView editor via NotificationCenter.
             CommandGroup(replacing: .pasteboard) {
-                Button("Copy") {
+                Button(L("menu.copy")) {
                     if !NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) {
                         NotificationCenter.default.post(name: .dayflowCopy, object: nil)
                     }
                 }
                 .keyboardShortcut("c", modifiers: .command)
-                Button("Cut") {
+                Button(L("menu.cut")) {
                     if !NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil) {
                         NotificationCenter.default.post(name: .dayflowCut, object: nil)
                     }
                 }
                 .keyboardShortcut("x", modifiers: .command)
-                Button("Paste") {
+                Button(L("menu.paste")) {
                     if !NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) {
                         NotificationCenter.default.post(name: .dayflowPaste, object: nil)
                     }
                 }
                 .keyboardShortcut("v", modifiers: .command)
-                Button("Select All") {
+                // Paste in the editor reads markdown and HTML structure; this
+                // is the way to drop text in exactly as written. Text fields
+                // get AppKit's own plain-text paste.
+                Button(L("menu.paste_plain")) {
+                    let responder = NSApp.keyWindow?.firstResponder as? NSView
+                    if let responder, responder is WKWebView || responder.enclosingWebView != nil {
+                        NotificationCenter.default.post(name: .dayflowPastePlain, object: nil)
+                    } else {
+                        NSApp.sendAction(#selector(NSTextView.pasteAsPlainText(_:)), to: nil, from: nil)
+                    }
+                }
+                .keyboardShortcut("v", modifiers: [.command, .shift])
+                Button(L("menu.select_all")) {
                     if !NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) {
                         NotificationCenter.default.post(name: .dayflowSelectAll, object: nil)
                     }
@@ -65,13 +80,13 @@ struct DayflowApp: App {
                 .keyboardShortcut("a", modifiers: .command)
             }
             CommandGroup(replacing: .undoRedo) {
-                Button("Undo") {
+                Button(L("menu.undo")) {
                     if !NSApp.sendAction(Selector(("undo:")), to: nil, from: nil) {
                         NotificationCenter.default.post(name: .dayflowUndo, object: nil)
                     }
                 }
                 .keyboardShortcut("z", modifiers: .command)
-                Button("Redo") {
+                Button(L("menu.redo")) {
                     if !NSApp.sendAction(Selector(("redo:")), to: nil, from: nil) {
                         NotificationCenter.default.post(name: .dayflowRedo, object: nil)
                     }
@@ -79,11 +94,11 @@ struct DayflowApp: App {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
             }
             CommandGroup(after: .textEditing) {
-                Button("Find…") {
+                Button(L("menu.find")) {
                     NotificationCenter.default.post(name: .dayflowFind, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: .command)
-                Button("Search All Notes…") {
+                Button(L("menu.search_all")) {
                     NotificationCenter.default.post(name: .dayflowOpenSearch, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
@@ -97,6 +112,11 @@ struct DayflowApp: App {
             // to the labels) and reach (the shortcuts work app-wide even
             // when the nav bar is offscreen behind a sheet).
             CommandGroup(after: .toolbar) {
+                ForEach(CalendarViewMode.allCases) { mode in
+                    Button(L("nav.\(mode.rawValue)")) { store.setMode(mode) }
+                        .keyboardShortcut(KeyEquivalent(Character(String(mode.shortcutDigit))), modifiers: .command)
+                }
+                Divider()
                 Button(NSLocalizedString("menu.previous", bundle: DayflowL10n.activeBundle, comment: "")) {
                     store.step(by: -1)
                 }
@@ -118,23 +138,23 @@ struct DayflowApp: App {
                 Divider()
             }
             CommandGroup(after: .toolbar) {
-                Button("Editor: Zoom In") {
+                Button(L("menu.zoom_in")) {
                     NotificationCenter.default.post(name: .dayflowZoomIn, object: nil)
                 }
                 .keyboardShortcut("=", modifiers: .command)
-                Button("Editor: Zoom Out") {
+                Button(L("menu.zoom_out")) {
                     NotificationCenter.default.post(name: .dayflowZoomOut, object: nil)
                 }
                 .keyboardShortcut("-", modifiers: .command)
-                Button("Editor: Default Zoom") {
+                Button(L("menu.zoom_reset")) {
                     NotificationCenter.default.post(name: .dayflowZoomReset, object: nil)
                 }
                 .keyboardShortcut("0", modifiers: .command)
             }
             CommandGroup(after: .appInfo) {
-                Button("Refresh") { store.refresh() }
+                Button(L("menu.refresh")) { store.refresh() }
                     .keyboardShortcut("r", modifiers: [.command])
-                Button("Generate Daily Review") { store.generateReview() }
+                Button(L("menu.generate_review")) { store.generateReview() }
                 // Developer-only: visible only when a sibling source
                 // tree with `build.sh` is detected. End-user installs
                 // never see the item.

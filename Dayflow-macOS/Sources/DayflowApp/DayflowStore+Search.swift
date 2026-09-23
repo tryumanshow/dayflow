@@ -73,13 +73,21 @@ extension DayflowStore {
         refresh()
     }
 
-    /// A one-line context window around the first case-insensitive match, with
-    /// newlines flattened to spaces. Falls back to the body's head when the
-    /// match sits in a field we don't scan for snippets (e.g. a title-only hit).
+    /// A one-line context window around the first case-insensitive match.
+    /// Lines are joined with " · " and stripped of their markdown markers
+    /// (`## `, `- [x] `, `*   `), which otherwise filled the result row with
+    /// syntax. Falls back to the body's head when the match sits in a field
+    /// we don't scan for snippets (e.g. a title-only hit).
     nonisolated static func snippet(from body: String, matching query: String, window: Int = 64) -> String {
-        let flattened = body.replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
-        let collapsed = flattened.split(separator: " ").joined(separator: " ")
+        let lines = body.replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n").compactMap { line -> String? in
+            switch MarkdownLine.parse(line) {
+            case let .heading(_, text)?, let .task(_, text)?, let .bullet(text)?, let .plain(text)?:
+                return text.split(separator: " ").joined(separator: " ")
+            case nil:
+                return nil
+            }
+        }
+        let collapsed = lines.joined(separator: " · ")
         guard let range = collapsed.range(of: query, options: .caseInsensitive) else {
             return String(collapsed.prefix(window * 2))
         }

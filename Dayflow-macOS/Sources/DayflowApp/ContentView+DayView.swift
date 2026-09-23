@@ -86,7 +86,7 @@ extension ContentView {
             )
             .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, DS.Space.lg)
-            .padding(.top, DS.Space.breathe)
+            .padding(.top, DS.Space.lg)
             .padding(.bottom, DS.Space.lg)
             .layoutPriority(1)
 
@@ -106,8 +106,10 @@ extension ContentView {
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: DS.Space.breathe) {
+                            weekStripRail
                             daySummaryRail
                             appointmentsRail
+                            onHoldRail
                             reviewRail
                         }
                         .padding(.horizontal, DS.Space.xl)
@@ -146,31 +148,135 @@ extension ContentView {
         }
     }
 
+    /// The selected week as seven rings (fill = that day's done ratio), so
+    /// the Day view keeps its place in the week without switching modes.
+    private var weekStripRail: some View {
+        let cal = Calendar.current
+        let start = store.startOfWeek(store.selectedDate)
+        let days = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+        return HStack(spacing: 2) {
+            ForEach(days, id: \.self) { day in
+                let counts = store.dayCounts(day)
+                let total = counts.open + counts.done
+                let ratio = total == 0 ? 0 : Double(counts.done) / Double(total)
+                let isToday = cal.isDateInToday(day)
+                let isSelected = cal.isDate(day, inSameDayAs: store.selectedDate)
+                Button {
+                    store.selectDate(day)
+                } label: {
+                    VStack(spacing: 4) {
+                        Text(DF.weekday.string(from: day))
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(isToday ? Color.dfAccent : .secondary)
+                        ZStack {
+                            Circle().stroke(Color.primary.opacity(total == 0 ? 0.06 : 0.12), lineWidth: 2.5)
+                            Circle()
+                                .trim(from: 0, to: ratio)
+                                .stroke(Color.dfDone, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                            Text(DF.dayNumber.string(from: day))
+                                .font(.system(size: 10, weight: isToday ? .bold : .medium).monospacedDigit())
+                                .foregroundStyle(isToday ? Color.dfAccent : .primary)
+                        }
+                        .frame(width: 26, height: 26)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(isSelected ? Color.dfAccent.opacity(0.10) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(total == 0 ? DF.shortMonthDay.string(from: day)
+                                 : "\(DF.shortMonthDay.string(from: day)) · \(counts.done)/\(total)")
+            }
+        }
+    }
+
+    /// Today's progress, broken down by the note's own headings. A single big
+    /// percentage said little ("0%" every morning); per-section bars show
+    /// where the day actually stands, and each row jumps the editor there.
     private var daySummaryRail: some View {
         let counts = DayflowDB.parseCheckboxes(store.dayBody)
         let total = counts.open + counts.done
-        let ratio = total == 0 ? 0.0 : Double(counts.done) / Double(total)
+        let sections = DayflowStore.sectionProgress(of: store.dayBody)
         return VStack(alignment: .leading, spacing: DS.Space.sm) {
-            SectionLabel(text: L("day.today_progress"))
-            HStack(alignment: .bottom, spacing: 4) {
-                Text("\(Int(ratio * 100))")
-                    .font(DS.FontStyle.metric)
-                    .foregroundStyle(Color.dfAccent)
-                Text("%")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 6)
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel(text: L("day.today_progress"))
+                Spacer()
+                if total + counts.onHold > 0 {
+                    HStack(spacing: 6) {
+                        Text(L("day.done_of_total", counts.done, total))
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        if counts.onHold > 0 {
+                            Text(L("day.held_format", counts.onHold))
+                                .font(DS.FontStyle.caption)
+                                .foregroundStyle(Color.dfHold)
+                        }
+                    }
+                }
             }
-            if total > 0 {
-                Text(L("day.done_open_format", counts.done, counts.open))
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(.secondary)
-            } else {
+            if total + counts.onHold == 0 {
                 Text(L("day.empty"))
                     .font(DS.FontStyle.caption)
                     .foregroundStyle(.tertiary)
+            } else {
+                progressBar(done: counts.done, total: total, height: 4)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(sections) { section in
+                        sectionRow(section)
+                    }
+                }
+                .padding(.top, 4)
             }
         }
+    }
+
+    private func sectionRow(_ section: SectionProgress) -> some View {
+        Button {
+            if let title = section.title {
+                NotificationCenter.default.post(name: .dayflowScrollToHeading, object: title)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(section.title ?? L("day.section_untitled"))
+                        .font(DS.FontStyle.body)
+                        .foregroundStyle(section.title == nil ? .secondary : .primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if section.onHold > 0 {
+                        Image(systemName: "pause.circle.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Color.dfHold)
+                    }
+                    Text("\(section.done)/\(section.total)")
+                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                        .foregroundStyle(section.total > 0 && section.done == section.total ? Color.dfDone : .secondary)
+                }
+                progressBar(done: section.done, total: section.total, height: 3)
+            }
+            .padding(.vertical, 5)
+            .padding(.horizontal, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RailRowButtonStyle())
+        .help(section.title.map { L("day.section_jump", $0) } ?? "")
+    }
+
+    private func progressBar(done: Int, total: Int, height: CGFloat) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.08))
+                Capsule()
+                    .fill(Color.dfDone.opacity(0.9))
+                    .frame(width: total == 0 ? 0 : geo.size.width * CGFloat(done) / CGFloat(total))
+            }
+        }
+        .frame(height: height)
     }
 
     /// Day rail is read-only for appointments — creation and deletion
@@ -179,9 +285,16 @@ extension ContentView {
     @ViewBuilder
     private var appointmentsRail: some View {
         let items = store.appointments(for: store.selectedDate)
+        let spans = store.spans(covering: store.selectedDate)
         VStack(alignment: .leading, spacing: DS.Space.sm) {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel(text: L("appointments.header"))
+                if items.isEmpty && spans.isEmpty {
+                    // One line instead of a header plus an empty-state row.
+                    Text(L("appointments.none_short"))
+                        .font(DS.FontStyle.caption)
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
                 Button {
                     store.setMode(.month)
@@ -192,12 +305,25 @@ extension ContentView {
                 }
                 .buttonStyle(.plain)
             }
-            if items.isEmpty {
-                Text(L("appointments.empty"))
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(.vertical, 2)
-            } else {
+            // Multi-day appointments running through this day, with how far
+            // in the day is — otherwise a trip was invisible outside Month.
+            ForEach(spans, id: \.apt.id) { span in
+                HStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(span.apt.category.color.opacity(0.8))
+                        .frame(width: 4, height: 16)
+                    Text(span.apt.title)
+                        .font(DS.FontStyle.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(L("appointments.span_progress", span.dayIndex, span.dayCount))
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+            }
+            if !items.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(items) { apt in
                         HStack(spacing: 8) {
@@ -229,6 +355,45 @@ extension ContentView {
                                 )
                             Spacer(minLength: 0)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Parked tasks from the last few weeks. Hidden when there are none, so
+    /// it costs nothing on a day without any.
+    @ViewBuilder
+    private var onHoldRail: some View {
+        let items = store.onHoldTasks(upTo: store.selectedDate)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                SectionLabel(text: L("onhold.header", items.count))
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(items) { item in
+                        Button {
+                            store.selectDate(item.date)
+                        } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Image(systemName: "pause.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.dfHold)
+                                Text(item.text)
+                                    .font(DS.FontStyle.body)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                Spacer(minLength: 0)
+                                Text(DF.shortMonthDay.string(from: item.date))
+                                    .font(DS.FontStyle.micro)
+                                    .foregroundStyle(.tertiary)
+                                    .fixedSize()
+                            }
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(L("onhold.open_day"))
                     }
                 }
             }
@@ -267,15 +432,27 @@ extension ContentView {
                     .font(DS.FontStyle.caption)
                     .foregroundStyle(.red)
             }
-            if store.reviewBody.isEmpty {
-                Text(L("day.review_placeholder"))
-                    .font(DS.FontStyle.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(.vertical, DS.Space.sm)
-            } else {
+            // Nothing below the header until there's a review: the Generate
+            // button says what this is, a placeholder paragraph only padded it.
+            if !store.reviewBody.isEmpty {
                 ReviewMarkdownView(text: store.reviewBody)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+}
+
+/// Rail rows that act on click: a faint fill on hover and press, so the row
+/// reads as clickable without drawing button chrome in a read-only column.
+private struct RailRowButtonStyle: ButtonStyle {
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.primary.opacity(configuration.isPressed ? 0.08 : (hovering ? 0.04 : 0)))
+            )
+            .onHover { hovering = $0 }
     }
 }

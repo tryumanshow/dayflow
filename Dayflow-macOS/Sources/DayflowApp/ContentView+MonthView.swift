@@ -189,6 +189,9 @@ extension ContentView {
                         cancelAppointmentEdit()
                         showAptForm = false
                     } else {
+                        // Start on the day being looked at, not the day the
+                        // app was launched.
+                        aptDateInput = store.selectedDate
                         showAptForm = true
                         aptTitleFocused = true
                     }
@@ -224,6 +227,21 @@ extension ContentView {
             }
         }
         .animation(.easeOut(duration: 0.14), value: isAppointmentFormOpen)
+        // The × sits right beside the edit pencil; one misclick used to
+        // delete the appointment for good.
+        .confirmationDialog(
+            L("appointments.delete_confirm", pendingDeleteAppointment?.title ?? ""),
+            isPresented: Binding(get: { pendingDeleteAppointment != nil }, set: { if !$0 { pendingDeleteAppointment = nil } })
+        ) {
+            Button(L("appointments.delete"), role: .destructive) {
+                if let apt = pendingDeleteAppointment {
+                    if editingAppointmentId == apt.id { cancelAppointmentEdit() }
+                    store.deleteAppointment(apt)
+                }
+                pendingDeleteAppointment = nil
+            }
+            Button(L("appointments.cancel"), role: .cancel) { pendingDeleteAppointment = nil }
+        }
     }
 
     /// Open whenever the user asked for it, and forced open while a row is
@@ -253,7 +271,7 @@ extension ContentView {
                     .padding(.vertical, 5)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.white.opacity(0.04))
+                            .fill(Color.primary.opacity(0.04))
                     )
                     .focused($aptTitleFocused)
                     .onSubmit { submitMonthAppointment() }
@@ -359,11 +377,30 @@ extension ContentView {
 
     private var aptTimeFields: some View {
         Group {
-            timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
-            Text("–")
-                .font(.system(size: 12))
-                .foregroundStyle(.tertiary)
-            timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
+            // "I know the day, not the time" — one click instead of having to
+            // know that a blank time field means all-day.
+            Button {
+                aptAllDayInput.toggle()
+            } label: {
+                Text(L("apt.all_day"))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(aptAllDayInput ? Color.dfAccent : .secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(aptAllDayInput ? Color.dfAccent.opacity(0.14) : Color.primary.opacity(0.04))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(L("appointments.all_day_help"))
+            if !aptAllDayInput {
+                timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
+                Text("–")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
+            }
         }
     }
 
@@ -374,14 +411,16 @@ extension ContentView {
             Button {
                 aptEndDateInput = Calendar.current.date(byAdding: .day, value: 1, to: aptDateInput) ?? aptDateInput
             } label: {
+                // Multi-day spans hide behind this; it has to read as a
+                // control, not a faint footnote.
                 Text(L("appointments.end_date_add"))
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
                     .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Color.dfHairlineSoft, lineWidth: 0.7)
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color.primary.opacity(0.04))
                     )
             }
             .buttonStyle(.plain)
@@ -464,8 +503,7 @@ extension ContentView {
                 }
                 .buttonStyle(.plain)
                 Button {
-                    if isEditing { cancelAppointmentEdit() }
-                    store.deleteAppointment(apt)
+                    pendingDeleteAppointment = apt
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
@@ -498,7 +536,7 @@ extension ContentView {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(Color.primary.opacity(0.04))
             )
             .onChange(of: binding.wrappedValue) { _, new in
                 let masked = Self.maskHHMM(new)
@@ -535,8 +573,9 @@ extension ContentView {
         editingAppointmentId = apt.id
         aptDateInput = apt.startAt
         aptEndDateInput = isSpan ? apt.endAt : nil
-        aptTimeInput = isSpan ? "" : DF.hourMinute.string(from: apt.startAt)
-        aptEndTimeInput = isSpan ? "" : (apt.endAt.map { DF.hourMinute.string(from: $0) } ?? "")
+        aptAllDayInput = !isSpan && apt.isAllDay
+        aptTimeInput = isSpan || apt.isAllDay ? "" : DF.hourMinute.string(from: apt.startAt)
+        aptEndTimeInput = isSpan || apt.isAllDay ? "" : (apt.endAt.map { DF.hourMinute.string(from: $0) } ?? "")
         aptTitleInput = apt.title
         aptCategoryInput = apt.category
         aptTitleFocused = true
@@ -547,53 +586,52 @@ extension ContentView {
     }
 
     private func submitMonthAppointment() {
-        // Time can be left blank — default to 00:00 so "all-day" style
-        // adds still land. resolveTimes otherwise rejects empty hhmm.
-        let effectiveTime = aptTimeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "00:00" : aptTimeInput
+        // A blank time (or the All-day toggle) stores an all-day appointment.
+        let effectiveTime = aptAllDayInput ? "" : aptTimeInput
+        let effectiveEndTime = aptAllDayInput ? "" : aptEndTimeInput
         let canRepeat = aptRepeatInput != .none && aptEndDateInput == nil
         let ok: Bool
         if let id = editingAppointmentId {
-            let updated = store.updateAppointment(id, on: aptDateInput, hhmm: effectiveTime, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
+            let updated = store.updateAppointment(id, on: aptDateInput, hhmm: effectiveTime, endHHmm: effectiveEndTime, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
             if updated && canRepeat {
-                addRepeatingAppointments(hhmm: effectiveTime, excludingDay: aptDateInput)
+                addRepeatingAppointments(hhmm: effectiveTime, endHHmm: effectiveEndTime, excludingDay: aptDateInput)
             }
             ok = updated
         } else if canRepeat {
-            ok = addRepeatingAppointments(hhmm: effectiveTime, excludingDay: nil)
+            ok = addRepeatingAppointments(hhmm: effectiveTime, endHHmm: effectiveEndTime, excludingDay: nil)
         } else {
-            ok = store.addAppointment(on: aptDateInput, hhmm: effectiveTime, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
+            ok = store.addAppointment(on: aptDateInput, hhmm: effectiveTime, endHHmm: effectiveEndTime, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
         }
         if ok { resetAppointmentForm() }
     }
 
-    /// Expand the form's single date into every matching date within
-    /// the month containing `aptDateInput` (weekly = same weekday,
-    /// monthly = same day-of-month). Days that don't exist (e.g. the
-    /// 31st in February) are skipped. `excludingDay` skips a specific
-    /// date — used in edit mode so the just-updated row isn't dupli-
-    /// cated.
-    @discardableResult
-    private func addRepeatingAppointments(hhmm: String, excludingDay: Date?) -> Bool {
-        let cal = Calendar(identifier: .gregorian)
-        let monthComps = cal.dateComponents([.year, .month], from: aptDateInput)
-        guard let firstOfMonth = cal.date(from: monthComps),
-              let range = cal.range(of: .day, in: .month, for: firstOfMonth) else { return false }
+    /// How far a repeat reaches from the form's date: about a quarter of
+    /// weekly meetings, a year of monthly ones. Bounded rather than open-ended
+    /// because every occurrence is a real row the user can edit or delete.
+    static let weeklyRepeatCount = 13
+    static let monthlyRepeatCount = 12
 
+    /// Expand the form's date into its repeats — weekly: the same weekday for
+    /// the next `weeklyRepeatCount` weeks; monthly: the same day of month for
+    /// the next `monthlyRepeatCount` months, skipping months without that day
+    /// (the 31st in February). `excludingDay` skips a specific date — used in
+    /// edit mode so the just-updated row isn't duplicated.
+    @discardableResult
+    private func addRepeatingAppointments(hhmm: String, endHHmm: String, excludingDay: Date?) -> Bool {
+        let cal = Calendar(identifier: .gregorian)
+        let start = cal.startOfDay(for: aptDateInput)
         var targets: [Date] = []
         switch aptRepeatInput {
         case .weekly:
-            let weekday = cal.component(.weekday, from: aptDateInput)
-            for day in range {
-                var c = monthComps; c.day = day
-                if let d = cal.date(from: c), cal.component(.weekday, from: d) == weekday {
-                    targets.append(d)
-                }
-            }
+            targets = (0..<Self.weeklyRepeatCount).compactMap { cal.date(byAdding: .weekOfYear, value: $0, to: start) }
         case .monthly:
-            let dom = cal.component(.day, from: aptDateInput)
-            if range.contains(dom) {
-                var c = monthComps; c.day = dom
-                if let d = cal.date(from: c) { targets.append(d) }
+            let dom = cal.component(.day, from: start)
+            targets = (0..<Self.monthlyRepeatCount).compactMap { n in
+                guard let month = cal.date(byAdding: .month, value: n, to: cal.date(from: cal.dateComponents([.year, .month], from: start))!) else { return nil }
+                var c = cal.dateComponents([.year, .month], from: month)
+                c.day = dom
+                guard let d = cal.date(from: c), cal.component(.day, from: d) == dom else { return nil }
+                return d
             }
         case .none:
             return false
@@ -602,7 +640,7 @@ extension ContentView {
         var anyOk = false
         for d in targets {
             if let excl = excludingDay, cal.isDate(d, inSameDayAs: excl) { continue }
-            if store.addAppointment(on: d, hhmm: hhmm, endHHmm: aptEndTimeInput, endDay: nil, title: aptTitleInput, category: aptCategoryInput) {
+            if store.addAppointment(on: d, hhmm: hhmm, endHHmm: endHHmm, endDay: nil, title: aptTitleInput, category: aptCategoryInput) {
                 anyOk = true
             }
         }
@@ -613,6 +651,7 @@ extension ContentView {
         editingAppointmentId = nil
         aptTimeInput = ""
         aptEndTimeInput = ""
+        aptAllDayInput = false
         aptEndDateInput = nil
         aptTitleInput = ""
         aptCategoryInput = .event
@@ -670,7 +709,7 @@ extension ContentView {
                             .frame(maxWidth: 120)
                             .background(
                                 RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
+                                    .fill(Color.primary.opacity(0.08))
                             )
                         } else {
                             monthPlanTab(section: section, isActive: section.id == activeId)
@@ -711,6 +750,23 @@ extension ContentView {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, DS.Space.xl)
             }
+        }
+        // Deleting a section also drops its saved versions (cascade), so it
+        // can't be recovered from history afterwards: say so and ask first.
+        .confirmationDialog(
+            L("month.plan.delete_confirm", store.monthPlanSections.first { $0.id == pendingDeleteSectionId }?.title ?? ""),
+            isPresented: Binding(get: { pendingDeleteSectionId != nil }, set: { if !$0 { pendingDeleteSectionId = nil } })
+        ) {
+            Button(L("month.plan.delete_section"), role: .destructive) {
+                if let id = pendingDeleteSectionId {
+                    store.deleteMonthPlanSection(id: id)
+                    if selectedSectionId == id { selectedSectionId = store.monthPlanSections.first?.id }
+                }
+                pendingDeleteSectionId = nil
+            }
+            Button(L("appointments.cancel"), role: .cancel) { pendingDeleteSectionId = nil }
+        } message: {
+            Text(L("month.plan.delete_confirm_hint"))
         }
         .sheet(item: Binding(
             get: { historySectionId.map(IdentifiedSectionId.init) },
@@ -757,7 +813,7 @@ extension ContentView {
         .frame(height: 440)
         .background(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .fill(Color.white.opacity(0.03))
+                .fill(Color.primary.opacity(0.03))
         )
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
@@ -773,7 +829,7 @@ extension ContentView {
             .padding(.vertical, DS.Space.xs)
             .background(
                 RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .fill(isActive ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isActive ? Color.primary.opacity(0.08) : Color.clear)
             )
             .contentShape(Rectangle())
             .onTapGesture {
@@ -790,10 +846,7 @@ extension ContentView {
                 if store.monthPlanSections.count > 1 {
                     Divider()
                     Button(L("month.plan.delete_section"), role: .destructive) {
-                        store.deleteMonthPlanSection(id: section.id)
-                        if selectedSectionId == section.id {
-                            selectedSectionId = store.monthPlanSections.first?.id
-                        }
+                        pendingDeleteSectionId = section.id
                     }
                 }
             }
@@ -810,6 +863,7 @@ extension ContentView {
         let total = done + open
         let appointments = store.appointments(for: day)
         let holidayName = inMonth ? HolidayStore.holidayName(on: day, mode: holidaysMode) : nil
+        let openTasks = inMonth ? Self.openTaskTitles(in: store.bodies[key] ?? "") : []
 
         return VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -818,11 +872,15 @@ extension ContentView {
                         .foregroundColor(inMonth
                                          ? (isToday ? Color.dfAccent : (holidayName != nil ? Color.dfHoliday : Color.primary))
                                          : Color.secondary.opacity(0.4))
+                        // On a narrow grid the holiday label used to squeeze
+                        // the date itself onto two lines ("2" / "4").
+                        .fixedSize()
                     if let holidayName {
                         Text(holidayName)
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(Color.dfHoliday)
                             .lineLimit(1)
+                            .help(holidayName)
                     }
                     Spacer(minLength: 0)
                 }
@@ -866,7 +924,47 @@ extension ContentView {
                         }
                     }
                 }
+                // The fill only says "busy"; these say with what. A few
+                // open tasks under the appointments, and a done/total bar at
+                // the foot of the cell.
+                if inMonth && !openTasks.isEmpty {
+                    let room = max(1, 3 - min(appointments.count, 3))
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(openTasks.prefix(room).enumerated()), id: \.offset) { _, title in
+                            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                Image(systemName: "square")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.tertiary)
+                                Text(title)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        if openTasks.count > room {
+                            Text("+\(openTasks.count - room)")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
                 Spacer(minLength: 0)
+                if inMonth && total > 0 {
+                    HStack(spacing: 5) {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.primary.opacity(0.10))
+                                Capsule().fill(Color.dfDone.opacity(0.85))
+                                    .frame(width: geo.size.width * CGFloat(done) / CGFloat(total))
+                            }
+                        }
+                        .frame(height: 3)
+                        Text("\(done)/\(total)")
+                            .font(.system(size: 9, weight: .medium).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                }
             }
             .padding(10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -874,6 +972,7 @@ extension ContentView {
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .fill(heatColor(inMonth: inMonth, total: total))
             )
+            .help(inMonth && !openTasks.isEmpty ? openTasks.map { "☐ " + $0 }.joined(separator: "\n") : "")
             .overlay(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .stroke(isSelected ? Color.dfAccent.opacity(0.7) : Color.dfHairlineSoft,
@@ -890,13 +989,21 @@ extension ContentView {
             .animation(DS.Motion.snap, value: isSelected)
     }
 
+    /// Open (not done, not on-hold) task texts of a day, in page order.
+    private static func openTaskTitles(in body: String) -> [String] {
+        body.components(separatedBy: "\n").compactMap { line in
+            guard case let .task(status, text)? = MarkdownLine.parse(line), status.isOpen else { return nil }
+            return text
+        }
+    }
+
     /// Single warm-accent fill with opacity tied to activity density.
     /// Intentionally *not* sensitive to ratio — the month view's purpose is
     /// to convey rhythm, not success/failure. Value judgments belong in the
     /// rail's metric, not smeared across 42 cells.
     private func heatColor(inMonth: Bool, total: Int) -> Color {
-        if !inMonth { return Color.white.opacity(0.015) }
-        if total == 0 { return Color.white.opacity(0.025) }
+        if !inMonth { return Color.primary.opacity(0.015) }
+        if total == 0 { return Color.primary.opacity(0.025) }
         let intensity = min(1.0, Double(total) / 6.0)
         return Color.dfAccent.opacity(0.06 + intensity * 0.26)
     }
@@ -906,6 +1013,7 @@ extension ContentView {
     static let spanBarHeight: CGFloat = 14
     static let spanLaneGap: CGFloat = 2
     static let spanCellSpacing: CGFloat = 4
+    static let spanEndInset: CGFloat = 3
     // Cell padding 10 + ~14pt day digit + a little air.
     static let spanTopInset: CGFloat = 30
 
@@ -936,7 +1044,15 @@ extension ContentView {
         let lastIdx = gridDays.count - 1
         var laneEnds: [Int] = []
         var entries: [SpanLayout.Entry] = []
+        let gridFirst = cal.startOfDay(for: gridDays.first!)
+        let gridLast = cal.startOfDay(for: gridDays.last!)
         for apt in spans {
+            // A span entirely outside the grid (the week view passes the
+            // whole month's spans) has no cell to draw in; clamping it would
+            // paint it on the first or last day.
+            let spanStart = cal.startOfDay(for: apt.startAt)
+            let spanEnd = cal.startOfDay(for: apt.endAt ?? apt.startAt)
+            guard spanEnd >= gridFirst, spanStart <= gridLast else { continue }
             let startKey = DayflowDB.ymd(apt.startAt)
             let endKey = DayflowDB.ymd(apt.endAt ?? apt.startAt)
             // Spans starting before the grid clamp to 0; ending after, to lastIdx.
@@ -966,13 +1082,18 @@ extension ContentView {
                     let segEnd = min(entry.endIdx, weekEndIdx)
                     let col = segStart - weekStartIdx
                     let span = segEnd - segStart + 1
-                    let x = CGFloat(col) * (cellWidth + cellSpacing)
-                    let w = CGFloat(span) * cellWidth + CGFloat(span - 1) * cellSpacing
-                    let y = Self.spanTopInset + CGFloat(entry.lane) * (Self.spanBarHeight + Self.spanLaneGap)
                     // Only round the true ends so mid-week segments read
                     // as one continuous bar across week boundaries.
                     let isStart = segStart == entry.startIdx
                     let isEnd = segEnd == entry.endIdx
+                    // Back-to-back spans (Mon–Wed, then Thu–Fri) can share a
+                    // lane; a small inset at each true end keeps them from
+                    // reading as one long bar.
+                    let endInset = Self.spanEndInset
+                    let x = CGFloat(col) * (cellWidth + cellSpacing) + (isStart ? endInset : 0)
+                    let w = CGFloat(span) * cellWidth + CGFloat(span - 1) * cellSpacing
+                        - (isStart ? endInset : 0) - (isEnd ? endInset : 0)
+                    let y = Self.spanTopInset + CGFloat(entry.lane) * (Self.spanBarHeight + Self.spanLaneGap)
                     Text(entry.apt.title)
                         .font(.system(size: 10, weight: .semibold))
                         .lineLimit(1)

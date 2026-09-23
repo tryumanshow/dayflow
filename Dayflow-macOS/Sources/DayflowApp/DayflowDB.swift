@@ -88,6 +88,8 @@ final class DayflowDB: @unchecked Sendable {
     static let shared = DayflowDB()
 
     var db: OpaquePointer?
+    /// Where the database file lives; backups go in a folder beside it.
+    let path: String
 
     /// macOS standard per-app user-data location. Resolves to
     /// `~/Library/Application Support/Dayflow/dayflow.db` for the current
@@ -109,6 +111,7 @@ final class DayflowDB: @unchecked Sendable {
     }
 
     init(path: String = DayflowDB.defaultPath) {
+        self.path = path
         let parent = (path as NSString).deletingLastPathComponent
         // 0o700 on the directory + 0o600 on the DB file — markdown notes
         // are private, so other local users shouldn't see them if the home

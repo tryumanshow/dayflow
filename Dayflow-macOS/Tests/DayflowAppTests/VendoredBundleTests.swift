@@ -60,5 +60,8 @@ struct VendoredBundleTests {
         // …and nothing else opened up in the process.
         #expect(csp.contains("connect-src 'none'"))
         #expect(csp.contains("default-src 'none'"))
+        // Code-block highlighting needs WebAssembly, but never string eval.
+        #expect(csp.contains("'wasm-unsafe-eval'"))
+        #expect(!csp.contains("'unsafe-eval'"))
     }
 }

@@ -14,16 +14,43 @@ struct CarryoverItem: Identifiable, Equatable {
         let date: Date
         /// Index into `body.components(separatedBy: "\n")` of the source day.
         let lineIndex: Int
+        /// The task line plus every line nested under it, verbatim. The whole
+        /// block moves, so sub-bullets aren't left behind parentless — and it
+        /// is re-verified line for line before anything is deleted.
+        let lines: [String]
     }
 
     /// Normalized task text — also the dedupe key.
     let id: String
     /// Task text as written, minus the `- [ ] ` marker.
     let text: String
+    /// Heading the task sat under on its most recent day, if any. Carrying
+    /// puts it back under the same heading today.
+    let section: CarryoverSection?
+    /// Lines nested under the task on its most recent day, dedented so the
+    /// task itself sits at column 0.
+    let children: [String]
     let sources: [Source]
 
     var latestDate: Date {
         sources.map(\.date).max() ?? Date()
+    }
+}
+
+/// A markdown heading a task lives under (`## Work` → level 2, "Work").
+struct CarryoverSection: Equatable {
+    let level: Int
+    let title: String
+
+    var markdown: String { String(repeating: "#", count: level) + " " + title }
+
+    /// Headings match when their text matches, whatever the level or spacing.
+    func matches(_ other: CarryoverSection) -> Bool {
+        Self.key(title) == Self.key(other.title)
+    }
+
+    private static func key(_ s: String) -> String {
+        s.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }
 
@@ -35,13 +62,13 @@ extension DayflowStore {
     /// banner.
     nonisolated static let carryoverLookbackDays = 7
 
-    private static func normalize(_ text: String) -> String {
+    nonisolated private static func normalize(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     /// Split a body the same way `carryOver` will, so line indices captured
     /// here address the same lines there.
-    private static func lines(of body: String) -> [String] {
+    nonisolated private static func lines(of body: String) -> [String] {
         body.components(separatedBy: "\n")
     }
 
@@ -58,7 +85,7 @@ extension DayflowStore {
         let existing = Set(
             Self.lines(of: db.getDayNote(date: targetDay)).compactMap { line -> String? in
                 guard case let .task(_, text)? = MarkdownLine.parse(line) else { return nil }
-                return Self.normalize(text)
+                return Self.normalize(text)  // any status: don't re-offer a task already on today
             }
         )
 
@@ -67,86 +94,328 @@ extension DayflowStore {
         // Keep insertion order stable while grouping, so the result is
         // deterministic instead of dictionary-ordered.
         var order: [String] = []
-        var grouped: [String: (text: String, sources: [CarryoverItem.Source])] = [:]
+        var grouped: [String: (text: String, section: CarryoverSection?, children: [String], sources: [CarryoverItem.Source])] = [:]
 
         for (key, body) in bodies.sorted(by: { $0.key < $1.key }) {
             guard let date = DF.ymd.date(from: key) else { continue }
-            for (idx, line) in Self.lines(of: body).enumerated() {
-                guard case let .task(checked, text)? = MarkdownLine.parse(line), !checked else { continue }
-                let norm = Self.normalize(text)
-                guard !norm.isEmpty, !existing.contains(norm) else { continue }
-                let source = CarryoverItem.Source(date: date, lineIndex: idx)
-                if grouped[norm] == nil {
-                    order.append(norm)
-                    grouped[norm] = (text: text, sources: [source])
-                } else {
-                    grouped[norm]?.sources.append(source)
+            let lines = Self.lines(of: body)
+            var section: CarryoverSection?
+            // An open task nested inside another open task's block moves with
+            // that block; offering it separately would move it twice.
+            var coveredUntil = 0
+            for (idx, line) in lines.enumerated() where idx >= coveredUntil {
+                switch MarkdownLine.parse(line) {
+                case let .heading(level, title)?:
+                    section = CarryoverSection(level: level, title: title)
+                // Only actively-open tasks carry over. Done is finished;
+                // on-hold ("보류") is parked on purpose — neither should
+                // resurface in the "unfinished from earlier days" banner.
+                case let .task(status, text)? where status.isOpen:
+                    let norm = Self.normalize(text)
+                    guard !norm.isEmpty, !existing.contains(norm) else { continue }
+                    let end = Self.blockEnd(lines, from: idx)
+                    coveredUntil = end
+                    let block = Array(lines[idx..<end])
+                    let source = CarryoverItem.Source(date: date, lineIndex: idx, lines: block)
+                    let children = Self.dedent(Array(block.dropFirst()), by: Self.indentWidth(line))
+                    if grouped[norm] == nil {
+                        order.append(norm)
+                        grouped[norm] = (text: text, section: section, children: children, sources: [source])
+                    } else {
+                        // Days are walked oldest first: the latest day's
+                        // section and sub-items win.
+                        grouped[norm]?.section = section
+                        grouped[norm]?.children = children
+                        grouped[norm]?.sources.append(source)
+                    }
+                default:
+                    break
                 }
             }
         }
 
         return order.compactMap { norm -> CarryoverItem? in
             guard let g = grouped[norm] else { return nil }
-            return CarryoverItem(id: norm, text: g.text, sources: g.sources)
+            return CarryoverItem(id: norm, text: g.text, section: g.section, children: g.children, sources: g.sources)
         }
         .sorted { $0.latestDate > $1.latestDate }
     }
 
-    /// Move `items` onto `target`: append one `- [ ] text` per item, and strip
-    /// the originating checkbox line from every source day.
+    // MARK: - line blocks
+
+    /// Leading whitespace width, a tab counting as four columns (the editor's
+    /// nesting unit).
+    nonisolated static func indentWidth(_ line: String) -> Int {
+        var width = 0
+        for ch in line {
+            if ch == " " { width += 1 } else if ch == "\t" { width += 4 } else { break }
+        }
+        return width
+    }
+
+    /// End (exclusive) of the block that starts at `start`: the line itself
+    /// plus every following line indented deeper, blank lines inside the block
+    /// included, trailing blank lines not.
+    nonisolated static func blockEnd(_ lines: [String], from start: Int) -> Int {
+        let base = indentWidth(lines[start])
+        var end = start + 1
+        var probe = start + 1
+        while probe < lines.count {
+            let line = lines[probe]
+            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                probe += 1
+                continue
+            }
+            guard indentWidth(line) > base else { break }
+            probe += 1
+            end = probe
+        }
+        return end
+    }
+
+    /// Strip up to `width` columns of leading whitespace from each line.
+    nonisolated static func dedent(_ lines: [String], by width: Int) -> [String] {
+        lines.map { line in
+            var removed = 0
+            var idx = line.startIndex
+            while idx < line.endIndex, removed < width, line[idx] == " " || line[idx] == "\t" {
+                removed += line[idx] == "\t" ? 4 : 1
+                idx = line.index(after: idx)
+            }
+            return String(line[idx...])
+        }
+    }
+
+    /// Place carried tasks into `body`, each under the heading it came from.
     ///
-    /// Removal re-reads each source day and re-verifies that the line at the
-    /// recorded index is still the same unchecked task before deleting it. The
-    /// list the user is acting on was captured when the sheet opened; if the
-    /// day shifted underneath us (an edit landed, the app was left open across
-    /// midnight), a blind delete-by-index would take out the wrong line. A
-    /// stale source is skipped rather than guessed at.
+    /// - A heading already on the page takes the task at the end of its
+    ///   section (before the next heading of the same or higher level).
+    /// - A missing heading is appended, then the task under it.
+    /// - A task that had no heading goes at the end of the page.
+    /// - A blank page is first laid out with `seedSections`, the headings of
+    ///   the most recent earlier day, so a new day starts with the same
+    ///   structure even where nothing is left to carry.
+    nonisolated static func placeCarried(_ items: [CarryoverItem], into body: String, seedSections: [CarryoverSection]) -> String {
+        var lines = body.components(separatedBy: "\n")
+        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+
+        func headings() -> [(index: Int, section: CarryoverSection)] {
+            lines.enumerated().compactMap { idx, line in
+                guard indentWidth(line) == 0, case let .heading(level, title)? = MarkdownLine.parse(line) else { return nil }
+                return (idx, CarryoverSection(level: level, title: title))
+            }
+        }
+
+        if lines.isEmpty {
+            for section in seedSections {
+                if !lines.isEmpty { lines.append("") }
+                lines.append(section.markdown)
+            }
+        }
+
+        var unsectioned: [String] = []
+        for item in items {
+            let block = ["- [ ] \(item.text)"] + item.children
+            guard let section = item.section else {
+                unsectioned += block
+                continue
+            }
+            let all = headings()
+            if let pos = all.firstIndex(where: { $0.section.matches(section) }) {
+                let heading = all[pos]
+                var at = all[(pos + 1)...].first { $0.section.level <= heading.section.level }?.index ?? lines.count
+                while at > heading.index + 1, lines[at - 1].trimmingCharacters(in: .whitespaces).isEmpty { at -= 1 }
+                lines.insert(contentsOf: block, at: at)
+            } else {
+                if !lines.isEmpty { lines.append("") }
+                lines.append(section.markdown)
+                lines += block
+            }
+        }
+        lines += unsectioned
+        return lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Move `items` onto `target`: each task — with everything nested under
+    /// it — is placed under its heading today (see `placeCarried`), and the
+    /// same block is removed from every source day.
+    ///
+    /// Removal re-reads each source day and re-verifies that the lines at the
+    /// recorded index are still exactly the block that was offered before
+    /// deleting it. The list the user is acting on was captured when the sheet
+    /// opened; if the day shifted underneath us (an edit landed, the app was
+    /// left open across midnight), a blind delete-by-index would take out the
+    /// wrong lines. A stale source is skipped rather than guessed at.
     func carryOver(_ items: [CarryoverItem], into target: Date) {
         guard !items.isEmpty else { return }
         let cal = Calendar.current
         let targetDay = cal.startOfDay(for: target)
 
-        var byDay: [String: (date: Date, indices: Set<Int>, expected: [Int: String])] = [:]
+        typealias Removal = (index: Int, lines: [String], itemID: String, isLatest: Bool)
+        var byDay: [String: (date: Date, blocks: [Removal])] = [:]
         for item in items {
             for source in item.sources {
-                let key = DayflowDB.ymd(source.date)
                 // A source day must be strictly in the past; carrying a day
-                // onto itself would delete the line we just wrote.
+                // onto itself would delete the block we just wrote.
                 guard !cal.isDate(source.date, inSameDayAs: targetDay) else { continue }
-                var entry = byDay[key] ?? (date: source.date, indices: [], expected: [:])
-                entry.indices.insert(source.lineIndex)
-                entry.expected[source.lineIndex] = Self.normalize(item.text)
+                let key = DayflowDB.ymd(source.date)
+                var entry = byDay[key] ?? (date: source.date, blocks: [])
+                entry.blocks.append((source.lineIndex, source.lines, item.id, source == item.sources.last))
                 byDay[key] = entry
             }
         }
 
+        // The editor-document block of each item on its latest day: what lands
+        // today, styles intact. An item without one sends today markdown-only.
+        var carriedBlocks: [String: BlockNoteJSON.Block] = [:]
+
         for (_, entry) in byDay {
-            let body = db.getDayNote(date: entry.date)
-            let lines = Self.lines(of: body)
-            var kept: [String] = []
-            kept.reserveCapacity(lines.count)
-            for (idx, line) in lines.enumerated() {
-                if entry.indices.contains(idx),
-                   case let .task(checked, text)? = MarkdownLine.parse(line),
-                   !checked,
-                   Self.normalize(text) == entry.expected[idx] {
-                    continue  // the line we meant to move — drop it
+            let stored = db.getDayNoteFull(date: entry.date)
+            let original = Self.lines(of: stored.body)
+            var lines = original
+            var blocks = BlockNoteJSON.parse(stored.bodyJSON)
+            var removedPaths: [BlockNoteJSON.Path] = []
+            // Bottom-up so earlier indices stay valid as blocks come out.
+            for block in entry.blocks.sorted(by: { $0.index > $1.index }) {
+                let range = block.index..<(block.index + block.lines.count)
+                guard range.upperBound <= lines.count,
+                      Array(lines[range]) == block.lines,
+                      case let .task(status, _)? = MarkdownLine.parse(block.lines[0]),
+                      status.isOpen else { continue }  // the day changed underneath — skip, don't guess
+                lines.removeSubrange(range)
+                // Don't leave a double blank line where the block was.
+                let seam = range.lowerBound
+                if seam > 0, seam < lines.count,
+                   lines[seam - 1].trimmingCharacters(in: .whitespaces).isEmpty,
+                   lines[seam].trimmingCharacters(in: .whitespaces).isEmpty {
+                    lines.remove(at: seam)
                 }
-                kept.append(line)
+
+                // The same block in the editor's document: the addressed
+                // checklist item, holding exactly as many checklist items as
+                // the markdown block holds task lines.
+                if let doc = blocks,
+                   let path = BlockNoteJSON.checkItemPath(forLine: block.index, lines: original, blocks: doc),
+                   let node = BlockNoteJSON.block(at: path, in: doc),
+                   BlockNoteJSON.checkItemPaths([node]).count == BlockNoteJSON.taskLineCount(block.lines) {
+                    removedPaths.append(path)
+                    if block.isLatest { carriedBlocks[block.itemID] = node }
+                } else {
+                    blocks = nil
+                }
             }
-            guard kept.count != lines.count else { continue }
-            let newBody = kept.joined(separator: "\n")
-            db.saveDayNote(date: entry.date, body: newBody, bodyJSON: nil)
-            applyExternalEdit(date: entry.date, body: newBody)
+            guard lines.count != original.count else { continue }
+            var json: String?
+            if var doc = blocks {
+                for path in removedPaths.sorted(by: { $0.lexicographicallyPrecedes($1) }).reversed() {
+                    BlockNoteJSON.remove(at: path, in: &doc)
+                }
+                json = BlockNoteJSON.serialize(doc)
+            }
+            let newBody = lines.joined(separator: "\n")
+            db.saveDayNote(date: entry.date, body: newBody, bodyJSON: json)
+            applyExternalEdit(date: entry.date, body: newBody, json: json)
         }
 
-        var body = db.getDayNote(date: targetDay)
-        if !body.isEmpty && !body.hasSuffix("\n") { body.append("\n") }
-        for item in items {
-            body.append("- [ ] \(item.text)\n")
+        // Oldest first, in page order, so tasks land in the order they were written.
+        let ordered = items.sorted {
+            ($0.latestDate, $0.sources.last?.lineIndex ?? 0) < ($1.latestDate, $1.sources.last?.lineIndex ?? 0)
         }
-        db.saveDayNote(date: targetDay, body: body, bodyJSON: nil)
-        applyExternalEdit(date: targetDay, body: body)
+        let target = db.getDayNoteFull(date: targetDay)
+        let seeds = seedSections(before: targetDay)
+        let body = Self.placeCarried(ordered, into: target.body, seedSections: seeds)
+        let json = Self.placeCarriedJSON(ordered, blocks: carriedBlocks, into: target, seedSections: seeds)
+        db.saveDayNote(date: targetDay, body: body, bodyJSON: json)
+        applyExternalEdit(date: targetDay, body: body, json: json)
+    }
+
+    /// `placeCarried` on the editor's document: same placement rules, with
+    /// each task's original block (styles and nested items included). Nil
+    /// when a carried item has no block or today's JSON doesn't match its
+    /// markdown — today is then saved markdown-only.
+    nonisolated static func placeCarriedJSON(
+        _ items: [CarryoverItem],
+        blocks carried: [String: BlockNoteJSON.Block],
+        into target: (body: String, bodyJSON: String?),
+        seedSections: [CarryoverSection]
+    ) -> String? {
+        guard items.allSatisfy({ carried[$0.id] != nil }) else { return nil }
+        var doc: [BlockNoteJSON.Block]
+        if target.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            doc = seedSections.map { BlockNoteJSON.headingBlock(level: $0.level, title: $0.title) }
+        } else {
+            guard let parsed = BlockNoteJSON.parse(target.bodyJSON),
+                  BlockNoteJSON.checkItemPaths(parsed).count == BlockNoteJSON.taskLineCount(lines(of: target.body)) else { return nil }
+            doc = parsed
+        }
+
+        var unsectioned: [BlockNoteJSON.Block] = []
+        for item in items {
+            guard let block = carried[item.id] else { continue }
+            guard let section = item.section else {
+                unsectioned.append(block)
+                continue
+            }
+            let key = BlockNoteJSON.matchKey(section.title)
+            if let h = doc.firstIndex(where: { BlockNoteJSON.headingLevel($0) != nil && BlockNoteJSON.matchKey(BlockNoteJSON.text($0)) == key }) {
+                doc.insert(block, at: BlockNoteJSON.sectionEnd(doc, headingIndex: h))
+            } else {
+                doc.insert(contentsOf: [BlockNoteJSON.headingBlock(level: section.level, title: section.title), block],
+                           at: BlockNoteJSON.contentEnd(doc))
+            }
+        }
+        doc.insert(contentsOf: unsectioned, at: BlockNoteJSON.contentEnd(doc))
+        return BlockNoteJSON.serialize(doc)
+    }
+
+    /// Headings of the most recent earlier day (within the look-back window)
+    /// that has any — the structure a blank new day starts from.
+    private func seedSections(before target: Date) -> [CarryoverSection] {
+        let cal = Calendar.current
+        guard let start = cal.date(byAdding: .day, value: -Self.carryoverLookbackDays, to: target),
+              let end = cal.date(byAdding: .day, value: -1, to: target) else { return [] }
+        for (_, body) in db.loadDayNoteRange(start: start, end: end).sorted(by: { $0.key > $1.key }) {
+            let sections = Self.lines(of: body).compactMap { line -> CarryoverSection? in
+                guard Self.indentWidth(line) == 0, case let .heading(level, title)? = MarkdownLine.parse(line) else { return nil }
+                return CarryoverSection(level: level, title: title)
+            }
+            if !sections.isEmpty { return sections }
+        }
+        return []
+    }
+
+    // MARK: - on-hold list
+
+    /// A parked ("보류") task and the latest day it sits on.
+    struct OnHoldTask: Identifiable, Equatable {
+        let id: String
+        let text: String
+        let date: Date
+    }
+
+    /// How far back the Day rail looks for parked tasks. On-hold is excluded
+    /// from carry-over on purpose, so without this list a parked task simply
+    /// drops out of sight.
+    nonisolated static let onHoldLookbackDays = 30
+
+    /// On-hold tasks from the `lookbackDays` days up to and including
+    /// `date`, one per text (its latest day), newest first.
+    func onHoldTasks(upTo date: Date, lookbackDays: Int = DayflowStore.onHoldLookbackDays) -> [OnHoldTask] {
+        let cal = Calendar.current
+        let end = cal.startOfDay(for: date)
+        guard let start = cal.date(byAdding: .day, value: -lookbackDays, to: end) else { return [] }
+        var latest: [String: OnHoldTask] = [:]
+        for (key, body) in db.loadDayNoteRange(start: start, end: end) {
+            guard let day = DF.ymd.date(from: key) else { continue }
+            for line in Self.lines(of: body) {
+                guard case let .task(status, text)? = MarkdownLine.parse(line), status == .onHold else { continue }
+                let norm = Self.normalize(text)
+                guard !norm.isEmpty else { continue }
+                if let existing = latest[norm], existing.date >= day { continue }
+                latest[norm] = OnHoldTask(id: norm, text: text, date: day)
+            }
+        }
+        return latest.values.sorted { ($0.date, $0.text) > ($1.date, $1.text) }
     }
 
     // MARK: - banner dismissal

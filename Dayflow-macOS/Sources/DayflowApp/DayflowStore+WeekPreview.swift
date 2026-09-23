@@ -14,7 +14,7 @@ extension DayflowStore {
         let tasks: [PreviewTask]
     }
     enum PreviewItemKind {
-        case task(checked: Bool)
+        case task(status: TaskStatus)
         case bullet
     }
     struct PreviewTask: Identifiable {
@@ -24,10 +24,12 @@ extension DayflowStore {
         let sourceLineIndex: Int
         let depth: Int
 
-        var checked: Bool {
-            if case .task(let c) = kind { return c }
-            return false
+        var status: TaskStatus {
+            if case .task(let s) = kind { return s }
+            return .open
         }
+        var checked: Bool { status == .done }
+        var onHold: Bool { status == .onHold }
         var isTask: Bool {
             if case .task = kind { return true }
             return false
@@ -55,11 +57,11 @@ extension DayflowStore {
             switch parsed {
             case .heading(_, let text):
                 groups.append((text, []))
-            case .task(let checked, let text):
+            case .task(let status, let text):
                 var current = groups[groups.count - 1]
                 if current.tasks.count < Self.weekPreviewMaxTasksPerGroup {
                     current.tasks.append(PreviewTask(
-                        id: nextTaskID, text: text, kind: .task(checked: checked),
+                        id: nextTaskID, text: text, kind: .task(status: status),
                         sourceLineIndex: idx, depth: depth))
                     nextTaskID += 1
                 }
@@ -103,20 +105,33 @@ extension DayflowStore {
     /// no parser re-walk, no preview index → source index mapping.
     func toggleWeekTask(day: Date, sourceLineIndex: Int) {
         let key = DayflowDB.ymd(day)
-        let body = bodies[key] ?? db.getDayNote(date: day)
+        let stored = db.getDayNoteFull(date: day)
+        let body = bodies[key] ?? stored.body
         guard !body.isEmpty else { return }
-        var lines = body.components(separatedBy: "\n")
+        let original = body.components(separatedBy: "\n")
+        var lines = original
         guard lines.indices.contains(sourceLineIndex) else { return }
         let toggled = toggleTaskMarker(in: lines[sourceLineIndex])
         guard toggled != lines[sourceLineIndex] else { return }
         lines[sourceLineIndex] = toggled
 
+        // Flip the same item in the editor's document so the day keeps its
+        // colours; markdown-only (nil JSON) only when the two don't line up.
+        var json: String?
+        if body == stored.body,
+           var blocks = BlockNoteJSON.parse(stored.bodyJSON),
+           let path = BlockNoteJSON.checkItemPath(forLine: sourceLineIndex, lines: original, blocks: blocks),
+           case let .task(status, _)? = MarkdownLine.parse(toggled) {
+            BlockNoteJSON.update(at: path, in: &blocks) { BlockNoteJSON.setStatus(status, on: &$0) }
+            json = BlockNoteJSON.serialize(blocks)
+        }
+
         let newBody = lines.joined(separator: "\n")
-        db.saveDayNote(date: day, body: newBody, bodyJSON: nil)
+        db.saveDayNote(date: day, body: newBody, bodyJSON: json)
         bodies[key] = newBody
 
         if Calendar.current.isDate(day, inSameDayAs: selectedDate) {
-            setDayBuffers(md: newBody, json: nil, cacheKey: key)
+            setDayBuffers(md: newBody, json: json, cacheKey: key)
         }
     }
 }

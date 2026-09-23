@@ -12,6 +12,8 @@
 "nav.tooltip.toggle_rail_hide" = "사이드 패널 숨기기";
 "nav.tooltip.toggle_rail_show" = "사이드 패널 보이기";
 "nav.tooltip.search" = "전체 검색 (⌘⇧F)";
+"nav.tooltip.mode_shortcut" = "⌘%d";
+"nav.tooltip.theme" = "테마";
 
 /* Search */
 "search.placeholder" = "노트·약속·계획 검색";
@@ -19,6 +21,21 @@
 "search.empty" = "검색 결과가 없어요.";
 "search.footer" = "↑↓ 이동 · ↵ 열기 · esc 닫기";
 "search.count" = "결과 %d개";
+"menu.quick_throw" = "빠른 입력…";
+"menu.copy" = "복사";
+"menu.cut" = "잘라내기";
+"menu.paste" = "붙여넣기";
+"menu.paste_plain" = "서식 없이 붙여넣기";
+"menu.select_all" = "전체 선택";
+"menu.undo" = "실행 취소";
+"menu.redo" = "다시 실행";
+"menu.find" = "찾기…";
+"menu.search_all" = "모든 노트 검색…";
+"menu.zoom_in" = "에디터 확대";
+"menu.zoom_out" = "에디터 축소";
+"menu.zoom_reset" = "에디터 기본 크기";
+"menu.refresh" = "새로고침";
+"menu.generate_review" = "오늘 회고 생성";
 "menu.previous" = "이전";
 "menu.next" = "다음";
 "menu.today" = "오늘";
@@ -29,10 +46,17 @@
 "carryover.review" = "보기";
 "carryover.dismiss" = "오늘은 그만 보기";
 "carryover.title" = "안 끝난 할 일 이월";
-"carryover.hint" = "고른 항목은 오늘로 옮겨져. 원래 있던 날짜에서는 사라져.";
+"carryover.hint" = "고른 항목은 하위 항목까지 오늘의 같은 제목 아래로 옮겨져. 원래 있던 날짜에서는 사라져.";
 "carryover.select_all" = "전체 선택";
 "carryover.select_none" = "전체 해제";
 "carryover.confirm" = "%d개 이월";
+"carryover.subitems" = "하위 %d개";
+"onhold.header" = "보류 중 · %d";
+"onhold.open_day" = "보류해 둔 날짜로 이동";
+"day.done_of_total" = "%d / %d 완료";
+"day.section_untitled" = "제목 없음";
+"day.section_jump" = "“%@”(으)로 이동";
+"appointments.none_short" = "없음";
 
 /* Header labels */
 "header.day_format" = "yyyy년 M월 d일 (E)";
@@ -58,12 +82,21 @@
 "appointments.new" = "일정 추가";
 "appointments.close_form" = "닫기";
 "appointments.end_date_add" = "+ 종료일";
+"appointments.delete_confirm" = "“%@” 일정을 삭제할까?";
+"appointments.delete" = "삭제";
+"month.plan.delete_confirm" = "“%@” 섹션을 삭제할까?";
+"month.plan.delete_confirm_hint" = "저장된 이전 버전도 함께 지워져서 되돌릴 수 없어.";
+"settings.reset_default_confirm" = "시스템 프롬프트를 기본값으로 바꿀까?";
+"settings.delete_key_confirm" = "이 API 키를 키체인에서 지울까?";
+"gcal.disconnect_confirm" = "Google 캘린더 연결을 해제할까? 저장된 client secret도 지워져.";
+"appointments.span_progress" = "%2$d일 중 %1$d일째";
+"appointments.all_day_help" = "시간 없이 하루 종일 — 알림 없음";
 "appointments.end_date_remove" = "종료일 제거";
 "appointments.manage_in_month" = "월간 뷰에서 관리";
 "appointments.repeat.none" = "반복 없음";
-"appointments.repeat.weekly" = "매주";
-"appointments.repeat.monthly" = "매달";
-"appointments.repeat.help" = "이번 달에서 같은 요일/날짜에 모두 채우기";
+"appointments.repeat.weekly" = "매주 · 13주";
+"appointments.repeat.monthly" = "매달 · 12개월";
+"appointments.repeat.help" = "이 날짜부터 반복 일정을 만들어: 같은 요일로 13주, 또는 같은 날짜로 12개월";
 
 /* Week view */
 "week.footer.done" = "완료";
@@ -85,7 +118,10 @@
 "month.plan.history" = "이전 버전 보기...";
 "month.plan.history.title" = "이전 버전 (자동 백업)";
 "month.plan.history.empty" = "백업된 이전 버전이 없어요";
-"month.plan.history.hint" = "본문이 비어 있는 상태로 덮어써질 때마다 직전 버전이 자동 보관돼. 섹션당 최대 50개.";
+"month.plan.history.hint" = "편집하는 동안 최대 10분에 한 번, 그리고 내용이 비워지기 직전에는 항상 직전 버전이 자동 보관돼. 섹션당 최대 50개.";
+"month.plan.history.empty_body" = "(비어 있음)";
+"month.plan.history.reason.wipe" = "비워지기 직전";
+"month.plan.history.reason.edit" = "편집 전";
 "month.plan.history.restore" = "이 버전으로 복원";
 "month.plan.history.chars" = "자";
 "month.plan.history.select_hint" = "왼쪽에서 버전을 선택해.";
@@ -217,6 +253,18 @@
 "settings.start_date" = "시작 날짜";
 "settings.start_date.hint" = "Dayflow를 쓰기 시작한 날.";
 "settings.start_date.days_format" = "D+%d";
+"settings.theme" = "테마";
+"settings.theme.hint" = "모든 창의 배경 색. 페이퍼와 세피아는 밝은 테마야.";
+"theme.midnight" = "미드나잇";
+"theme.graphite" = "그래파이트";
+"theme.navy" = "네이비";
+"theme.paper" = "페이퍼";
+"theme.sepia" = "세피아";
+"settings.backup" = "백업";
+"settings.backup.hint" = "Dayflow가 켜져 있으면 하루 한 번 모든 노트의 스냅샷을 저장해. 최근 %d개만 남겨.";
+"settings.backup.latest" = "마지막 백업: %@";
+"settings.backup.none" = "아직 백업 없음";
+"settings.backup.open" = "Finder에서 보기";
 
 /* LLM errors */
 "llm.error.missing_api_key" = "%@ API 키가 없어. 메뉴 → Dayflow → Settings… 에서 등록해.";
@@ -239,3 +287,30 @@
 /* Review sections for connection test */
 "llm.test.system" = "You are a connectivity test. Respond with the single word: ok";
 "llm.test.user" = "ping";
+
+/* AI planner */
+"planner.title" = "AI 플래너";
+"planner.tooltip" = "AI로 계획 짜기";
+"planner.hint" = "할 일을 아래에 자유롭게 적어줘 — 한 줄에 하나든 통으로든. AI가 선택한 기간에 배분해줘.";
+"planner.dump_placeholder" = "예:\nK8s 프로덕션 서버 세팅\n블로그 첫 글 발행 (vLLM)\n이력서 다시 쓰기";
+"planner.start" = "시작";
+"planner.end" = "종료";
+"planner.generate" = "계획 생성";
+"planner.loading" = "생각 중…";
+"planner.questions_hint" = "계획 전에 몇 가지만 — 답하거나 건너뛰어도 돼.";
+"planner.answer" = "답변";
+"planner.answer_placeholder" = "답변 입력…";
+"planner.skip" = "그냥 이대로 짜줘";
+"planner.apply" = "노트에 적용";
+"planner.back" = "뒤로";
+"planner.replace_badge" = "기존 계획 교체";
+"planner.unassigned" = "이 기간에 못 넣은 것";
+"planner.generated_label" = "%@ 생성";
+"planner.system_prompt" = "너는 개인 캘린더 앱 안의 일정 플래너 어시스턴트다. 사용자가 할 일 덤프와 날짜 범위를 주며, 기존 일정(사용 불가 시간)이 제약 조건으로 붙을 수 있다.\n\n사용자가 덤프에 적은 태스크만 배치한다. 태스크를 지어내거나, 일정 등 다른 컨텍스트에서 할 일을 끌어오지 않는다 — 그것들은 적힌 태스크를 언제 할 수 있는지 제약하는 용도일 뿐이다.\n\n항상 주어진 스키마에 맞는 JSON(plan_response 툴 호출)으로만 응답한다 — status는 \"questions\" 또는 \"plan\".\n\n질문은 답이 계획을 실제로 바꿀 때만 한다 (우선순위, 마감, 소요 시간, 제약). 한 번에 최대 3개. 입력이 충분히 명확하면 바로 계획한다.\n\n계획할 때: 태스크 의존성을 지키고(선행 작업 먼저), 하루를 현실적으로 유지하고(일정 많은 날에 몰아넣지 않기), 다 못 넣으면 솔직하게 \"unassigned\"에 넣는다. 배치 근거와 가정한 내용을 \"rationale\"에 한두 문장으로 적는다. 날짜는 주어진 범위 안의 yyyy-MM-dd. 태스크 제목·노트·질문·rationale은 모두 한국어로 쓴다.\n\n사용자가 전달된 계획에 피드백을 보내면, 그에 맞게 수정하되 바꾸라고 하지 않은 부분은 유지한 완전한 계획(status \"plan\")을 다시 돌려준다.";
+"planner.system_prompt.single_day" = "범위가 하루다: 하루에 들어갈 것을 고르고 합리적인 순서로 배치하는 데 집중하고, 안 들어가는 건 잘라낸다.";
+"planner.system_prompt.multi_day" = "범위가 여러 날이다: 태스크를 날짜별로 배분하고, 의존 관계가 있는 작업의 순서를 지킨다.";
+"planner.feedback_placeholder" = "마음에 안 들면 바꿀 점을 알려줘…";
+"planner.revise" = "다시 짜줘";
+"planner.retry" = "다시 시도";
+"day.held_format" = "· 보류 %d";
+"editor.lang" = "ko";

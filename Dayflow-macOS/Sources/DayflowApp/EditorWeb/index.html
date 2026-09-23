@@ -19,8 +19,13 @@
   (`dayflow-asset://attachment/<name>`, see AttachmentStore), which is a
   different origin than `'self'`. Remote origins stay barred, so an `<img>`
   smuggled in through pasted HTML still cannot phone home.
+
+  `'wasm-unsafe-eval'` lets the code-block highlighter (shiki) compile its
+  bundled Oniguruma regex engine. It admits WebAssembly compilation only —
+  string `eval`/`new Function` stay blocked — and the module is inlined in the
+  vendored bundle, so nothing is fetched.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: dayflow-asset:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: dayflow-asset:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
 <link rel="stylesheet" href="dayflow-asset://editor/style.css">
 <style>
 html, body {
@@ -28,7 +33,7 @@ html, body {
     padding: 0;
     height: 100%;
     background: transparent;
-    color: rgba(255,255,255,0.92);
+    color: rgba(var(--ink),0.92);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui;
     -webkit-font-smoothing: antialiased;
 }
@@ -47,6 +52,25 @@ body {
     padding: 16px 8px 0 8px;
 }
 .bn-container { padding-bottom: 24px; }
+/* The default WebKit scrollbar drew a light track down the whole editor at
+   all times. Thin, and visible only while the pointer is over the editor. */
+#editor::-webkit-scrollbar { width: 8px; }
+#editor::-webkit-scrollbar-track { background: transparent; }
+#editor::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+#editor:hover::-webkit-scrollbar-thumb { background: rgba(var(--ink), 0.14); }
+#editor:hover::-webkit-scrollbar-thumb:hover { background: rgba(var(--ink), 0.24); }
+/* Same for a long code line's horizontal bar, which drew a light track
+   under every code block. */
+.bn-block-content[data-content-type="codeBlock"] pre::-webkit-scrollbar { height: 6px; }
+.bn-block-content[data-content-type="codeBlock"] pre::-webkit-scrollbar-track { background: transparent; }
+.bn-block-content[data-content-type="codeBlock"] pre::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.bn-block-content[data-content-type="codeBlock"]:hover pre::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
+/* Brief highlight on the heading the Day rail jumped to. */
+.dayflow-flash {
+    background: rgba(247, 140, 51, 0.12);
+    border-radius: 6px;
+    transition: background 0.6s ease;
+}
 /* Dayflow's own formatting strip. BlockNote's React-side toolbar
    component isn't loaded (we're on @blocknote/core only), so we
    build a minimal vanilla one that calls editor.toggleStyles /
@@ -63,12 +87,24 @@ body {
     row-gap: 6px;
     column-gap: 10px;
     padding: 6px 12px;
-    background: rgba(28, 28, 32, 0.7);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(var(--panel), 0.7);
+    border-bottom: 1px solid rgba(var(--ink), 0.06);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     font-size: 13px;
     user-select: none;
+    transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+/* Formatting only applies to a selection, so with none the bar recedes:
+   no panel, faint glyphs. It stays in place (a floating bar over the text
+   gets its clicks swallowed by BlockNote's overlays — see #dayflow-color-pop)
+   and comes back on selection, hover, or an open colour row. */
+body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
+    opacity: 0.3;
+    background: transparent;
+    border-bottom-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 #dayflow-toolbar .tb-group {
     display: inline-flex;
@@ -95,7 +131,7 @@ body {
     width: 14px;
     height: 3px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.22);
+    background: rgba(var(--ink), 0.22);
 }
 /* The swatch panel expands INSIDE the toolbar — it takes a full flex row and
    pushes the editor down, rather than floating over it.
@@ -139,12 +175,12 @@ body {
     height: 24px;
     padding: 0 6px;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.85);
+    color: rgba(var(--ink), 0.85);
     cursor: pointer;
     font-weight: 600;
 }
 #dayflow-toolbar button:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
 }
 #dayflow-toolbar button.active {
     background: rgba(247, 158, 51, 0.22);
@@ -160,15 +196,15 @@ body {
     height: 18px;
     padding: 0;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(var(--ink), 0.18);
 }
 #dayflow-toolbar .swatch.active {
     outline: 2px solid #f79e33;
     outline-offset: 1px;
 }
 #dayflow-toolbar .swatch-reset {
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.45);
+    background: rgba(var(--ink), 0.06);
+    color: rgba(var(--ink), 0.45);
     font-size: 12px;
     line-height: 16px;
     display: inline-flex;
@@ -182,11 +218,16 @@ body {
    variable drives the whole size ramp. */
 :root {
     --editor-font-size: 15px;
+    /* Theme palette as r,g,b triples, pushed from Swift by
+       dayflowSetTheme(); the defaults are the dark Midnight theme. */
+    --ink: 255, 255, 255;
+    --panel: 28, 28, 32;
+    --code-bg: rgba(255, 255, 255, 0.05);
 }
 /* BlockNote dark theme overrides */
 .bn-container, .bn-editor, .ProseMirror {
     background: transparent !important;
-    color: rgba(255,255,255,0.92) !important;
+    color: rgba(var(--ink),0.92) !important;
     outline: none !important;
     font-size: var(--editor-font-size) !important;
     line-height: 1.7 !important;
@@ -200,7 +241,7 @@ body {
 .bn-block-content[data-content-type="heading"][data-level="3"] {
     font-size: 1.2em !important; font-weight: 600 !important;
 }
-.bn-inline-content { color: rgba(255,255,255,0.92); }
+.bn-inline-content { color: rgba(var(--ink),0.92); }
 /* BlockNote stores a pixel `previewWidth` (512 by default) on image blocks.
    The Month-plan rail is ~300px wide, so honour the stored width only up to
    the container and let the image scale down rather than overflow. */
@@ -214,7 +255,7 @@ body {
 .bn-block .bn-block-content { padding-left: 0 !important; }
 .bn-block-content[data-content-type="bulletListItem"]::before,
 .bn-block-content[data-content-type="numberedListItem"]::before {
-    color: rgba(255,255,255,0.45) !important;
+    color: rgba(var(--ink),0.45) !important;
 }
 /* check list item — block-note renders an actual <input type="checkbox"> */
 .bn-block-content[data-content-type="checkListItem"] input[type="checkbox"] {
@@ -223,31 +264,70 @@ body {
     height: 16px !important;
 }
 .bn-block-content[data-content-type="checkListItem"][data-checked="true"] .bn-inline-content {
-    color: rgba(255,255,255,0.45) !important;
+    color: rgba(var(--ink),0.45) !important;
     text-decoration: line-through;
 }
+/* On-hold ("보류"): a parked task carries the reserved blue highlight on its
+   text (set via the right-click status menu). Tint the checkbox to match so
+   the whole row reads as fluorescent blue. :has() is supported in the macOS
+   14 WKWebView; if it ever isn't, the blue text highlight still conveys it. */
+.bn-block-content[data-content-type="checkListItem"]:has([data-background-color="blue"]) input[type="checkbox"] {
+    accent-color: #26a6ff !important;
+}
+/* The small floating status menu shown on right-click of a checkbox. */
+#dayflow-status-menu {
+    position: fixed;
+    z-index: 9999;
+    min-width: 132px;
+    background: rgb(var(--panel));
+    border: 1px solid rgba(var(--ink),0.12);
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    font-size: 13px;
+    color: rgba(var(--ink), 0.92);
+    user-select: none;
+}
+#dayflow-status-menu .item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+#dayflow-status-menu .item:hover { background: rgba(var(--ink),0.08); }
+#dayflow-status-menu .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    flex: 0 0 auto;
+}
+#dayflow-status-menu .dot.open { border: 1.5px solid rgba(var(--ink), 0.5); }
+#dayflow-status-menu .dot.done { background: #4cc66e; }
+#dayflow-status-menu .dot.hold { background: #26a6ff; }
 .bn-block-content:not([data-content-type="codeBlock"]) code,
 .bn-block-content[data-content-type="codeBlock"] {
     font-family: ui-monospace, "SF Mono", monospace;
     font-size: 13px;
 }
 .bn-block-content:not([data-content-type="codeBlock"]) code {
-    background: rgba(255,255,255,0.08);
+    background: rgba(var(--ink),0.08);
     color: #f79e33;
     border-radius: 4px;
     padding: 1px 5px;
 }
 .bn-block-content[data-content-type="codeBlock"] {
-    background: rgba(255,255,255,0.05);
+    /* Always a dark block: the highlighter's palette is github-dark, which
+       would wash out on a light theme's page. */
+    background: var(--code-bg);
     border-radius: 6px;
     padding: 10px 12px;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255, 255, 255, 0.85);
     line-height: 1.5;
 }
 .bn-block-content[data-content-type="quote"] {
     border-left: 3px solid rgba(247, 158, 51, 0.6);
     padding-left: 12px;
-    color: rgba(255,255,255,0.75);
+    color: rgba(var(--ink),0.75);
 }
 /* Table dark theme */
 .bn-block-content[data-content-type="table"] table {
@@ -256,12 +336,12 @@ body {
 }
 .bn-block-content[data-content-type="table"] td,
 .bn-block-content[data-content-type="table"] th {
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(var(--ink), 0.12);
     padding: 6px 10px;
     min-width: 60px;
 }
 .bn-block-content[data-content-type="table"] th {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     font-weight: 600;
 }
 .bn-block-content[data-content-type="table"] td:focus-within {
@@ -278,7 +358,7 @@ body {
 .bn-side-menu { display: none !important; }
 /* placeholder */
 .bn-block-content[data-is-empty-and-focused="true"]::before {
-    color: rgba(255,255,255,0.25) !important;
+    color: rgba(var(--ink),0.25) !important;
 }
 /* Custom slash command menu. Floats above the editor near the
    caret, gets its own filterable input row, dark-themed. */
@@ -289,13 +369,13 @@ body {
     max-width: 320px;
     max-height: 360px;
     overflow: hidden;
-    background: rgba(28, 28, 32, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(var(--panel), 0.98);
+    border: 1px solid rgba(var(--ink), 0.1);
     border-radius: 10px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     padding: 4px;
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(var(--ink), 0.9);
     display: flex;
     flex-direction: column;
 }
@@ -319,7 +399,7 @@ body {
     width: 20px;
     text-align: center;
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(var(--ink), 0.55);
 }
 #dayflow-slash-menu .sm-item.selected .sm-icon {
     color: #f79e33;
@@ -329,12 +409,12 @@ body {
 }
 #dayflow-slash-menu .sm-item .sm-sub {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(var(--ink), 0.4);
     margin-left: auto;
 }
 #dayflow-slash-menu .sm-empty {
     padding: 10px;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(var(--ink), 0.4);
     text-align: center;
     font-size: 12px;
 }
@@ -342,13 +422,13 @@ body {
 #dayflow-grid-picker {
     position: fixed;
     z-index: 1001;
-    background: rgba(28, 28, 32, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(var(--panel), 0.98);
+    border: 1px solid rgba(var(--ink), 0.1);
     border-radius: 10px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     padding: 10px;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(var(--ink), 0.7);
     user-select: none;
 }
 #dayflow-grid-picker .gp-grid {
@@ -362,7 +442,7 @@ body {
     width: 24px;
     height: 24px;
     border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(var(--ink), 0.12);
     background: transparent;
     cursor: pointer;
     transition: background 0.1s;
@@ -373,7 +453,7 @@ body {
 }
 #dayflow-grid-picker .gp-label {
     text-align: center;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(var(--ink), 0.5);
     font-weight: 600;
 }
 /* Find bar — overlays the editor, toggled by ⌘F. */
@@ -385,8 +465,8 @@ body {
     display: none;
     align-items: center;
     gap: 4px;
-    background: rgba(28, 28, 32, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(var(--panel), 0.98);
+    border: 1px solid rgba(var(--ink), 0.12);
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     padding: 6px;
@@ -396,13 +476,13 @@ body {
 #dayflow-find-bar input {
     all: unset;
     width: 180px;
-    color: rgba(255, 255, 255, 0.92);
+    color: rgba(var(--ink), 0.92);
     padding: 4px 8px;
     border-radius: 5px;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     transition: background 0.15s;
 }
-#dayflow-find-bar input::placeholder { color: rgba(255, 255, 255, 0.35); }
+#dayflow-find-bar input::placeholder { color: rgba(var(--ink), 0.35); }
 #dayflow-find-bar input.miss { background: rgba(239, 68, 68, 0.25); }
 #dayflow-find-bar button {
     all: unset;
@@ -412,11 +492,11 @@ body {
     align-items: center;
     justify-content: center;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(var(--ink), 0.8);
     cursor: pointer;
     font-size: 12px;
 }
-#dayflow-find-bar button:hover { background: rgba(255, 255, 255, 0.1); }
+#dayflow-find-bar button:hover { background: rgba(var(--ink), 0.1); }
 /* CSS Custom Highlights — match decoration without any DOM or
    selection mutation. WebKit 17.2+ (macOS 14.2+) required; on
    older systems highlights silently no-op but find still
@@ -449,7 +529,7 @@ body {
     right: 0;
     top: 50%;
     height: 1px;
-    background: rgba(255, 255, 255, 0.25);
+    background: rgba(var(--ink), 0.25);
     transform: translateY(-50%);
     pointer-events: none;
 }
@@ -485,7 +565,10 @@ body {
 </div>
 <div id="editor"></div>
 <script type="module">
-import { BlockNoteEditor } from "dayflow-asset://editor/blocknote-entry.mjs";
+import { BlockNoteEditor, locales } from "dayflow-asset://editor/blocknote-entry.mjs";
+import {
+    blockNoteHtmlToBlocks, blocksToMarkdown, htmlHasBlockStructure, htmlToBlocks, markdownToBlocks, plainTextShape,
+} from "dayflow-asset://editor/app/clipboard.mjs";
 
 let editor = null;
 let lastEmitted = "";
@@ -576,31 +659,239 @@ async function uploadFile(file) {
     return promise;
 }
 
-// BlockNote's paste plugin checks clipboard flavours in the order
-// [vscode-editor-data, blocknote/html, text/html, text/plain, Files] and stops
-// at the first hit. Browsers put *both* `text/html` and the image bytes on the
-// clipboard when you copy a picture off a page, so `text/html` wins and the
-// editor ends up with `<img src="https://…">`: a note that renders nothing (the
-// page CSP refuses remote images, by design) and silently depends on someone
-// else's server. Whenever the clipboard actually carries image bytes, claim the
-// paste first and store them in the attachments directory instead.
+// Paste pipeline. BlockNote's own paste plugin picks the first flavour in
+// [vscode-editor-data, blocknote/html, text/html, text/plain, Files] and hands
+// it to its converters, which lose list nesting (see app/clipboard.mjs). This
+// capture-phase handler claims the paste whenever the clipboard carries
+// structure, converts it with our converters, and inserts blocks at the caret.
+// Anything structureless (a word, a sentence) still goes through BlockNote so
+// it merges into the caret's line the usual way.
 //
-// `stopImmediatePropagation` in the capture phase is what keeps BlockNote's own
+// `stopImmediatePropagation` in the capture phase is what keeps BlockNote's
 // handler — registered on the ProseMirror node, i.e. later — from running too.
-function installImagePasteHandler() {
+function installPasteHandler() {
     document.addEventListener('paste', (e) => {
         if (!editor || !e.clipboardData) return;
         // A paste aimed at the find field is not a paste into the document.
         if (document.activeElement === findInputEl) return;
-        const files = Array.from(e.clipboardData.files || []);
-        const images = files.filter((f) => f.type && f.type.startsWith('image/'));
-        // Non-image files still belong to BlockNote: it picks the right block
-        // type (video/audio/file) from its own schema.
-        if (images.length === 0 || images.length !== files.length) return;
+        if (!editorRootEl || !editorRootEl.contains(e.target)) return;
+        let plan = null;
+        try { plan = planPaste(e.clipboardData); } catch (err) { console.log('paste plan error: ' + err.message); }
+        if (!plan) return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        insertImageFiles(images);
+        if (plan.kind === 'images') {
+            insertImageFiles(plan.files);
+            return;
+        }
+        try {
+            insertPastedBlocks(plan.blocks);
+        } catch (err) {
+            console.log('paste insert error: ' + err.message);
+        }
+        scheduleEmit();
     }, true);
+}
+
+function planPaste(data) {
+    const files = Array.from(data.files || []);
+    const images = files.filter((f) => f.type && f.type.startsWith('image/'));
+    const html = data.getData('text/html');
+    const text = data.getData('text/plain');
+    const htmlDoc = html ? new DOMParser().parseFromString(html, 'text/html') : null;
+    const htmlText = htmlDoc ? (htmlDoc.body.textContent || '').trim() : '';
+
+    // Browsers put *both* `<img src="https://…">` HTML and the image bytes on
+    // the clipboard when you copy a picture, and a remote `src` renders nothing
+    // under the page CSP — so store the bytes instead. But Office, Keynote and
+    // Numbers attach a rendered image to every *text* copy too; when there is
+    // text to paste, the text is what the user meant. Non-image files still
+    // belong to BlockNote, which picks the right block type for them.
+    if (images.length && images.length === files.length && !text.trim() && !htmlText) {
+        return { kind: 'images', files: images };
+    }
+
+    const caret = caretContext();
+    // Code blocks take text verbatim; table cells hold inline content only.
+    if (caret.inCode || caret.inTable) return null;
+
+    // Our own copy: the internal flavour is the only lossless one.
+    const internal = data.getData('blocknote/html');
+    if (internal) {
+        const blocks = blockNoteHtmlToBlocks(new DOMParser().parseFromString(internal, 'text/html'));
+        return blocks && blocks.length ? { kind: 'blocks', blocks } : null;
+    }
+
+    // VS Code tags its copies with the source language: markdown and plain
+    // text are prose, anything else becomes a code block. (BlockNote's own
+    // handler splices the code into HTML unescaped, so `a < b` or JSX
+    // loses text, and the result parses as a paragraph anyway.)
+    if (data.types.includes('vscode-editor-data')) {
+        let mode = '';
+        try { mode = JSON.parse(data.getData('vscode-editor-data')).mode || ''; } catch (err) {}
+        if (mode && mode !== 'markdown' && mode !== 'plaintext') {
+            if (!text) return null;
+            const code = text.replace(/\r\n?/g, '\n');
+            return { kind: 'blocks', blocks: [{ type: 'codeBlock', props: { language: mode }, content: [{ type: 'text', text: code, styles: {} }], children: [] }] };
+        }
+        return planPlainText(text, caret);
+    }
+    if (htmlDoc && htmlText) {
+        if (!htmlHasBlockStructure(htmlDoc)) return null;
+        const blocks = htmlToBlocks(htmlDoc);
+        return blocks.length ? { kind: 'blocks', blocks } : null;
+    }
+    return planPlainText(text, caret);
+}
+
+function planPlainText(text, caret) {
+    const shape = plainTextShape(text);
+    if (shape === 'blocks' || (shape === 'marker-line' && caret.blankBlock)) {
+        const blocks = markdownToBlocks(text);
+        return blocks.length ? { kind: 'blocks', blocks } : null;
+    }
+    return null;
+}
+
+function caretContext() {
+    const { $from } = editor._tiptapEditor.state.selection;
+    let inTable = false;
+    for (let d = $from.depth; d > 0; d--) {
+        if ($from.node(d).type.name === 'table') inTable = true;
+    }
+    const cursor = editor.getTextCursorPosition();
+    return {
+        inCode: $from.parent.type.name === 'codeBlock',
+        inTable,
+        blankBlock: isBlankBlock(cursor.block),
+    };
+}
+
+// Once the code highlighter has loaded, a code block whose language it has
+// no grammar for throws — the whole insert or note load fails. Map every
+// incoming language onto a supported id (BlockNote's list carries the common
+// aliases: py, sh, typescriptreact…) and fall back to plain text.
+const CODE_LANGUAGE_ALIASES = { javascriptreact: 'jsx', plaintext: 'text' };
+let codeLanguageIds = null;
+function resolveCodeLanguage(language) {
+    if (!codeLanguageIds) {
+        const ext = editor._tiptapEditor.extensionManager.extensions.find((e) => e.name === 'codeBlock');
+        codeLanguageIds = new Map();
+        for (const lang of (ext && ext.options.supportedLanguages) || []) {
+            codeLanguageIds.set(lang.id, lang.id);
+            for (const alias of lang.match || []) codeLanguageIds.set(alias, lang.id);
+        }
+    }
+    const key = String(language || '').toLowerCase();
+    return codeLanguageIds.get(CODE_LANGUAGE_ALIASES[key] || key) || 'text';
+}
+function normalizeCodeLanguages(blocks) {
+    for (const b of blocks) {
+        if (b.type === 'codeBlock' && b.props && b.props.language) {
+            b.props.language = resolveCodeLanguage(b.props.language);
+        }
+        if (b.children && b.children.length) normalizeCodeLanguages(b.children);
+    }
+    return blocks;
+}
+
+// A block the paste may simply take over: inline-content block with no text
+// (ZWSPs from the IME workaround don't count) and nothing nested under it.
+function isBlankBlock(block) {
+    if (!block || !Array.isArray(block.content)) return false;
+    if (block.children && block.children.length) return false;
+    return block.content.every((c) => c.type === 'text' && !c.text.replace(/​/g, ''));
+}
+
+// A whole-note copy ends with BlockNote's always-present empty trailing
+// paragraph; it is not content the user meant to carry over.
+function trimTrailingBlank(blocks) {
+    const out = blocks.slice();
+    while (out.length > 1 && out[out.length - 1].type === 'paragraph' && isBlankBlock(out[out.length - 1])) out.pop();
+    return out;
+}
+
+function lastLeaf(block) {
+    let b = block;
+    while (b.children && b.children.length) b = b.children[b.children.length - 1];
+    return b;
+}
+
+// Insert pasted blocks as siblings of the caret's block, the way Notion does:
+// replace a blank line, go before/after a line when the caret sits at its
+// edge, or split the line at the caret and drop the blocks in between.
+function insertPastedBlocks(pasted) {
+    const blocks = normalizeCodeLanguages(trimTrailingBlank(pasted));
+    const tt = editor._tiptapEditor;
+    if (!tt.state.selection.empty) tt.commands.deleteSelection();
+
+    const current = editor.getTextCursorPosition().block;
+    const { $from } = tt.state.selection;
+    let inserted;
+    if (isBlankBlock(current)) {
+        inserted = editor.replaceBlocks([current], blocks).insertedBlocks;
+    } else if ($from.parentOffset === $from.parent.content.size) {
+        inserted = editor.insertBlocks(blocks, current, 'after');
+    } else if ($from.parentOffset === 0) {
+        inserted = editor.insertBlocks(blocks, current, 'before');
+    } else {
+        // Depth 2 splits both the block content and its blockContainer, so
+        // the tail becomes a sibling block (keeping any nested children).
+        tt.view.dispatch(tt.state.tr.split($from.pos, 2));
+        inserted = editor.insertBlocks(blocks, editor.getTextCursorPosition().block, 'before');
+    }
+    if (!inserted || !inserted.length) return;
+    try {
+        editor.setTextCursorPosition(lastLeaf(inserted[inserted.length - 1]), 'end');
+    } catch (err) {
+        // Tables and images have no text caret; leave the selection where it is.
+    }
+}
+
+// ⌘⇧V: the text exactly as written, one paragraph per line, no markdown or
+// HTML reading. ProseMirror's own plain-text path; our paste handler listens
+// for DOM paste events and never sees it.
+window.dayflowPastePlainText = function(text) {
+    if (!editor || typeof text !== 'string' || !text) return;
+    try {
+        editor._tiptapEditor.view.pasteText(text);
+        scheduleEmit();
+    } catch (err) {
+        console.log('plain paste error: ' + err.message);
+    }
+};
+
+// BlockNote writes the plain-text flavour as a loose markdown list (`*   a`,
+// a blank line between items). Rewrite it as a tight list other apps read
+// cleanly. Runs in the bubble phase, after BlockNote has filled the
+// clipboard, and derives the blocks from its internal HTML so the plain text
+// covers exactly the copied range (partial first/last lines included).
+function installCopyHandler() {
+    const rewritePlainText = (e) => {
+        if (!e.clipboardData || !editorRootEl || !editorRootEl.contains(e.target)) return;
+        try {
+            const html = e.clipboardData.getData('blocknote/html');
+            if (!html) return;
+            const blocks = blockNoteHtmlToBlocks(new DOMParser().parseFromString(html, 'text/html'));
+            if (!blocks) return;
+            e.clipboardData.setData('text/plain', blocksToMarkdown(trimTrailingBlank(blocks)));
+        } catch (err) {
+            console.log('copy rewrite error: ' + err.message);
+        }
+    };
+    document.addEventListener('copy', rewritePlainText);
+    document.addEventListener('cut', rewritePlainText);
+
+    // With nothing selected, BlockNote still clears the clipboard and writes
+    // empty strings, so a stray ⌘C (or ⌘X) wipes whatever was just copied
+    // from another app. Keep BlockNote out of it; the native no-op copy of an
+    // empty selection leaves the pasteboard alone.
+    const skipEmptySelection = (e) => {
+        if (!editor || !editorRootEl || !editorRootEl.contains(e.target)) return;
+        if (editor._tiptapEditor.state.selection.empty) e.stopImmediatePropagation();
+    };
+    document.addEventListener('copy', skipEmptySelection, true);
+    document.addEventListener('cut', skipEmptySelection, true);
 }
 
 async function insertImageFiles(files) {
@@ -618,135 +909,6 @@ async function insertImageFiles(files) {
         }
     }
     scheduleEmit();
-}
-
-// Line-based markdown parser. BlockNote 0.15.11's tryParseMarkdownToBlocks
-// chokes on GFM task lists (`- [ ] foo` becomes [empty checkListItem, "foo"
-// paragraph]), so we parse ourselves. Indentation (2-space unit) turns into
-// BlockNote block children, which is exactly how cross-list-type nesting
-// works in BlockNote — a bulletListItem can have checkListItem children and
-// vice versa, all within the same `blockContainer` tree.
-function makeCodeBlock(lines) {
-    return {
-        type: 'codeBlock',
-        props: {},
-        content: [{ type: 'text', text: lines.join('\n'), styles: {} }],
-        children: [],
-    };
-}
-
-/// Returns one image block per `![name](url)` token when `text` consists of
-/// nothing else, otherwise null (so `![x](y)` inside a sentence stays prose).
-function matchImageOnlyLine(text) {
-    const token = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
-    const blocks = [];
-    let cursor = 0;
-    let m;
-    while ((m = token.exec(text)) !== null) {
-        if (m.index !== cursor) return null;
-        cursor = token.lastIndex;
-        blocks.push({ type: 'image', props: { url: m[2], name: m[1] }, children: [] });
-    }
-    if (blocks.length === 0 || cursor !== text.length) return null;
-    return blocks;
-}
-
-function mdToBlocks(md) {
-    const lines = (md || '').replace(/\r\n?/g, '\n').split('\n');
-    const root = { children: [] };
-    const stack = [{ indent: -1, block: root }];
-    let inCodeBlock = false;
-    let codeLines = [];
-    for (const raw of lines) {
-        // Skip HTML comments — no block representation in BlockNote.
-        if (!inCodeBlock && /^\s*<!--.*-->\s*$/.test(raw)) continue;
-        // Fenced code block handling (```...```)
-        if (raw.trim().startsWith('```')) {
-            if (!inCodeBlock) {
-                inCodeBlock = true;
-                codeLines = [];
-                continue;
-            } else {
-                inCodeBlock = false;
-                const block = makeCodeBlock(codeLines);
-                while (stack.length > 1) stack.pop();
-                stack[stack.length - 1].block.children.push(block);
-                continue;
-            }
-        }
-        if (inCodeBlock) {
-            codeLines.push(raw);
-            continue;
-        }
-        if (!raw.trim()) continue;
-        const leading = raw.match(/^(\s*)/)[0].length;
-        const indent = Math.floor(leading / 2);
-        const text = raw.slice(leading);
-        let block;
-        let m;
-        // Images. `blocksToMarkdownLossy` writes each image block as
-        // `![name](url)` and runs consecutive ones together on a single line,
-        // so a line is an image line when it is *nothing but* image tokens.
-        // The alt slot carries `props.name` (the original file name), not the
-        // caption — markdown has nowhere to put a caption. Parsing these keeps
-        // images alive for notes that only ever kept their markdown body
-        // (backups, rows predating `body_json`).
-        const imageTokens = matchImageOnlyLine(text);
-        if (imageTokens) {
-            while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
-            for (const token of imageTokens) {
-                stack[stack.length - 1].block.children.push(token);
-            }
-            stack.push({ indent, block: imageTokens[imageTokens.length - 1] });
-            continue;
-        }
-        if ((m = text.match(/^(#{1,3})\s+(.*)$/))) {
-            block = {
-                type: 'heading',
-                props: { level: m[1].length },
-                content: [{ type: 'text', text: m[2], styles: {} }],
-                children: [],
-            };
-        } else if ((m = text.match(/^[-*]\s+\[([ xX])\]\s+(.*)$/))) {
-            block = {
-                type: 'checkListItem',
-                props: { checked: m[1].toLowerCase() === 'x' },
-                content: [{ type: 'text', text: m[2], styles: {} }],
-                children: [],
-            };
-        } else if ((m = text.match(/^[-*]\s+(.*)$/))) {
-            block = {
-                type: 'bulletListItem',
-                props: {},
-                content: [{ type: 'text', text: m[1], styles: {} }],
-                children: [],
-            };
-        } else if ((m = text.match(/^\d+\.\s+(.*)$/))) {
-            block = {
-                type: 'numberedListItem',
-                props: {},
-                content: [{ type: 'text', text: m[1], styles: {} }],
-                children: [],
-            };
-        } else {
-            block = {
-                type: 'paragraph',
-                props: {},
-                content: [{ type: 'text', text: text, styles: {} }],
-                children: [],
-            };
-        }
-        while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-            stack.pop();
-        }
-        stack[stack.length - 1].block.children.push(block);
-        stack.push({ indent, block });
-    }
-    // Flush unclosed fenced code block at EOF
-    if (inCodeBlock && codeLines.length > 0) {
-        root.children.push(makeCodeBlock(codeLines));
-    }
-    return root.children;
 }
 
 // `jsonText` arrives as a JSON string (Swift passes a quoted
@@ -770,7 +932,7 @@ window.dayflowSetContent = async function(md, jsonText) {
             }
         }
         if (!blocks) {
-            blocks = mdToBlocks(md || '');
+            blocks = markdownToBlocks(md || '');
         }
         // Replace blocks that are just HTML comments (e.g. "<!---->")
         // with empty paragraphs to preserve visual spacing.
@@ -786,7 +948,7 @@ window.dayflowSetContent = async function(md, jsonText) {
         if (blocks.length === 0) {
             blocks.push({ type: 'paragraph', props: {}, content: [], children: [] });
         }
-        editor.replaceBlocks(editor.document, blocks);
+        editor.replaceBlocks(editor.document, normalizeCodeLanguages(blocks));
         lastEmitted = md;
         lastEmittedJSON = typeof jsonText === 'string' ? jsonText : "";
         applyHrStyling();
@@ -798,6 +960,42 @@ window.dayflowSetContent = async function(md, jsonText) {
     }
 };
 
+// An on-hold checkListItem is unchecked and carries the reserved blue
+// background on its text. `blocksToMarkdownLossy` can't express that (it
+// drops color and writes `- [ ]`), so we re-derive `- [~]` from the
+// document after the fact.
+function isOnHoldBlock(b) {
+    if (b.type !== 'checkListItem' || (b.props && b.props.checked)) return false;
+    const content = b.content || [];
+    return content.some(r => r && r.type === 'text' && r.styles && r.styles.backgroundColor === 'blue');
+}
+function collectCheckboxHoldFlags(blocks, out) {
+    for (const b of blocks) {
+        if (b.type === 'checkListItem') out.push(isOnHoldBlock(b));
+        if (b.children && b.children.length) collectCheckboxHoldFlags(b.children, out);
+    }
+}
+// Rewrite the Nth `[ ]` checkbox line to `[~]` when the Nth checkListItem
+// (document order) is on-hold. blocksToMarkdownLossy emits checkboxes in
+// the same depth-first order collectCheckboxHoldFlags walks, so the two
+// line up 1:1. If the counts ever disagree, bail rather than corrupt.
+function reMarkOnHold(md, doc) {
+    const flags = [];
+    collectCheckboxHoldFlags(doc, flags);
+    if (!flags.some(Boolean)) return md;
+    const lines = md.split('\n');
+    const checkboxLineIdx = [];
+    for (let i = 0; i < lines.length; i++) {
+        if (/^(\s*[-*+]\s+)\[[ xX]\]/.test(lines[i])) checkboxLineIdx.push(i);
+    }
+    if (checkboxLineIdx.length !== flags.length) return md;
+    for (let n = 0; n < flags.length; n++) {
+        if (!flags[n]) continue;
+        lines[checkboxLineIdx[n]] = lines[checkboxLineIdx[n]].replace(/^(\s*[-*+]\s+)\[ \]/, '$1[~]');
+    }
+    return lines.join('\n');
+}
+
 async function emitCurrentContent() {
     if (!editor) return;
     try {
@@ -808,6 +1006,7 @@ async function emitCurrentContent() {
         const ZWSP = '\u200B';
         if (md && md.indexOf(ZWSP) !== -1) md = md.split(ZWSP).join('');
         if (json.indexOf(ZWSP) !== -1) json = json.split(ZWSP).join('');
+        md = reMarkOnHold(md, editor.document);
         postChange(md, json);
     } catch (e) {}
 }
@@ -903,12 +1102,14 @@ function toggleColorPop(prop) {
         if (row) row.hidden = (p !== prop);
     }
     pop.hidden = false;
+    document.getElementById('dayflow-toolbar').classList.add('pop-open');
     for (const b of popButtons) b.classList.toggle('active', b.dataset.pop === prop);
 }
 
 function closeColorPop() {
     const pop = document.getElementById('dayflow-color-pop');
     if (pop) pop.hidden = true;
+    document.getElementById('dayflow-toolbar').classList.remove('pop-open');
     openPop = null;
     for (const b of popButtons) b.classList.remove('active');
 }
@@ -967,6 +1168,49 @@ function bindToolbar() {
     });
 }
 
+// Theme from Swift (Settings → Appearance). Light themes also flip
+// `color-scheme` so native controls (find field, scrollbars) match.
+window.dayflowSetTheme = function(ink, panel, isDark) {
+    const root = document.documentElement.style;
+    root.setProperty('--ink', ink);
+    root.setProperty('--panel', panel);
+    root.setProperty('color-scheme', isDark ? 'dark' : 'light');
+    root.setProperty('--code-bg', isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgb(36, 38, 45)');
+};
+
+function syncSelectionClass() {
+    try {
+        document.body.classList.toggle('has-selection', !editor._tiptapEditor.state.selection.empty);
+    } catch (e) {}
+}
+
+// Day rail → editor: bring a heading to the top of the view. Matched on
+// letters and digits only, since the rail's title comes from the stored
+// markdown (escapes, emphasis markers) and the block holds plain text.
+window.dayflowScrollToHeading = function(title) {
+    if (!editor || !editorRootEl) return;
+    const key = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    const text = (content) => (Array.isArray(content) ? content : [])
+        .map((r) => (r.type === 'link' ? text(r.content) : (r.text || ''))).join('');
+    const want = key(title);
+    const find = (blocks) => {
+        for (const b of blocks) {
+            if (b.type === 'heading' && key(text(b.content)) === want) return b;
+            const nested = find(b.children || []);
+            if (nested) return nested;
+        }
+        return null;
+    };
+    const hit = find(editor.document);
+    const el = hit && editorRootEl.querySelector('[data-id="' + CSS.escape(hit.id) + '"]');
+    if (!el) return;
+    const top = el.getBoundingClientRect().top - editorRootEl.getBoundingClientRect().top + editorRootEl.scrollTop - 8;
+    editorRootEl.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    const content = el.querySelector('.bn-block-content') || el;
+    content.classList.add('dayflow-flash');
+    setTimeout(() => content.classList.remove('dayflow-flash'), 900);
+};
+
 function refreshToolbarState() {
     if (!editor) return;
     let active = {};
@@ -1001,7 +1245,7 @@ function refreshToolbarState() {
         const ink = b.querySelector('.ink');
         if (!ink) continue;
         const current = active[b.dataset.pop];
-        ink.style.background = COLOR_HEX[current] || 'rgba(255, 255, 255, 0.22)';
+        ink.style.background = COLOR_HEX[current] || 'rgba(var(--ink), 0.22)';
     }
 }
 
@@ -1009,17 +1253,21 @@ function refreshToolbarState() {
 // @blocknote/core on its own doesn't ship a slash menu UI (that
 // piece lives in @blocknote/react). labelLower is precomputed so
 // filter keystrokes don't re-lowercase 7 strings per render.
+// UI language, from the page URL (`?lang=ko`), set by the Swift host.
+const LANG = new URLSearchParams(location.search).get('lang') === 'ko' ? 'ko' : 'en';
+const T = (en, ko) => (LANG === 'ko' ? ko : en);
+
 const SLASH_COMMANDS = (() => {
     const defs = [
-        { key: 'h1',   icon: 'H1', label: 'Heading 1',     block: { type: 'heading', props: { level: 1 } } },
-        { key: 'h2',   icon: 'H2', label: 'Heading 2',     block: { type: 'heading', props: { level: 2 } } },
-        { key: 'h3',   icon: 'H3', label: 'Heading 3',     block: { type: 'heading', props: { level: 3 } } },
-        { key: 'todo', icon: '☐',  label: 'To-do list',    block: { type: 'checkListItem', props: { checked: false } } },
-        { key: 'ul',   icon: '•',  label: 'Bullet list',   block: { type: 'bulletListItem' } },
-        { key: 'ol',   icon: '1.', label: 'Numbered list', block: { type: 'numberedListItem' } },
-        { key: 'code', icon: '{ }', label: 'Code Block',   block: { type: 'codeBlock' } },
-        { key: 'table', icon: '▦', label: 'Table',         block: { type: 'table' } },
-        { key: 'p',    icon: '¶',  label: 'Paragraph',     block: { type: 'paragraph' } },
+        { key: 'h1',   icon: 'H1', label: T('Heading 1', '제목 1'),     block: { type: 'heading', props: { level: 1 } } },
+        { key: 'h2',   icon: 'H2', label: T('Heading 2', '제목 2'),     block: { type: 'heading', props: { level: 2 } } },
+        { key: 'h3',   icon: 'H3', label: T('Heading 3', '제목 3'),     block: { type: 'heading', props: { level: 3 } } },
+        { key: 'todo', icon: '☐',  label: T('To-do list', '할 일 목록'),    block: { type: 'checkListItem', props: { checked: false } } },
+        { key: 'ul',   icon: '•',  label: T('Bullet list', '글머리 목록'),   block: { type: 'bulletListItem' } },
+        { key: 'ol',   icon: '1.', label: T('Numbered list', '번호 목록'), block: { type: 'numberedListItem' } },
+        { key: 'code', icon: '{ }', label: T('Code Block', '코드 블록'),   block: { type: 'codeBlock' } },
+        { key: 'table', icon: '▦', label: T('Table', '표'),         block: { type: 'table' } },
+        { key: 'p',    icon: '¶',  label: T('Paragraph', '본문'),     block: { type: 'paragraph' } },
     ];
     return defs.map(d => ({ ...d, labelLower: d.label.toLowerCase() }));
 })();
@@ -1142,7 +1390,7 @@ function renderSlashMenu() {
         if (!empty) {
             empty = document.createElement('div');
             empty.className = 'sm-empty';
-            empty.textContent = 'No commands';
+            empty.textContent = T('No commands', '명령 없음');
             slashMenuEl.querySelector('.sm-list').appendChild(empty);
         }
     } else if (empty) {
@@ -1651,9 +1899,89 @@ function installCheckboxToggle() {
     }, true);
 }
 
+// Right-click a checkbox to set its lifecycle status. Done/undone is a
+// checked boolean; on-hold ("보류") is unchecked + the reserved blue
+// background on the item's text, which the emit path turns into `- [~]`.
+let statusMenuEl = null;
+function dismissStatusMenu() {
+    if (statusMenuEl) { statusMenuEl.remove(); statusMenuEl = null; }
+}
+function setTaskStatus(blockId, status) {
+    try {
+        const block = editor.getBlock(blockId);
+        if (!block || block.type !== 'checkListItem') return;
+        const content = (block.content || []).map(run => {
+            if (run.type !== 'text') return run;
+            const styles = Object.assign({}, run.styles);
+            if (status === 'hold') styles.backgroundColor = 'blue';
+            else delete styles.backgroundColor;
+            return Object.assign({}, run, { styles });
+        });
+        editor.updateBlock(blockId, { props: { checked: status === 'done' }, content });
+        scheduleEmit();
+    } catch (err) { console.log('setTaskStatus error: ' + err.message); }
+}
+function showStatusMenu(x, y, blockId) {
+    dismissStatusMenu();
+    const menu = document.createElement('div');
+    menu.id = 'dayflow-status-menu';
+    const items = [
+        { status: 'open', dot: 'open', label: T('To do', '할 일') },
+        { status: 'done', dot: 'done', label: T('Done', '완료') },
+        { status: 'hold', dot: 'hold', label: T('On hold', '보류') },
+    ];
+    for (const it of items) {
+        const row = document.createElement('div');
+        row.className = 'item';
+        const dot = document.createElement('span');
+        dot.className = 'dot ' + it.dot;
+        const text = document.createElement('span');
+        text.textContent = it.label;
+        row.appendChild(dot);
+        row.appendChild(text);
+        row.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            setTaskStatus(blockId, it.status);
+            dismissStatusMenu();
+        }, true);
+        menu.appendChild(row);
+    }
+    document.body.appendChild(menu);
+    // Keep the menu on-screen.
+    const rect = menu.getBoundingClientRect();
+    const px = Math.min(x, window.innerWidth - rect.width - 8);
+    const py = Math.min(y, window.innerHeight - rect.height - 8);
+    menu.style.left = px + 'px';
+    menu.style.top = py + 'px';
+    statusMenuEl = menu;
+}
+function installStatusContextMenu() {
+    if (!editorRootEl || !editor) return;
+    editorRootEl.addEventListener('contextmenu', (e) => {
+        const blockEl = e.target && e.target.closest
+            && e.target.closest('.bn-block-content[data-content-type="checkListItem"]');
+        if (!blockEl) return;
+        const idEl = e.target.closest('[data-id]');
+        const blockId = idEl && idEl.getAttribute('data-id');
+        if (!blockId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        showStatusMenu(e.clientX, e.clientY, blockId);
+    }, true);
+    // Dismiss on any outside interaction.
+    document.addEventListener('mousedown', (e) => {
+        if (statusMenuEl && !statusMenuEl.contains(e.target)) dismissStatusMenu();
+    }, true);
+    document.addEventListener('scroll', dismissStatusMenu, true);
+    window.addEventListener('blur', dismissStatusMenu);
+}
+
 (async () => {
     try {
+        findInputEl.placeholder = T('Find', '찾기');
         editor = BlockNoteEditor.create({
+            dictionary: LANG === 'ko' ? locales.ko : locales.en,
             domAttributes: { editor: { class: 'bn-editor' } },
             initialContent: undefined,
             uploadFile: uploadFile,
@@ -1662,11 +1990,16 @@ function installCheckboxToggle() {
         installHrObserver();
         installNestedImeWorkaround();
         installCheckboxToggle();
-        installImagePasteHandler();
+        installStatusContextMenu();
+        installPasteHandler();
+        installCopyHandler();
         installScrollStateBridge();
         editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); postScrollState(); });
         if (editor.onEditorSelectionChange) {
-            editor.onEditorSelectionChange(refreshToolbarState);
+            editor.onEditorSelectionChange(() => {
+                syncSelectionClass();
+                refreshToolbarState();
+            });
         }
         buildSwatches();
         bindToolbar();

@@ -25,6 +25,8 @@ struct SettingsView: View {
     @State private var errorMessage: String?
     @State private var testResult: String?
     @State private var testing: Bool = false
+    @State private var confirmPromptReset = false
+    @State private var confirmKeyDelete = false
 
     var body: some View {
         TabView {
@@ -55,6 +57,7 @@ struct SettingsView: View {
                 }
                 settingsGroup(L("settings.group.data")) {
                     startDateField
+                    backupField
                 }
                 Spacer(minLength: 0)
             }
@@ -110,6 +113,10 @@ struct SettingsView: View {
                 Button(L("settings.language.restart_later"), role: .cancel) {}
             }
 
+            field(label: L("settings.theme"), hint: L("settings.theme.hint")) {
+                themePicker
+            }
+
             fontSizeSlider(label: L("settings.editor_font_size.day"),
                            hint: L("settings.editor_font_size.hint"),
                            value: $dayEditorFontSize)
@@ -128,6 +135,73 @@ struct SettingsView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
+            }
+        }
+    }
+
+    private var backupField: some View {
+        let dir = DatabaseBackup.directory(for: .shared)
+        let latest = DatabaseBackup.snapshots(in: dir).first
+        let latestDate = latest.flatMap {
+            (try? FileManager.default.attributesOfItem(atPath: $0.path))?[.modificationDate] as? Date
+        }
+        return field(
+            label: L("settings.backup"),
+            hint: L("settings.backup.hint", DatabaseBackup.keepCount)
+        ) {
+            HStack(spacing: 8) {
+                Text(latestDate.map { L("settings.backup.latest", $0.formatted(date: .abbreviated, time: .shortened)) }
+                     ?? L("settings.backup.none"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(L("settings.backup.open")) {
+                    if let latest {
+                        NSWorkspace.shared.activateFileViewerSelecting([latest])
+                    } else {
+                        NSWorkspace.shared.open(dir.deletingLastPathComponent())
+                    }
+                }
+            }
+        }
+    }
+
+    /// One swatch per theme: the canvas colour with a strip of its rail colour
+    /// and a line of "text", so each reads as a tiny window.
+    private var themePicker: some View {
+        HStack(spacing: 12) {
+            ForEach(AppTheme.allCases) { theme in
+                let selected = ThemeStore.shared.theme == theme
+                Button {
+                    ThemeStore.shared.theme = theme
+                } label: {
+                    VStack(spacing: 5) {
+                        ZStack(alignment: .topLeading) {
+                            RoundedRectangle(cornerRadius: 7).fill(theme.canvas)
+                            HStack(spacing: 0) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Capsule().fill(Color.dfAccent).frame(width: 16, height: 3)
+                                    Capsule().fill(theme.isDark ? Color.white.opacity(0.55) : Color.black.opacity(0.5)).frame(width: 22, height: 2)
+                                    Capsule().fill(theme.isDark ? Color.white.opacity(0.3) : Color.black.opacity(0.28)).frame(width: 18, height: 2)
+                                }
+                                .padding(6)
+                                Spacer(minLength: 0)
+                                Rectangle().fill(theme.quiet).frame(width: 14)
+                            }
+                        }
+                        .frame(width: 58, height: 38)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(selected ? Color.dfAccent : Color.primary.opacity(0.15), lineWidth: selected ? 2 : 0.7)
+                        )
+                        Text(theme.label)
+                            .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? .primary : .secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -254,15 +328,18 @@ struct SettingsView: View {
                         .font(.system(size: 12, design: .monospaced))
                         .frame(minHeight: 160, maxHeight: 220)
                         .padding(6)
-                        .background(Color.white.opacity(0.04))
+                        .background(Color.primary.opacity(0.04))
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 0.7)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 0.7)
                         )
                     HStack {
-                        Button(L("settings.reset_default")) { resetPrompt() }
+                        Button(L("settings.reset_default")) { confirmPromptReset = true }
                             .buttonStyle(.borderless)
                             .font(.caption)
+                            .confirmationDialog(L("settings.reset_default_confirm"), isPresented: $confirmPromptReset) {
+                                Button(L("settings.reset_default"), role: .destructive) { resetPrompt() }
+                            }
                         Spacer()
                         Text(L("settings.char_count", systemPrompt.count))
                             .font(.caption)
@@ -279,8 +356,11 @@ struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .disabled(testing || !canTest)
                 if hasExisting {
-                    Button(L("settings.delete_key")) { clear() }
+                    Button(L("settings.delete_key")) { confirmKeyDelete = true }
                         .buttonStyle(.bordered)
+                        .confirmationDialog(L("settings.delete_key_confirm"), isPresented: $confirmKeyDelete) {
+                            Button(L("settings.delete_key"), role: .destructive) { clear() }
+                        }
                 }
                 Spacer()
                 if testing {

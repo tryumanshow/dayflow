@@ -43,13 +43,13 @@ extension DayflowStore {
     /// Fast path for external markdown-only edits (QuickThrow, Week
     /// checkbox toggles). Updates the in-memory cache without the
     /// month-range SQL round-trip that `refresh(force:)` would cost.
-    func applyExternalEdit(date: Date, body: String) {
+    func applyExternalEdit(date: Date, body: String, json: String? = nil) {
         let key = DayflowDB.ymd(date)
         if bodies[key] != nil {
             bodies[key] = body
         }
         if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-            setDayBuffers(md: body, json: nil, cacheKey: key)
+            setDayBuffers(md: body, json: json, cacheKey: key)
         }
     }
 
@@ -71,6 +71,11 @@ extension DayflowStore {
             chars[markIdx] = "x"
         case "x", "X", "✓":
             chars[markIdx] = " "
+        case "~":
+            // Tapping a parked task in the week preview completes it —
+            // the natural "I'm picking this back up and it's done" gesture.
+            // Setting/clearing on-hold itself happens in the Day editor.
+            chars[markIdx] = "x"
         default:
             return line
         }

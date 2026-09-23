@@ -91,16 +91,17 @@ private struct QuickThrowView: View {
     private func submit() {
         let v = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !v.isEmpty else { onDone(); return }
-        var body = store.db.getDayNote(date: date)
-        if !body.isEmpty && !body.hasSuffix("\n") {
-            body.append("\n")
-        }
-        body.append("- [ ] \(v)\n")
-        store.db.saveDayNote(date: date, body: body)
+        let stored = store.db.getDayNoteFull(date: date)
+        // Top of the page, above the first heading: a quick capture is an
+        // inbox item, and appending at the end filed it under whatever
+        // heading happened to be last.
+        let body = "- [ ] \(v)\n" + stored.body
+        let json = BlockNoteJSON.prependTask(v, toBody: stored.body, bodyJSON: stored.bodyJSON)
+        store.db.saveDayNote(date: date, body: body, bodyJSON: json)
         // Hand the new body to the store so the in-memory cache stays in
         // sync with the DB. Cheap path — avoids the month-range SQL query
         // that `refresh(force:)` would re-run on every toss.
-        store.applyExternalEdit(date: date, body: body)
+        store.applyExternalEdit(date: date, body: body, json: json)
         title = ""
         onDone()
     }

@@ -55,6 +55,8 @@ struct ContentView: View {
     // edit form — `editingAppointmentId` being non-nil flips the
     // submit button label and routes to `updateAppointment`.
     @State var aptTimeInput: String = ""
+    /// "All day": no clock time, the time fields are hidden.
+    @State var aptAllDayInput: Bool = false
     @State var aptEndTimeInput: String = ""
     @State var aptTitleInput: String = ""
     @State var aptDateInput: Date = Date()
@@ -98,6 +100,9 @@ struct ContentView: View {
     @State var editingSectionTitleId: Int64? = nil
     @State var sectionTitleDraft: String = ""
     @State var historySectionId: Int64? = nil
+    /// Destructive actions wait here for a confirmation dialog.
+    @State var pendingDeleteAppointment: Appointment? = nil
+    @State var pendingDeleteSectionId: Int64? = nil
 
     /// Global search overlay (⌘⇧F). Distinct from the in-editor ⌘F find.
     @State var showSearch: Bool = false
@@ -119,6 +124,11 @@ struct ContentView: View {
     /// banner on tap needs state the view actually tracks.
     @State var carryoverDismissed: Set<String> = []
 
+    /// AI planner sheet. `.sheet(item:)` for the same reason as
+    /// `carryoverBatch`: the request carries the mode-dependent prefilled
+    /// date range into the sheet in one transaction.
+    @State var plannerRequest: PlannerRequest? = nil
+
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
@@ -135,6 +145,14 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .dayflowOpenSearch)) { _ in
             showSearch = true
+        }
+        .sheet(item: $plannerRequest) { request in
+            PlannerSheet(
+                store: store,
+                defaultStart: request.start,
+                defaultEnd: request.end,
+                onClose: { plannerRequest = nil }
+            )
         }
         // Keep the floor BELOW the primary column's needs (grid 320 / day
         // editor 360 + padding), not above grid+rail. A floor wider than
@@ -198,10 +216,14 @@ struct ContentView: View {
                             .padding(.vertical, 4)
                             .background(
                                 RoundedRectangle(cornerRadius: DS.Radius.sm)
-                                    .fill(store.viewMode == mode ? Color.white.opacity(0.08) : .clear)
+                                    .fill(store.viewMode == mode ? Color.primary.opacity(0.08) : .clear)
                             )
+                            // English labels wrapped mid-word ("Da / y") once
+                            // the bar ran short of width.
+                            .fixedSize()
                     }
                     .buttonStyle(.plain)
+                    .help(L("nav.tooltip.mode_shortcut", mode.shortcutDigit))
                 }
             }
 
@@ -214,10 +236,11 @@ struct ContentView: View {
                 } label: {
                     Text(L("nav.today"))
                         .font(.system(size: 11, weight: .semibold))
+                        .fixedSize()
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
                         .background(
-                            Capsule().fill(Color.white.opacity(0.06))
+                            Capsule().fill(Color.primary.opacity(0.06))
                         )
                 }
                 .buttonStyle(.plain)
@@ -228,6 +251,8 @@ struct ContentView: View {
             Text(headerLabel)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             Spacer()
 
@@ -235,9 +260,40 @@ struct ContentView: View {
                 daysBadge
             }
 
+            if store.viewMode != .month {
+                navIconButton("wand.and.stars", tooltip: L("planner.tooltip")) {
+                    openPlanner()
+                }
+            }
+
             navIconButton("magnifyingglass", tooltip: L("nav.tooltip.search")) {
                 showSearch = true
             }
+
+            // Theme switch one click away, not only in Settings.
+            Menu {
+                ForEach(AppTheme.allCases) { theme in
+                    Button {
+                        ThemeStore.shared.theme = theme
+                    } label: {
+                        if ThemeStore.shared.theme == theme {
+                            Label(theme.label, systemImage: "checkmark")
+                        } else {
+                            Text(theme.label)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "paintpalette")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .frame(width: 24, height: 24)
+            .background(RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.primary.opacity(0.04)))
+            .help(L("nav.tooltip.theme"))
 
             if store.viewMode != .week {
                 navIconButton(
@@ -257,6 +313,20 @@ struct ContentView: View {
         .background(Color.dfCanvas)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.dfHairline).frame(height: 0.7)
+        }
+    }
+
+    /// Open the planner prefilled from the current mode: week mode plans
+    /// the visible week, day mode plans the selected day.
+    private func openPlanner() {
+        let cal = Calendar.current
+        switch store.viewMode {
+        case .week:
+            let weekStart = store.startOfWeek(store.selectedDate)
+            let weekEnd = cal.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart
+            plannerRequest = PlannerRequest(start: weekStart, end: weekEnd)
+        default:
+            plannerRequest = PlannerRequest(start: store.selectedDate, end: store.selectedDate)
         }
     }
 
@@ -282,7 +352,7 @@ struct ContentView: View {
                 .frame(width: 24, height: 24)
                 .background(
                     RoundedRectangle(cornerRadius: DS.Radius.sm)
-                        .fill(Color.white.opacity(bgOpacity))
+                        .fill(Color.primary.opacity(bgOpacity))
                 )
                 .contentShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
                 .animation(DS.Motion.snap, value: hovered)

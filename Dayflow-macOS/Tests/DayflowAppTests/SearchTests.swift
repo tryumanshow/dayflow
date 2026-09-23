@@ -115,7 +115,12 @@ private func day(_ y: Int, _ m: Int, _ d: Int) -> Date {
 @Test func snippetFlattensNewlines() {
     let out = DayflowStore.snippet(from: "line one\nline two", matching: "two")
     #expect(!out.contains("\n"))
-    #expect(out.contains("line one line two"))
+    #expect(out.contains("line one · line two"))
+}
+
+@Test func snippetDropsMarkdownMarkers() {
+    let out = DayflowStore.snippet(from: "## Work\n- [x] Code review\n*   [ ] Bug fix PR\n    - child", matching: "PR")
+    #expect(out == "Work · Code review · Bug fix PR · child")
 }
 
 /// A title-only appointment hit has no body containing the query; the

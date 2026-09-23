@@ -28,10 +28,14 @@ extension Notification.Name {
     static let dayflowCopy      = Notification.Name("dayflowCopy")
     static let dayflowCut       = Notification.Name("dayflowCut")
     static let dayflowPaste     = Notification.Name("dayflowPaste")
+    static let dayflowPastePlain = Notification.Name("dayflowPastePlain")
     static let dayflowSelectAll = Notification.Name("dayflowSelectAll")
     static let dayflowUndo      = Notification.Name("dayflowUndo")
     static let dayflowRedo      = Notification.Name("dayflowRedo")
     static let dayflowFind      = Notification.Name("dayflowFind")
+    /// Scroll the editor to the heading whose text is the notification's
+    /// `object` (a `String`). Posted by the Day rail's section rows.
+    static let dayflowScrollToHeading = Notification.Name("dayflowScrollToHeading")
     /// Opens the global search overlay (⌘⇧F). Distinct from `dayflowFind`
     /// (⌘F), which is in-editor find within the current note.
     static let dayflowOpenSearch = Notification.Name("dayflowOpenSearch")
@@ -41,6 +45,19 @@ extension Notification.Name {
     static let dayflowZoomIn    = Notification.Name("dayflowZoomIn")
     static let dayflowZoomOut   = Notification.Name("dayflowZoomOut")
     static let dayflowZoomReset = Notification.Name("dayflowZoomReset")
+}
+
+extension NSView {
+    /// The `WKWebView` this view lives in, if any. WebKit can hand first
+    /// responder to an internal subview rather than the web view itself.
+    var enclosingWebView: WKWebView? {
+        var view = superview
+        while let v = view {
+            if let web = v as? WKWebView { return web }
+            view = v.superview
+        }
+        return nil
+    }
 }
 
 /// WKWebView consumes scroll-wheel events even when its inner document
@@ -111,7 +128,11 @@ struct MarkdownWebEditor: NSViewRepresentable {
         // all its vendored modules share the `dayflow-asset://editor` origin —
         // ES module imports need a real (non-opaque) origin, which loadHTMLString
         // does not reliably provide.
-        web.load(URLRequest(url: EditorSchemeHandler.baseURL.appendingPathComponent("index.html")))
+        // The page's own UI strings (slash menu, placeholders) follow the app
+        // language; the scheme handler ignores the query when serving.
+        var page = URLComponents(url: EditorSchemeHandler.baseURL.appendingPathComponent("index.html"), resolvingAgainstBaseURL: false)!
+        page.queryItems = [URLQueryItem(name: "lang", value: L("editor.lang"))]
+        web.load(URLRequest(url: page.url!))
 
         context.coordinator.webView = web
         context.coordinator.pendingMarkdown = markdown
@@ -161,10 +182,13 @@ struct MarkdownWebEditor: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleCopy),      name: .dayflowCopy,      object: nil)
             nc.addObserver(self, selector: #selector(handleCut),       name: .dayflowCut,       object: nil)
             nc.addObserver(self, selector: #selector(handlePaste),     name: .dayflowPaste,     object: nil)
+            nc.addObserver(self, selector: #selector(handlePastePlain), name: .dayflowPastePlain, object: nil)
             nc.addObserver(self, selector: #selector(handleSelectAll), name: .dayflowSelectAll, object: nil)
             nc.addObserver(self, selector: #selector(handleUndo),      name: .dayflowUndo,      object: nil)
             nc.addObserver(self, selector: #selector(handleRedo),      name: .dayflowRedo,      object: nil)
             nc.addObserver(self, selector: #selector(handleFind),      name: .dayflowFind,      object: nil)
+            nc.addObserver(self, selector: #selector(applyTheme), name: .dayflowThemeChanged, object: nil)
+            nc.addObserver(self, selector: #selector(handleScrollToHeading(_:)), name: .dayflowScrollToHeading, object: nil)
         }
 
         // MARK: - Menu command handlers (via Notification)
@@ -174,12 +198,30 @@ struct MarkdownWebEditor: NSViewRepresentable {
         // and preserves block structure (HTML + plain text flavors).
         // Trimming or re-serializing in Swift collapses chunk boundaries,
         // so we delegate entirely.
-        @objc private func handleCopy()      { webView?.perform(#selector(NSText.copy(_:)),      with: nil) }
-        @objc private func handleCut()       { webView?.perform(#selector(NSText.cut(_:)),       with: nil) }
-        @objc private func handlePaste()     { webView?.perform(#selector(NSText.paste(_:)),     with: nil) }
-        @objc private func handleSelectAll() { webView?.perform(#selector(NSText.selectAll(_:)), with: nil) }
+        //
+        // These notifications are broadcast: every live editor (Day rail,
+        // Month plan, the menu-bar window's copy of the same views) hears
+        // them. Only the one holding keyboard focus may act, or a paste
+        // lands in every other editor's last selection — including notes
+        // that are not on screen.
+        @objc private func handleCopy()      { if isFocused { webView?.perform(#selector(NSText.copy(_:)),      with: nil) } }
+        @objc private func handleCut()       { if isFocused { webView?.perform(#selector(NSText.cut(_:)),       with: nil) } }
+        @objc private func handlePaste()     { if isFocused { webView?.perform(#selector(NSText.paste(_:)),     with: nil) } }
+        @objc private func handleSelectAll() { if isFocused { webView?.perform(#selector(NSText.selectAll(_:)), with: nil) } }
+
+        @objc private func handlePastePlain() {
+            guard isFocused, let text = NSPasteboard.general.string(forType: .string) else { return }
+            webView?.evaluateJavaScript("window.dayflowPastePlainText(\(Self.jsStringLiteral(text)))", completionHandler: nil)
+        }
+
+        private var isFocused: Bool {
+            guard let web = webView, let window = web.window, window.isKeyWindow,
+                  let responder = window.firstResponder as? NSView else { return false }
+            return responder === web || responder.isDescendant(of: web)
+        }
 
         @objc private func handleUndo() {
+            guard isFocused else { return }
             webView?.evaluateJavaScript("""
                 document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
                     key: 'z', code: 'KeyZ', metaKey: true, shiftKey: false,
@@ -189,12 +231,25 @@ struct MarkdownWebEditor: NSViewRepresentable {
         }
 
         @objc private func handleRedo() {
+            guard isFocused else { return }
             webView?.evaluateJavaScript("""
                 document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
                     key: 'z', code: 'KeyZ', metaKey: true, shiftKey: true,
                     bubbles: true, cancelable: true
                 }))
                 """, completionHandler: nil)
+        }
+
+        @objc private func handleScrollToHeading(_ note: Notification) {
+            guard let title = note.object as? String else { return }
+            webView?.evaluateJavaScript("window.dayflowScrollToHeading && window.dayflowScrollToHeading(\(Self.jsStringLiteral(title)))", completionHandler: nil)
+        }
+
+        @objc private func applyTheme() {
+            guard ready else { return }
+            let theme = ThemeStore.shared.theme
+            let js = "window.dayflowSetTheme && window.dayflowSetTheme(\(Self.jsStringLiteral(theme.editorInk)), \(Self.jsStringLiteral(theme.editorPanel)), \(theme.isDark))"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
         @objc private func handleFind() {
@@ -209,6 +264,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
                 ready = true
                 flushIfReady()
                 applyFontSizeIfReady()
+                applyTheme()
             case "scrollState":
                 let up = (body["canScrollUp"] as? Bool) ?? false
                 let down = (body["canScrollDown"] as? Bool) ?? false
