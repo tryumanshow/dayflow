@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 @main
 @MainActor
@@ -57,6 +58,18 @@ struct DayflowApp: App {
                     }
                 }
                 .keyboardShortcut("v", modifiers: .command)
+                // Paste in the editor reads markdown and HTML structure; this
+                // is the way to drop text in exactly as written. Text fields
+                // get AppKit's own plain-text paste.
+                Button("Paste as Plain Text") {
+                    let responder = NSApp.keyWindow?.firstResponder as? NSView
+                    if let responder, responder is WKWebView || responder.enclosingWebView != nil {
+                        NotificationCenter.default.post(name: .dayflowPastePlain, object: nil)
+                    } else {
+                        NSApp.sendAction(#selector(NSTextView.pasteAsPlainText(_:)), to: nil, from: nil)
+                    }
+                }
+                .keyboardShortcut("v", modifiers: [.command, .shift])
                 Button("Select All") {
                     if !NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) {
                         NotificationCenter.default.post(name: .dayflowSelectAll, object: nil)

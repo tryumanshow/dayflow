@@ -19,8 +19,13 @@
   (`dayflow-asset://attachment/<name>`, see AttachmentStore), which is a
   different origin than `'self'`. Remote origins stay barred, so an `<img>`
   smuggled in through pasted HTML still cannot phone home.
+
+  `'wasm-unsafe-eval'` lets the code-block highlighter (shiki) compile its
+  bundled Oniguruma regex engine. It admits WebAssembly compilation only —
+  string `eval`/`new Function` stay blocked — and the module is inlined in the
+  vendored bundle, so nothing is fetched.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: dayflow-asset:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: dayflow-asset:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
 <link rel="stylesheet" href="dayflow-asset://editor/style.css">
 <style>
 html, body {
@@ -724,6 +729,34 @@ function caretContext() {
     };
 }
 
+// Once the code highlighter has loaded, a code block whose language it has
+// no grammar for throws — the whole insert or note load fails. Map every
+// incoming language onto a supported id (BlockNote's list carries the common
+// aliases: py, sh, typescriptreact…) and fall back to plain text.
+const CODE_LANGUAGE_ALIASES = { javascriptreact: 'jsx', plaintext: 'text' };
+let codeLanguageIds = null;
+function resolveCodeLanguage(language) {
+    if (!codeLanguageIds) {
+        const ext = editor._tiptapEditor.extensionManager.extensions.find((e) => e.name === 'codeBlock');
+        codeLanguageIds = new Map();
+        for (const lang of (ext && ext.options.supportedLanguages) || []) {
+            codeLanguageIds.set(lang.id, lang.id);
+            for (const alias of lang.match || []) codeLanguageIds.set(alias, lang.id);
+        }
+    }
+    const key = String(language || '').toLowerCase();
+    return codeLanguageIds.get(CODE_LANGUAGE_ALIASES[key] || key) || 'text';
+}
+function normalizeCodeLanguages(blocks) {
+    for (const b of blocks) {
+        if (b.type === 'codeBlock' && b.props && b.props.language) {
+            b.props.language = resolveCodeLanguage(b.props.language);
+        }
+        if (b.children && b.children.length) normalizeCodeLanguages(b.children);
+    }
+    return blocks;
+}
+
 // A block the paste may simply take over: inline-content block with no text
 // (ZWSPs from the IME workaround don't count) and nothing nested under it.
 function isBlankBlock(block) {
@@ -750,7 +783,7 @@ function lastLeaf(block) {
 // replace a blank line, go before/after a line when the caret sits at its
 // edge, or split the line at the caret and drop the blocks in between.
 function insertPastedBlocks(pasted) {
-    const blocks = trimTrailingBlank(pasted);
+    const blocks = normalizeCodeLanguages(trimTrailingBlank(pasted));
     const tt = editor._tiptapEditor;
     if (!tt.state.selection.empty) tt.commands.deleteSelection();
 
@@ -776,6 +809,19 @@ function insertPastedBlocks(pasted) {
         // Tables and images have no text caret; leave the selection where it is.
     }
 }
+
+// ⌘⇧V: the text exactly as written, one paragraph per line, no markdown or
+// HTML reading. ProseMirror's own plain-text path; our paste handler listens
+// for DOM paste events and never sees it.
+window.dayflowPastePlainText = function(text) {
+    if (!editor || typeof text !== 'string' || !text) return;
+    try {
+        editor._tiptapEditor.view.pasteText(text);
+        scheduleEmit();
+    } catch (err) {
+        console.log('plain paste error: ' + err.message);
+    }
+};
 
 // BlockNote writes the plain-text flavour as a loose markdown list (`*   a`,
 // a blank line between items). Rewrite it as a tight list other apps read
@@ -864,7 +910,7 @@ window.dayflowSetContent = async function(md, jsonText) {
         if (blocks.length === 0) {
             blocks.push({ type: 'paragraph', props: {}, content: [], children: [] });
         }
-        editor.replaceBlocks(editor.document, blocks);
+        editor.replaceBlocks(editor.document, normalizeCodeLanguages(blocks));
         lastEmitted = md;
         lastEmittedJSON = typeof jsonText === 'string' ? jsonText : "";
         applyHrStyling();

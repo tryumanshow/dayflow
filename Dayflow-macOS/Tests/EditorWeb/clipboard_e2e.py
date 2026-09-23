@@ -201,6 +201,12 @@ def run(page):
           page.evaluate('() => [window.__ed.document[0].type, window.__ed.document[0].content[0].text]'),
           ['codeBlock', 'if (a < b) {\n    return <div/>;\n}'])
 
+    # Unknown fence languages load as plain-text code instead of failing the note.
+    load('```mermaid-ish\ngraph\n```\n```javascriptreact\nx\n```\n- after')
+    check('load: unknown code languages fall back', page.evaluate(
+        '() => window.__ed.document.slice(0, 3).map((b) => b.type + ":" + (b.props.language || ""))'),
+        ['codeBlock:text', 'codeBlock:jsx', 'bulletListItem:'])
+
     # Caret placement relative to an existing line.
     load('앞뒤')
     page.evaluate("() => window.__caret('앞뒤', 'end')")
@@ -266,6 +272,11 @@ def run(page):
         check(f'{kind}: empty selection keeps the clipboard', kept, 'from another app')
     check('cut: empty selection deletes nothing', outline(), 'bulletListItem: 부모\n  bulletListItem: 자식\n')
 
+    # ⌘⇧V drops text in as written: no markdown reading.
+    fresh()
+    page.evaluate("() => window.dayflowPastePlainText('# 주석\\n- 그대로')")
+    check('paste as plain text keeps markers literal', outline(), 'paragraph: # 주석\nparagraph: - 그대로\n')
+
     # One undo step reverts a structured paste.
     load('기존')
     page.evaluate("() => window.__caret('기존', 'end')")
@@ -288,7 +299,7 @@ def main():
         page = browser.new_page()
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)) if 'WebAssembly' not in str(e) else None)
-        page.on('console', lambda m: errors.append(m.text) if 'error' in m.text.lower() and 'WebAssembly' not in m.text else None)
+        page.on('console', lambda m: (print('  [console]', m.text), errors.append(m.text)) if 'error' in m.text.lower() and 'WebAssembly' not in m.text else None)
         page.add_init_script(BRIDGE)
         page.goto(url)
         page.wait_for_function("window.__msgs.some((m) => m.type === 'ready')")

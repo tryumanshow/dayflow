@@ -28,6 +28,7 @@ extension Notification.Name {
     static let dayflowCopy      = Notification.Name("dayflowCopy")
     static let dayflowCut       = Notification.Name("dayflowCut")
     static let dayflowPaste     = Notification.Name("dayflowPaste")
+    static let dayflowPastePlain = Notification.Name("dayflowPastePlain")
     static let dayflowSelectAll = Notification.Name("dayflowSelectAll")
     static let dayflowUndo      = Notification.Name("dayflowUndo")
     static let dayflowRedo      = Notification.Name("dayflowRedo")
@@ -41,6 +42,19 @@ extension Notification.Name {
     static let dayflowZoomIn    = Notification.Name("dayflowZoomIn")
     static let dayflowZoomOut   = Notification.Name("dayflowZoomOut")
     static let dayflowZoomReset = Notification.Name("dayflowZoomReset")
+}
+
+extension NSView {
+    /// The `WKWebView` this view lives in, if any. WebKit can hand first
+    /// responder to an internal subview rather than the web view itself.
+    var enclosingWebView: WKWebView? {
+        var view = superview
+        while let v = view {
+            if let web = v as? WKWebView { return web }
+            view = v.superview
+        }
+        return nil
+    }
 }
 
 /// WKWebView consumes scroll-wheel events even when its inner document
@@ -161,6 +175,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleCopy),      name: .dayflowCopy,      object: nil)
             nc.addObserver(self, selector: #selector(handleCut),       name: .dayflowCut,       object: nil)
             nc.addObserver(self, selector: #selector(handlePaste),     name: .dayflowPaste,     object: nil)
+            nc.addObserver(self, selector: #selector(handlePastePlain), name: .dayflowPastePlain, object: nil)
             nc.addObserver(self, selector: #selector(handleSelectAll), name: .dayflowSelectAll, object: nil)
             nc.addObserver(self, selector: #selector(handleUndo),      name: .dayflowUndo,      object: nil)
             nc.addObserver(self, selector: #selector(handleRedo),      name: .dayflowRedo,      object: nil)
@@ -184,6 +199,11 @@ struct MarkdownWebEditor: NSViewRepresentable {
         @objc private func handleCut()       { if isFocused { webView?.perform(#selector(NSText.cut(_:)),       with: nil) } }
         @objc private func handlePaste()     { if isFocused { webView?.perform(#selector(NSText.paste(_:)),     with: nil) } }
         @objc private func handleSelectAll() { if isFocused { webView?.perform(#selector(NSText.selectAll(_:)), with: nil) } }
+
+        @objc private func handlePastePlain() {
+            guard isFocused, let text = NSPasteboard.general.string(forType: .string) else { return }
+            webView?.evaluateJavaScript("window.dayflowPastePlainText(\(Self.jsStringLiteral(text)))", completionHandler: nil)
+        }
 
         private var isFocused: Bool {
             guard let web = webView, let window = web.window, window.isKeyWindow,
