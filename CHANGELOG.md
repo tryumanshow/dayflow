@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/tryumanshow/dayflow/compare/v0.1.14...v0.1.15) (2026-09-23)
+
+
+### Bug Fixes
+
+* **release:** build releases with Xcode 16, like CI ([#63](https://github.com/tryumanshow/dayflow/issues/63)) ([0789efc](https://github.com/tryumanshow/dayflow/commit/0789efcbdf87668393c2dce1f6689c141c6a16af))
+
 ## [0.1.14](https://github.com/tryumanshow/dayflow/compare/v0.1.13...v0.1.14) (2026-09-23)
 
 
