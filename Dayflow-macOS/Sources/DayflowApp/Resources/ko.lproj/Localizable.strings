@@ -66,6 +66,8 @@
 "appointments.new" = "일정 추가";
 "appointments.close_form" = "닫기";
 "appointments.end_date_add" = "+ 종료일";
+"appointments.span_progress" = "%2$d일 중 %1$d일째";
+"appointments.all_day_help" = "시간 없이 하루 종일 — 알림 없음";
 "appointments.end_date_remove" = "종료일 제거";
 "appointments.manage_in_month" = "월간 뷰에서 관리";
 "appointments.repeat.none" = "반복 없음";

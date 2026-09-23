@@ -10,6 +10,7 @@ extension ContentView {
         let weekStart = store.startOfWeek(store.selectedDate)
         let days: [Date] = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) }
         let totals = store.weekTotals()
+        let spans = Self.spanLayout(for: store.currentMonthSpans(), gridDays: days, cal: cal)
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
@@ -17,7 +18,7 @@ extension ContentView {
                     if idx > 0 {
                         Rectangle().fill(Color.dfHairlineSoft).frame(width: 0.7)
                     }
-                    weekColumn(for: day)
+                    weekColumn(for: day, index: idx, spans: spans)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
             }
@@ -50,7 +51,7 @@ extension ContentView {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func weekColumn(for day: Date) -> some View {
+    private func weekColumn(for day: Date, index: Int, spans: SpanLayout) -> some View {
         let cal = Calendar.current
         let isToday = cal.isDateInToday(day)
         let isSelected = cal.isDate(day, inSameDayAs: store.selectedDate)
@@ -97,6 +98,23 @@ extension ContentView {
             .onTapGesture {
                 store.selectDate(day)
                 store.setMode(.day)
+            }
+
+            // Multi-day appointments: every column draws its piece of each
+            // bar in a fixed lane, stretched to the column edges, so the
+            // pieces join into one bar across the week.
+            let laneCount = spans.laneCount(weekStartIdx: 0)
+            if laneCount > 0 {
+                VStack(alignment: .leading, spacing: Self.spanLaneGap) {
+                    ForEach(0..<laneCount, id: \.self) { lane in
+                        if let entry = spans.entries.first(where: { $0.lane == lane && $0.startIdx <= index && $0.endIdx >= index }) {
+                            weekSpanSegment(entry.apt, day: day, isWeekStart: index == 0)
+                        } else {
+                            Color.clear.frame(height: Self.weekSpanHeight)
+                        }
+                    }
+                }
+                .padding(.horizontal, -DS.Space.md)
             }
 
             let dayAppointments = store.appointments(for: day)
@@ -160,6 +178,34 @@ extension ContentView {
             store.selectDate(day)
         }
         .animation(DS.Motion.quick, value: isSelected)
+    }
+
+    static let weekSpanHeight: CGFloat = 16
+
+    private func weekSpanSegment(_ apt: Appointment, day: Date, isWeekStart: Bool) -> some View {
+        let cal = Calendar.current
+        let isStart = cal.isDate(day, inSameDayAs: apt.startAt)
+        let isEnd = apt.endAt.map { cal.isDate(day, inSameDayAs: $0) } ?? true
+        let inset = DS.Space.md + Self.spanEndInset
+        return Text(isStart || isWeekStart ? apt.title : "")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .frame(maxWidth: .infinity, minHeight: Self.weekSpanHeight, maxHeight: Self.weekSpanHeight, alignment: .leading)
+            .background(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: isStart ? 4 : 0,
+                    bottomLeadingRadius: isStart ? 4 : 0,
+                    bottomTrailingRadius: isEnd ? 4 : 0,
+                    topTrailingRadius: isEnd ? 4 : 0,
+                    style: .continuous
+                )
+                .fill(apt.category.color.opacity(0.55))
+            )
+            .padding(.leading, isStart ? inset : 0)
+            .padding(.trailing, isEnd ? inset : 0)
+            .help(apt.endAt.map { "\(apt.title) · \(DF.shortMonthDay.string(from: apt.startAt)) → \(DF.shortMonthDay.string(from: $0))" } ?? apt.title)
     }
 
     /// One group in a week column: optional heading + its tasks

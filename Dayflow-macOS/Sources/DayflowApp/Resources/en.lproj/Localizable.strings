@@ -66,6 +66,8 @@
 "appointments.new" = "New";
 "appointments.close_form" = "Close";
 "appointments.end_date_add" = "+ end date";
+"appointments.span_progress" = "day %d of %d";
+"appointments.all_day_help" = "No specific time — shows as All day, no reminder";
 "appointments.end_date_remove" = "Remove end date";
 "appointments.manage_in_month" = "manage in Month";
 "appointments.repeat.none" = "No repeat";

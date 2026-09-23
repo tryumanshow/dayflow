@@ -55,6 +55,8 @@ struct ContentView: View {
     // edit form — `editingAppointmentId` being non-nil flips the
     // submit button label and routes to `updateAppointment`.
     @State var aptTimeInput: String = ""
+    /// "All day": no clock time, the time fields are hidden.
+    @State var aptAllDayInput: Bool = false
     @State var aptEndTimeInput: String = ""
     @State var aptTitleInput: String = ""
     @State var aptDateInput: Date = Date()

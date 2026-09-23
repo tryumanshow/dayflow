@@ -359,11 +359,30 @@ extension ContentView {
 
     private var aptTimeFields: some View {
         Group {
-            timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
-            Text("–")
-                .font(.system(size: 12))
-                .foregroundStyle(.tertiary)
-            timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
+            // "I know the day, not the time" — one click instead of having to
+            // know that a blank time field means all-day.
+            Button {
+                aptAllDayInput.toggle()
+            } label: {
+                Text(L("apt.all_day"))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(aptAllDayInput ? Color.dfAccent : .secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(aptAllDayInput ? Color.dfAccent.opacity(0.14) : Color.primary.opacity(0.04))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(L("appointments.all_day_help"))
+            if !aptAllDayInput {
+                timeField($aptTimeInput, placeholder: L("appointments.time_placeholder"))
+                Text("–")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                timeField($aptEndTimeInput, placeholder: L("appointments.end_time_placeholder"))
+            }
         }
     }
 
@@ -374,14 +393,16 @@ extension ContentView {
             Button {
                 aptEndDateInput = Calendar.current.date(byAdding: .day, value: 1, to: aptDateInput) ?? aptDateInput
             } label: {
+                // Multi-day spans hide behind this; it has to read as a
+                // control, not a faint footnote.
                 Text(L("appointments.end_date_add"))
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
                     .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Color.dfHairlineSoft, lineWidth: 0.7)
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color.primary.opacity(0.04))
                     )
             }
             .buttonStyle(.plain)
@@ -535,8 +556,9 @@ extension ContentView {
         editingAppointmentId = apt.id
         aptDateInput = apt.startAt
         aptEndDateInput = isSpan ? apt.endAt : nil
-        aptTimeInput = isSpan ? "" : DF.hourMinute.string(from: apt.startAt)
-        aptEndTimeInput = isSpan ? "" : (apt.endAt.map { DF.hourMinute.string(from: $0) } ?? "")
+        aptAllDayInput = !isSpan && apt.isAllDay
+        aptTimeInput = isSpan || apt.isAllDay ? "" : DF.hourMinute.string(from: apt.startAt)
+        aptEndTimeInput = isSpan || apt.isAllDay ? "" : (apt.endAt.map { DF.hourMinute.string(from: $0) } ?? "")
         aptTitleInput = apt.title
         aptCategoryInput = apt.category
         aptTitleFocused = true
@@ -547,21 +569,21 @@ extension ContentView {
     }
 
     private func submitMonthAppointment() {
-        // Time can be left blank — default to 00:00 so "all-day" style
-        // adds still land. resolveTimes otherwise rejects empty hhmm.
-        let effectiveTime = aptTimeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "00:00" : aptTimeInput
+        // A blank time (or the All-day toggle) stores an all-day appointment.
+        let effectiveTime = aptAllDayInput ? "" : aptTimeInput
+        let effectiveEndTime = aptAllDayInput ? "" : aptEndTimeInput
         let canRepeat = aptRepeatInput != .none && aptEndDateInput == nil
         let ok: Bool
         if let id = editingAppointmentId {
-            let updated = store.updateAppointment(id, on: aptDateInput, hhmm: effectiveTime, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
+            let updated = store.updateAppointment(id, on: aptDateInput, hhmm: effectiveTime, endHHmm: effectiveEndTime, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
             if updated && canRepeat {
-                addRepeatingAppointments(hhmm: effectiveTime, excludingDay: aptDateInput)
+                addRepeatingAppointments(hhmm: effectiveTime, endHHmm: effectiveEndTime, excludingDay: aptDateInput)
             }
             ok = updated
         } else if canRepeat {
-            ok = addRepeatingAppointments(hhmm: effectiveTime, excludingDay: nil)
+            ok = addRepeatingAppointments(hhmm: effectiveTime, endHHmm: effectiveEndTime, excludingDay: nil)
         } else {
-            ok = store.addAppointment(on: aptDateInput, hhmm: effectiveTime, endHHmm: aptEndTimeInput, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
+            ok = store.addAppointment(on: aptDateInput, hhmm: effectiveTime, endHHmm: effectiveEndTime, endDay: aptEndDateInput, title: aptTitleInput, category: aptCategoryInput)
         }
         if ok { resetAppointmentForm() }
     }
@@ -573,7 +595,7 @@ extension ContentView {
     /// date — used in edit mode so the just-updated row isn't dupli-
     /// cated.
     @discardableResult
-    private func addRepeatingAppointments(hhmm: String, excludingDay: Date?) -> Bool {
+    private func addRepeatingAppointments(hhmm: String, endHHmm: String, excludingDay: Date?) -> Bool {
         let cal = Calendar(identifier: .gregorian)
         let monthComps = cal.dateComponents([.year, .month], from: aptDateInput)
         guard let firstOfMonth = cal.date(from: monthComps),
@@ -602,7 +624,7 @@ extension ContentView {
         var anyOk = false
         for d in targets {
             if let excl = excludingDay, cal.isDate(d, inSameDayAs: excl) { continue }
-            if store.addAppointment(on: d, hhmm: hhmm, endHHmm: aptEndTimeInput, endDay: nil, title: aptTitleInput, category: aptCategoryInput) {
+            if store.addAppointment(on: d, hhmm: hhmm, endHHmm: endHHmm, endDay: nil, title: aptTitleInput, category: aptCategoryInput) {
                 anyOk = true
             }
         }
@@ -613,6 +635,7 @@ extension ContentView {
         editingAppointmentId = nil
         aptTimeInput = ""
         aptEndTimeInput = ""
+        aptAllDayInput = false
         aptEndDateInput = nil
         aptTitleInput = ""
         aptCategoryInput = .event
@@ -819,11 +842,15 @@ extension ContentView {
                         .foregroundColor(inMonth
                                          ? (isToday ? Color.dfAccent : (holidayName != nil ? Color.dfHoliday : Color.primary))
                                          : Color.secondary.opacity(0.4))
+                        // On a narrow grid the holiday label used to squeeze
+                        // the date itself onto two lines ("2" / "4").
+                        .fixedSize()
                     if let holidayName {
                         Text(holidayName)
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(Color.dfHoliday)
                             .lineLimit(1)
+                            .help(holidayName)
                     }
                     Spacer(minLength: 0)
                 }
@@ -956,6 +983,7 @@ extension ContentView {
     static let spanBarHeight: CGFloat = 14
     static let spanLaneGap: CGFloat = 2
     static let spanCellSpacing: CGFloat = 4
+    static let spanEndInset: CGFloat = 3
     // Cell padding 10 + ~14pt day digit + a little air.
     static let spanTopInset: CGFloat = 30
 
@@ -1016,13 +1044,18 @@ extension ContentView {
                     let segEnd = min(entry.endIdx, weekEndIdx)
                     let col = segStart - weekStartIdx
                     let span = segEnd - segStart + 1
-                    let x = CGFloat(col) * (cellWidth + cellSpacing)
-                    let w = CGFloat(span) * cellWidth + CGFloat(span - 1) * cellSpacing
-                    let y = Self.spanTopInset + CGFloat(entry.lane) * (Self.spanBarHeight + Self.spanLaneGap)
                     // Only round the true ends so mid-week segments read
                     // as one continuous bar across week boundaries.
                     let isStart = segStart == entry.startIdx
                     let isEnd = segEnd == entry.endIdx
+                    // Back-to-back spans (Mon–Wed, then Thu–Fri) can share a
+                    // lane; a small inset at each true end keeps them from
+                    // reading as one long bar.
+                    let endInset = Self.spanEndInset
+                    let x = CGFloat(col) * (cellWidth + cellSpacing) + (isStart ? endInset : 0)
+                    let w = CGFloat(span) * cellWidth + CGFloat(span - 1) * cellSpacing
+                        - (isStart ? endInset : 0) - (isEnd ? endInset : 0)
+                    let y = Self.spanTopInset + CGFloat(entry.lane) * (Self.spanBarHeight + Self.spanLaneGap)
                     Text(entry.apt.title)
                         .font(.system(size: 10, weight: .semibold))
                         .lineLimit(1)

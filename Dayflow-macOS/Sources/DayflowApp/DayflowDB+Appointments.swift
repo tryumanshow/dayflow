@@ -87,12 +87,12 @@ extension DayflowDB {
 
     /// Returns the newly-inserted row id, or -1 on failure.
     @discardableResult
-    func insertAppointment(startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory = .event) -> Int64 {
+    func insertAppointment(startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory = .event, allDay: Bool = false) -> Int64 {
         let now = nowISO()
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
-            INSERT INTO appointments (start_at, end_at, title, note, category, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO appointments (start_at, end_at, title, note, category, created_at, updated_at, all_day)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }
         bindText(stmt, 1, DF.appointmentStamp.string(from: startAt))
@@ -102,6 +102,7 @@ extension DayflowDB {
         bindText(stmt, 5, category.rawValue)
         bindText(stmt, 6, now)
         bindText(stmt, 7, now)
+        sqlite3_bind_int(stmt, 8, allDay ? 1 : 0)
         guard sqlite3_step(stmt) == SQLITE_DONE else { return -1 }
         return sqlite3_last_insert_rowid(db)
     }
@@ -114,11 +115,11 @@ extension DayflowDB {
         sqlite3_step(stmt)
     }
 
-    func updateAppointment(id: Int64, startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory) {
+    func updateAppointment(id: Int64, startAt: Date, endAt: Date?, title: String, note: String?, category: AppointmentCategory, allDay: Bool = false) {
         var stmt: OpaquePointer?
         sqlite3_prepare_v2(db, """
             UPDATE appointments
-            SET start_at = ?, end_at = ?, title = ?, note = ?, category = ?, updated_at = ?
+            SET start_at = ?, end_at = ?, title = ?, note = ?, category = ?, updated_at = ?, all_day = ?
             WHERE id = ?
         """, -1, &stmt, nil)
         defer { sqlite3_finalize(stmt) }
@@ -128,7 +129,8 @@ extension DayflowDB {
         bindTextOrNull(stmt, 4, note)
         bindText(stmt, 5, category.rawValue)
         bindText(stmt, 6, nowISO())
-        sqlite3_bind_int64(stmt, 7, id)
+        sqlite3_bind_int(stmt, 7, allDay ? 1 : 0)
+        sqlite3_bind_int64(stmt, 8, id)
         sqlite3_step(stmt)
     }
 

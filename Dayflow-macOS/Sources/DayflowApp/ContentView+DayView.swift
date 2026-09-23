@@ -285,10 +285,11 @@ extension ContentView {
     @ViewBuilder
     private var appointmentsRail: some View {
         let items = store.appointments(for: store.selectedDate)
+        let spans = store.spans(covering: store.selectedDate)
         VStack(alignment: .leading, spacing: DS.Space.sm) {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel(text: L("appointments.header"))
-                if items.isEmpty {
+                if items.isEmpty && spans.isEmpty {
                     // One line instead of a header plus an empty-state row.
                     Text(L("appointments.none_short"))
                         .font(DS.FontStyle.caption)
@@ -303,6 +304,24 @@ extension ContentView {
                         .foregroundStyle(Color.dfAccent)
                 }
                 .buttonStyle(.plain)
+            }
+            // Multi-day appointments running through this day, with how far
+            // in the day is — otherwise a trip was invisible outside Month.
+            ForEach(spans, id: \.apt.id) { span in
+                HStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(span.apt.category.color.opacity(0.8))
+                        .frame(width: 4, height: 16)
+                    Text(span.apt.title)
+                        .font(DS.FontStyle.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(L("appointments.span_progress", span.dayIndex, span.dayCount))
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
             }
             if !items.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {

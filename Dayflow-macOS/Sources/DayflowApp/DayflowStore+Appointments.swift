@@ -36,8 +36,8 @@ extension DayflowStore {
     func addAppointment(on day: Date, hhmm: String, endHHmm: String? = nil, endDay: Date? = nil, title: String, category: AppointmentCategory = .event) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
-        guard let (startAt, endAt) = Self.resolveTimes(day: day, hhmm: hhmm, endHHmm: endHHmm, endDay: endDay) else { return false }
-        db.insertAppointment(startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category)
+        guard let (startAt, endAt, allDay) = Self.resolveTimes(day: day, hhmm: hhmm, endHHmm: endHHmm, endDay: endDay) else { return false }
+        db.insertAppointment(startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category, allDay: allDay)
         reloadAppointments()
         return true
     }
@@ -61,8 +61,8 @@ extension DayflowStore {
         guard !isReadOnlyAppointment(id) else { return false }
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return false }
-        guard let (startAt, endAt) = Self.resolveTimes(day: day, hhmm: hhmm, endHHmm: endHHmm, endDay: endDay) else { return false }
-        db.updateAppointment(id: id, startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category)
+        guard let (startAt, endAt, allDay) = Self.resolveTimes(day: day, hhmm: hhmm, endHHmm: endHHmm, endDay: endDay) else { return false }
+        db.updateAppointment(id: id, startAt: startAt, endAt: endAt, title: trimmedTitle, note: nil, category: category, allDay: allDay)
         reloadAppointments()
         return true
     }
@@ -76,18 +76,43 @@ extension DayflowStore {
             .isReadOnly ?? false
     }
 
-    /// Multi-day span (endDay > start day) collapses to 00:00 → 23:59
-    /// and ignores the hhmm fields.
-    private static func resolveTimes(day: Date, hhmm: String, endHHmm: String?, endDay: Date?) -> (Date, Date?)? {
+    /// Resolve the form's fields into stored times.
+    /// - Multi-day span (endDay > start day): 00:00 → 23:59, all-day; the
+    ///   time fields are ignored.
+    /// - Blank start time: an all-day appointment on `day` ("I know the date,
+    ///   not the time"), shown as "All day" and never given a reminder.
+    /// - Otherwise the times as typed; nil when the start is malformed.
+    static func resolveTimes(day: Date, hhmm: String, endHHmm: String?, endDay: Date?) -> (Date, Date?, Bool)? {
         let cal = Calendar.current
         if let endDay, !cal.isDate(endDay, inSameDayAs: day), endDay > day {
             let startAt = cal.startOfDay(for: day)
             let endAt = cal.date(bySettingHour: 23, minute: 59, second: 0, of: endDay)
-            return (startAt, endAt)
+            return (startAt, endAt, true)
         }
         let trimmedTime = hhmm.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedTime.isEmpty {
+            return (cal.startOfDay(for: day), nil, true)
+        }
         guard let startAt = combine(day: day, hhmm: trimmedTime) else { return nil }
-        return (startAt, parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt))
+        return (startAt, parseOptionalEnd(day: day, hhmm: endHHmm, startAt: startAt), false)
+    }
+
+    /// Multi-day appointments covering `date` (drawn as bars, not chips),
+    /// each with its 1-based day number and total length.
+    func spans(covering date: Date) -> [(apt: Appointment, dayIndex: Int, dayCount: Int)] {
+        let cal = Calendar.current
+        let day = cal.startOfDay(for: date)
+        return currentMonthSpans()
+            .compactMap { apt -> (Appointment, Int, Int)? in
+                guard let endAt = apt.endAt else { return nil }
+                let start = cal.startOfDay(for: apt.startAt)
+                let end = cal.startOfDay(for: endAt)
+                guard day >= start, day <= end else { return nil }
+                let index = (cal.dateComponents([.day], from: start, to: day).day ?? 0) + 1
+                let count = (cal.dateComponents([.day], from: start, to: end).day ?? 0) + 1
+                return (apt, index, count)
+            }
+            .map { (apt: $0.0, dayIndex: $0.1, dayCount: $0.2) }
     }
 
     /// A zero-duration or negative range is almost certainly a
