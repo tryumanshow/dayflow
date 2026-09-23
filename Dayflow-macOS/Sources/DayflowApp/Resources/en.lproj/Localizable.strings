@@ -36,6 +36,10 @@
 "carryover.subitems" = "+%d sub-items";
 "onhold.header" = "On hold · %d";
 "onhold.open_day" = "Open the day it's parked on";
+"day.done_of_total" = "%d / %d done";
+"day.section_untitled" = "No heading";
+"day.section_jump" = "Jump to “%@”";
+"appointments.none_short" = "none";
 
 /* Header labels */
 "header.day_format" = "yyyy MMM d (EEE)";

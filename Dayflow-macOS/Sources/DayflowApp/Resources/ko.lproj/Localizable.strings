@@ -36,6 +36,10 @@
 "carryover.subitems" = "하위 %d개";
 "onhold.header" = "보류 중 · %d";
 "onhold.open_day" = "보류해 둔 날짜로 이동";
+"day.done_of_total" = "%d / %d 완료";
+"day.section_untitled" = "제목 없음";
+"day.section_jump" = "“%@”(으)로 이동";
+"appointments.none_short" = "없음";
 
 /* Header labels */
 "header.day_format" = "yyyy년 M월 d일 (E)";

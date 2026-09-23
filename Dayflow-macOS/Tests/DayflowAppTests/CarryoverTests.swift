@@ -369,3 +369,22 @@ private func makeStore() -> DayflowStore {
     #expect(items.map(\.text) == ["today's parked", "Visa paperwork"])
     #expect(DayflowDB.ymd(items[1].date) == DayflowDB.ymd(daysAgo(2)))
 }
+
+// MARK: - section progress
+
+@Test func sectionProgressCountsTasksPerHeading() {
+    let body = """
+        - [ ] before any heading
+        ## Work
+        *   [x] one
+        *   [ ] two
+            *   [~] parked child
+        ## Empty
+        just text
+        ### Sub
+        - [ ] three
+        """
+    let sections = DayflowStore.sectionProgress(of: body)
+    #expect(sections.map(\.title) == [nil, "Work", "Sub"])
+    #expect(sections.map { [$0.done, $0.open, $0.onHold] } == [[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+}

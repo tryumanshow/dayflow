@@ -33,6 +33,9 @@ extension Notification.Name {
     static let dayflowUndo      = Notification.Name("dayflowUndo")
     static let dayflowRedo      = Notification.Name("dayflowRedo")
     static let dayflowFind      = Notification.Name("dayflowFind")
+    /// Scroll the editor to the heading whose text is the notification's
+    /// `object` (a `String`). Posted by the Day rail's section rows.
+    static let dayflowScrollToHeading = Notification.Name("dayflowScrollToHeading")
     /// Opens the global search overlay (⌘⇧F). Distinct from `dayflowFind`
     /// (⌘F), which is in-editor find within the current note.
     static let dayflowOpenSearch = Notification.Name("dayflowOpenSearch")
@@ -180,6 +183,7 @@ struct MarkdownWebEditor: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(handleUndo),      name: .dayflowUndo,      object: nil)
             nc.addObserver(self, selector: #selector(handleRedo),      name: .dayflowRedo,      object: nil)
             nc.addObserver(self, selector: #selector(handleFind),      name: .dayflowFind,      object: nil)
+            nc.addObserver(self, selector: #selector(handleScrollToHeading(_:)), name: .dayflowScrollToHeading, object: nil)
         }
 
         // MARK: - Menu command handlers (via Notification)
@@ -229,6 +233,11 @@ struct MarkdownWebEditor: NSViewRepresentable {
                     bubbles: true, cancelable: true
                 }))
                 """, completionHandler: nil)
+        }
+
+        @objc private func handleScrollToHeading(_ note: Notification) {
+            guard let title = note.object as? String else { return }
+            webView?.evaluateJavaScript("window.dayflowScrollToHeading && window.dayflowScrollToHeading(\(Self.jsStringLiteral(title)))", completionHandler: nil)
         }
 
         @objc private func handleFind() {

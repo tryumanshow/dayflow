@@ -52,6 +52,19 @@ body {
     padding: 16px 8px 0 8px;
 }
 .bn-container { padding-bottom: 24px; }
+/* The default WebKit scrollbar drew a light track down the whole editor at
+   all times. Thin, and visible only while the pointer is over the editor. */
+#editor::-webkit-scrollbar { width: 8px; }
+#editor::-webkit-scrollbar-track { background: transparent; }
+#editor::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+#editor:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); }
+#editor:hover::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24); }
+/* Brief highlight on the heading the Day rail jumped to. */
+.dayflow-flash {
+    background: rgba(247, 140, 51, 0.12);
+    border-radius: 6px;
+    transition: background 0.6s ease;
+}
 /* Dayflow's own formatting strip. BlockNote's React-side toolbar
    component isn't loaded (we're on @blocknote/core only), so we
    build a minimal vanilla one that calls editor.toggleStyles /
@@ -74,6 +87,18 @@ body {
     -webkit-backdrop-filter: blur(12px);
     font-size: 13px;
     user-select: none;
+    transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+/* Formatting only applies to a selection, so with none the bar recedes:
+   no panel, faint glyphs. It stays in place (a floating bar over the text
+   gets its clicks swallowed by BlockNote's overlays — see #dayflow-color-pop)
+   and comes back on selection, hover, or an open colour row. */
+body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
+    opacity: 0.3;
+    background: transparent;
+    border-bottom-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 #dayflow-toolbar .tb-group {
     display: inline-flex;
@@ -1064,12 +1089,14 @@ function toggleColorPop(prop) {
         if (row) row.hidden = (p !== prop);
     }
     pop.hidden = false;
+    document.getElementById('dayflow-toolbar').classList.add('pop-open');
     for (const b of popButtons) b.classList.toggle('active', b.dataset.pop === prop);
 }
 
 function closeColorPop() {
     const pop = document.getElementById('dayflow-color-pop');
     if (pop) pop.hidden = true;
+    document.getElementById('dayflow-toolbar').classList.remove('pop-open');
     openPop = null;
     for (const b of popButtons) b.classList.remove('active');
 }
@@ -1127,6 +1154,39 @@ function bindToolbar() {
         if (openPop && e.key === 'Escape') closeColorPop();
     });
 }
+
+function syncSelectionClass() {
+    try {
+        document.body.classList.toggle('has-selection', !editor._tiptapEditor.state.selection.empty);
+    } catch (e) {}
+}
+
+// Day rail → editor: bring a heading to the top of the view. Matched on
+// letters and digits only, since the rail's title comes from the stored
+// markdown (escapes, emphasis markers) and the block holds plain text.
+window.dayflowScrollToHeading = function(title) {
+    if (!editor || !editorRootEl) return;
+    const key = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    const text = (content) => (Array.isArray(content) ? content : [])
+        .map((r) => (r.type === 'link' ? text(r.content) : (r.text || ''))).join('');
+    const want = key(title);
+    const find = (blocks) => {
+        for (const b of blocks) {
+            if (b.type === 'heading' && key(text(b.content)) === want) return b;
+            const nested = find(b.children || []);
+            if (nested) return nested;
+        }
+        return null;
+    };
+    const hit = find(editor.document);
+    const el = hit && editorRootEl.querySelector('[data-id="' + CSS.escape(hit.id) + '"]');
+    if (!el) return;
+    const top = el.getBoundingClientRect().top - editorRootEl.getBoundingClientRect().top + editorRootEl.scrollTop - 8;
+    editorRootEl.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    const content = el.querySelector('.bn-block-content') || el;
+    content.classList.add('dayflow-flash');
+    setTimeout(() => content.classList.remove('dayflow-flash'), 900);
+};
 
 function refreshToolbarState() {
     if (!editor) return;
@@ -1907,7 +1967,10 @@ function installStatusContextMenu() {
         installScrollStateBridge();
         editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); postScrollState(); });
         if (editor.onEditorSelectionChange) {
-            editor.onEditorSelectionChange(refreshToolbarState);
+            editor.onEditorSelectionChange(() => {
+                syncSelectionClass();
+                refreshToolbarState();
+            });
         }
         buildSwatches();
         bindToolbar();

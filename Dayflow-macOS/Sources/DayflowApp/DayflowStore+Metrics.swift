@@ -154,3 +154,42 @@ extension DayflowStore {
         )
     }
 }
+
+// MARK: - per-section progress (Day rail)
+
+/// Task counts under one heading of a day note. `title` is nil for tasks
+/// written before the first heading.
+struct SectionProgress: Identifiable, Equatable {
+    let id: Int
+    let title: String?
+    var done = 0
+    var open = 0
+    var onHold = 0
+
+    /// Completable tasks — on-hold is parked, not part of the ratio.
+    var total: Int { done + open }
+}
+
+extension DayflowStore {
+    /// Sections of `body` in page order, each with its task counts. Headings
+    /// with no tasks under them are left out; they'd only be noise in the rail.
+    nonisolated static func sectionProgress(of body: String) -> [SectionProgress] {
+        var sections: [SectionProgress] = []
+        for line in body.components(separatedBy: "\n") {
+            switch MarkdownLine.parse(line) {
+            case let .heading(_, title)?:
+                sections.append(SectionProgress(id: sections.count, title: title))
+            case let .task(status, _)?:
+                if sections.isEmpty { sections.append(SectionProgress(id: 0, title: nil)) }
+                switch status {
+                case .done: sections[sections.count - 1].done += 1
+                case .onHold: sections[sections.count - 1].onHold += 1
+                case .open: sections[sections.count - 1].open += 1
+                }
+            default:
+                break
+            }
+        }
+        return sections.filter { $0.total + $0.onHold > 0 }
+    }
+}
