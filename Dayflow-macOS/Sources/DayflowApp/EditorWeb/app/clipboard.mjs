@@ -28,6 +28,7 @@ const BULLET_RE = /^([-*+•◦▪‣●○■])\s+(.*)$/;
 const ORDERED_RE = /^(\d{1,3})[.)]\s+(.*)$/;
 const UNSAFE_HREF_RE = /^\s*(javascript|vbscript|data):/i;
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
+const RULE_RE = /^(?:-{3,}|\*{3,}|_{3,})$/;
 const TABLE_SEPARATOR_RE = /^\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 const ON_HOLD_BACKGROUND = 'blue';
 
@@ -222,6 +223,10 @@ export function markdownToBlocks(md) {
 
         let b;
         let m;
+        if (RULE_RE.test(text)) {
+            attach(width, { type: 'divider', props: {}, children: [] });
+            continue;
+        }
         if ((m = text.match(HEADING_RE))) {
             b = block('heading', parseInline(m[2]), { level: Math.min(m[1].length, MAX_HEADING_LEVEL) });
         } else if ((m = text.match(BULLET_RE))) {
@@ -334,6 +339,9 @@ export function blocksToMarkdown(blocks, { onHoldMark = '[ ]' } = {}) {
                 }
                 case 'image':
                     out.push(pad + `![${(b.props && b.props.name) || ''}](${(b.props && b.props.url) || ''})`);
+                    break;
+                case 'divider':
+                    out.push(pad + '---');
                     break;
                 default:
                     out.push(pad + text);
@@ -546,7 +554,7 @@ function elementToBlocks(el) {
         const t = tableFromElement(el);
         return t ? [t] : [];
     }
-    if (tag === 'HR') return [block('paragraph', [{ type: 'text', text: '---', styles: {} }])];
+    if (tag === 'HR') return [{ type: 'divider', props: {}, children: [] }];
     if (tag === 'IMG') {
         const src = el.getAttribute('src') || '';
         return isLocalImage(src) ? [{ type: 'image', props: { url: src, name: el.getAttribute('alt') || '' }, children: [] }] : [];

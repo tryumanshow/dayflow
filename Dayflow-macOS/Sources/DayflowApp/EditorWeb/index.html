@@ -509,29 +509,23 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
     background-color: rgba(247, 158, 51, 0.85);
     color: #000;
 }
-/* Paragraphs whose text is exactly a markdown HR sequence get
-   rendered as a divider. `dayflow-hr-marker` lands on the widest
-   block-level ancestor (not the narrow `.bn-block-content` which
-   is inline-block) so the line spans the row. Caret stays
-   visible via `caret-color` so the block is still editable. */
-.dayflow-hr-marker {
-    position: relative;
+/* Divider block: a full-width rule. `.bn-block-content` is otherwise sized to
+   its content, which is what made the old CSS-drawn line short. */
+.bn-block-content[data-content-type="divider"] {
+    display: block;
+    width: 100%;
+    padding: 10px 0;
+    cursor: default;
 }
-.dayflow-hr-marker .bn-inline-content,
-.dayflow-hr-marker [data-content-type="paragraph"] {
-    color: transparent;
-    caret-color: rgba(247, 158, 51, 0.9);
+hr.dayflow-divider {
+    border: none;
+    border-top: 1px solid rgba(var(--ink), 0.2);
+    margin: 0;
+    width: 100%;
 }
-.dayflow-hr-marker::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 50%;
-    height: 1px;
-    background: rgba(var(--ink), 0.25);
-    transform: translateY(-50%);
-    pointer-events: none;
+.ProseMirror-selectednode > .bn-block-content[data-content-type="divider"] hr.dayflow-divider,
+.bn-block-content[data-content-type="divider"].ProseMirror-selectednode hr.dayflow-divider {
+    border-top-color: rgba(247, 158, 51, 0.8);
 }
 </style>
 </head>
@@ -565,7 +559,9 @@ body:not(.has-selection) #dayflow-toolbar:not(:hover):not(.pop-open) {
 </div>
 <div id="editor"></div>
 <script type="module">
-import { BlockNoteEditor, locales } from "dayflow-asset://editor/blocknote-entry.mjs";
+import {
+    BlockNoteEditor, BlockNoteSchema, createBlockSpec, defaultBlockSpecs, locales,
+} from "dayflow-asset://editor/blocknote-entry.mjs";
 import {
     blockNoteHtmlToBlocks, blocksToMarkdown, htmlHasBlockStructure, htmlToBlocks, markdownToBlocks, plainTextShape,
 } from "dayflow-asset://editor/app/clipboard.mjs";
@@ -657,6 +653,88 @@ async function uploadFile(file) {
         data: data,
     });
     return promise;
+}
+
+// Divider block. BlockNote 0.22's default schema has none, and a markdown
+// `---` used to stay a paragraph with a CSS line drawn over it. Stored
+// markdown still reads `---` (see the emit path), so everything that parses
+// body_md sees the same thing as before.
+const dividerBlock = createBlockSpec(
+    { type: 'divider', propSchema: {}, content: 'none' },
+    {
+        render: () => {
+            const dom = document.createElement('hr');
+            dom.className = 'dayflow-divider';
+            return { dom };
+        },
+        toExternalHTML: () => ({ dom: document.createElement('hr') }),
+        parse: (el) => (el.tagName === 'HR' ? {} : undefined),
+    },
+);
+const DAYFLOW_SCHEMA = BlockNoteSchema.create({
+    blockSpecs: { ...defaultBlockSpecs, divider: dividerBlock },
+});
+
+const HR_TEXT_RE = /^(?:-{3,}|\*{3,}|_{3,})$/;
+const FENCE_RE = /^```$/;
+
+function blockPlainText(block) {
+    if (typeof block.content === 'string') return block.content.replace(/\u200B/g, '').trim();
+    return (Array.isArray(block.content) ? block.content : [])
+        .map((r) => (r.type === 'link' ? blockPlainText({ content: r.content }) : (r.text || '')))
+        .join('').replace(/​/g, '').trim();
+}
+
+// Paragraphs that are only a markdown rule (`---`, `***`, `___`) become
+// divider blocks — notes saved before the divider existed, and pasted text.
+function dividersFromRules(blocks) {
+    return blocks.map((b) => {
+        if (b.type === 'paragraph' && !(b.children && b.children.length) && HR_TEXT_RE.test(blockPlainText(b))) {
+            return { type: 'divider', props: {}, children: [] };
+        }
+        return b.children && b.children.length ? { ...b, children: dividersFromRules(b.children) } : b;
+    });
+}
+
+// Put a divider where the caret's line is (or after it, if it has text) and
+// continue on a fresh paragraph below.
+function insertDividerAtCaret() {
+    const current = editor.getTextCursorPosition().block;
+    const blank = Array.isArray(current.content) && !blockPlainText(current) && !(current.children && current.children.length);
+    const next = { type: 'paragraph', props: {}, content: [], children: [] };
+    const inserted = blank
+        ? editor.replaceBlocks([current], [{ type: 'divider' }, next]).insertedBlocks
+        : editor.insertBlocks([{ type: 'divider' }, next], current, 'after');
+    editor.setTextCursorPosition(inserted[inserted.length - 1], 'start');
+    scheduleEmit();
+}
+
+// Markdown shortcuts BlockNote doesn't do the way markdown writers expect,
+// applied as soon as the line reads as one (no Space or Enter needed):
+// `---` / `***` / `___` → divider, ``` → code block. Only for a line the
+// user is typing on; loading a note (suppressEmit) never converts.
+let applyingShortcut = false;
+function applyMarkdownShortcuts() {
+    if (!editor || suppressEmit || applyingShortcut) return;
+    let block;
+    try { block = editor.getTextCursorPosition().block; } catch (e) { return; }
+    if (!block || block.type !== 'paragraph' || (block.children && block.children.length)) return;
+    const text = blockPlainText(block);
+    applyingShortcut = true;
+    try {
+        if (HR_TEXT_RE.test(text)) {
+            const next = { type: 'paragraph', props: {}, content: [], children: [] };
+            const inserted = editor.replaceBlocks([block], [{ type: 'divider' }, next]).insertedBlocks;
+            editor.setTextCursorPosition(inserted[inserted.length - 1], 'start');
+        } else if (FENCE_RE.test(text)) {
+            const [code] = editor.replaceBlocks([block], [{ type: 'codeBlock', content: [] }]).insertedBlocks;
+            editor.setTextCursorPosition(code, 'start');
+        }
+    } catch (err) {
+        console.log('markdown shortcut error: ' + err.message);
+    } finally {
+        applyingShortcut = false;
+    }
 }
 
 // Paste pipeline. BlockNote's own paste plugin picks the first flavour in
@@ -948,10 +1026,9 @@ window.dayflowSetContent = async function(md, jsonText) {
         if (blocks.length === 0) {
             blocks.push({ type: 'paragraph', props: {}, content: [], children: [] });
         }
-        editor.replaceBlocks(editor.document, normalizeCodeLanguages(blocks));
+        editor.replaceBlocks(editor.document, normalizeCodeLanguages(dividersFromRules(blocks)));
         lastEmitted = md;
         lastEmittedJSON = typeof jsonText === 'string' ? jsonText : "";
-        applyHrStyling();
     } catch (e) {
         console.log('setContent error: ' + e.message + ' :: ' + (e.stack || ''));
     } finally {
@@ -1007,6 +1084,9 @@ async function emitCurrentContent() {
         if (md && md.indexOf(ZWSP) !== -1) md = md.split(ZWSP).join('');
         if (json.indexOf(ZWSP) !== -1) json = json.split(ZWSP).join('');
         md = reMarkOnHold(md, editor.document);
+        // Dividers serialize as `***`; keep the `---` that notes have always
+        // used (a literal `***` paragraph is escaped, so it can't match).
+        md = md.replace(/^(\s*)\*\*\*$/gm, '$1---');
         postChange(md, json);
     } catch (e) {}
 }
@@ -1267,6 +1347,7 @@ const SLASH_COMMANDS = (() => {
         { key: 'ol',   icon: '1.', label: T('Numbered list', '번호 목록'), block: { type: 'numberedListItem' } },
         { key: 'code', icon: '{ }', label: T('Code Block', '코드 블록'),   block: { type: 'codeBlock' } },
         { key: 'table', icon: '▦', label: T('Table', '표'),         block: { type: 'table' } },
+        { key: 'hr',   icon: '—',  label: T('Divider', '구분선'),     block: { type: 'divider' } },
         { key: 'p',    icon: '¶',  label: T('Paragraph', '본문'),     block: { type: 'paragraph' } },
     ];
     return defs.map(d => ({ ...d, labelLower: d.label.toLowerCase() }));
@@ -1403,6 +1484,8 @@ function commitSlashCommand(cmd) {
     closeSlashMenu();
     if (cmd.block.type === 'table') {
         openGridPicker();
+    } else if (cmd.block.type === 'divider') {
+        insertDividerAtCaret();
     } else {
         applyBlockType(cmd.block);
     }
@@ -1776,73 +1859,6 @@ document.addEventListener('mousedown', (e) => {
     closeSlashMenu();
 }, true);
 
-// Horizontal rule — paragraphs whose trimmed text matches a
-// markdown HR sequence get a marker class that CSS renders as
-// a divider. The marker lands on the widest block-level
-// ancestor (not the narrow inline-block `.bn-block-content`)
-// so the line spans the full row; we walk up until we hit the
-// ProseMirror/editor boundary rather than trusting a specific
-// BlockNote wrapper class, because those have renamed across
-// versions.
-const HR_TEXT_RE = /^(?:-{3,}|\*{3,}|_{3,})$/;
-const HR_CLASS = 'dayflow-hr-marker';
-
-function findHrWrapper(p, root) {
-    let best = p;
-    let bestWidth = p.offsetWidth;
-    for (let cur = p; cur; cur = cur.parentElement) {
-        const parent = cur.parentElement;
-        if (!parent || parent === root) break;
-        if (parent.classList.contains('ProseMirror')) break;
-        if (parent.classList.contains('bn-editor')) break;
-        if (parent.offsetWidth > bestWidth) { best = parent; bestWidth = parent.offsetWidth; }
-    }
-    return best;
-}
-
-function applyHrStyling() {
-    if (!editorRootEl) return;
-    for (const p of editorRootEl.querySelectorAll('[data-content-type="paragraph"]')) {
-        const t = (p.textContent || '').replace(/\u200B/g, '').trim();
-        const isHr = HR_TEXT_RE.test(t);
-        // Clear any stale marker that may have been set on an
-        // ancestor when this paragraph was previously an HR.
-        for (let cur = p; cur && cur !== editorRootEl; cur = cur.parentElement) {
-            cur.classList.remove(HR_CLASS);
-        }
-        if (isHr) findHrWrapper(p, editorRootEl).classList.add(HR_CLASS);
-    }
-}
-
-// Primary trigger is the MutationObserver (fires synchronously
-// with ProseMirror's DOM writes; onEditorContentChange is async
-// and can lag the visible state). rAF-coalesced to absorb bursts.
-let hrObserver = null;
-let hrRafPending = false;
-function scheduleHrStyling() {
-    if (hrRafPending) return;
-    hrRafPending = true;
-    requestAnimationFrame(() => {
-        hrRafPending = false;
-        // Cheap dirty-check: if no HR sequence appears anywhere in
-        // the editor, skip the per-paragraph walk entirely.
-        if (!editorRootEl) return;
-        const t = editorRootEl.textContent || '';
-        if (t.indexOf('---') === -1 && t.indexOf('***') === -1 && t.indexOf('___') === -1) {
-            // Still clear any leftover markers from a prior HR state.
-            const stale = editorRootEl.querySelectorAll('.' + HR_CLASS);
-            for (const s of stale) s.classList.remove(HR_CLASS);
-            return;
-        }
-        applyHrStyling();
-    });
-}
-function installHrObserver() {
-    if (!editorRootEl || hrObserver) return;
-    hrObserver = new MutationObserver(scheduleHrStyling);
-    hrObserver.observe(editorRootEl, { childList: true, subtree: true, characterData: true });
-}
-
 // Nested-list Korean IME workaround. ProseMirror has a known bug
 // where composing IME text into an empty nested list item (depth ≥ 2)
 // causes the committed syllable to be duplicated onto a new
@@ -1981,20 +1997,20 @@ function installStatusContextMenu() {
     try {
         findInputEl.placeholder = T('Find', '찾기');
         editor = BlockNoteEditor.create({
+            schema: DAYFLOW_SCHEMA,
             dictionary: LANG === 'ko' ? locales.ko : locales.en,
             domAttributes: { editor: { class: 'bn-editor' } },
             initialContent: undefined,
             uploadFile: uploadFile,
         });
         editor.mount(document.getElementById('editor'));
-        installHrObserver();
         installNestedImeWorkaround();
         installCheckboxToggle();
         installStatusContextMenu();
         installPasteHandler();
         installCopyHandler();
         installScrollStateBridge();
-        editor.onEditorContentChange(() => { scheduleHrStyling(); scheduleEmit(); postScrollState(); });
+        editor.onEditorContentChange(() => { applyMarkdownShortcuts(); scheduleEmit(); postScrollState(); });
         if (editor.onEditorSelectionChange) {
             editor.onEditorSelectionChange(() => {
                 syncSelectionClass();

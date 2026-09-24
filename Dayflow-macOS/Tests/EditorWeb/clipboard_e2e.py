@@ -278,6 +278,21 @@ def run(page):
     page.evaluate("() => window.dayflowPastePlainText('# 주석\\n- 그대로')")
     check('paste as plain text keeps markers literal', outline(), 'paragraph: # 주석\nparagraph: - 그대로\n')
 
+    # Markdown shortcuts while typing: `---` is a divider, ``` a code block,
+    # both without Space/Enter; stored markdown keeps `---`.
+    load('위')
+    page.click('.ProseMirror')
+    page.evaluate("() => window.__caret('위', 'end')")
+    page.keyboard.press('Enter'); page.keyboard.type('---'); page.keyboard.type('아래')
+    page.keyboard.press('Enter'); page.keyboard.type('```'); page.keyboard.type('x = 1')
+    page.wait_for_timeout(400)
+    check('typing: --- and ``` convert immediately', outline(),
+          'paragraph: 위\ndivider: \nparagraph: 아래\ncodeBlock: x = 1\n')
+    stored = page.evaluate("() => window.__msgs.filter((m) => m.type === 'change').pop().md")
+    check('typing: divider stored as ---', '\n---\n' in stored and '***' not in stored, True)
+    load('', '[{"type":"paragraph","content":[{"type":"text","text":"a","styles":{}}]},{"type":"paragraph","content":[{"type":"text","text":"---","styles":{}}]}]')
+    check('load: saved --- paragraph becomes a divider', outline(), 'paragraph: a\ndivider: \n')
+
     # One undo step reverts a structured paste.
     load('기존')
     page.evaluate("() => window.__caret('기존', 'end')")

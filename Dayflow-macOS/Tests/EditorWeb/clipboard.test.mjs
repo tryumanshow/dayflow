@@ -59,9 +59,10 @@ test('bullets, numbers, headings', () => {
     assert.equal(markdownToBlocks('#### H4')[0].props.level, 3);
 });
 
-test('Korean dates and HR lines stay paragraphs', () => {
-    assert.equal(outline(markdownToBlocks('2026. 9. 24 회의\n---\n*강조*')),
-        'paragraph: 2026. 9. 24 회의\nparagraph: ---\nparagraph: 강조\n');
+test('Korean dates stay paragraphs; rules become dividers', () => {
+    assert.equal(outline(markdownToBlocks('2026. 9. 24 회의\n---\n***\n*강조*')),
+        'paragraph: 2026. 9. 24 회의\ndivider: \ndivider: \nparagraph: 강조\n');
+    assert.equal(blocksToMarkdown(markdownToBlocks('위\n---\n아래')), '위\n---\n아래');
 });
 
 test('fenced code keeps its body verbatim, including list-looking lines', () => {
