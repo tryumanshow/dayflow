@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/tryumanshow/dayflow/compare/v0.1.15...v0.1.16) (2026-09-24)
+
+
+### Features
+
+* **editor:** markdown --- and ``` convert as you type ([#65](https://github.com/tryumanshow/dayflow/issues/65)) ([c6e8c51](https://github.com/tryumanshow/dayflow/commit/c6e8c51c9759118eedb46e10e54de238b10f52d8))
+
 ## [0.1.15](https://github.com/tryumanshow/dayflow/compare/v0.1.14...v0.1.15) (2026-09-23)
 
 
